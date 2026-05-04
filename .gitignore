@@ -1,0 +1,17 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/
+
+workspaces/
+artifacts/
+*.parquet
+*.png
+*.jpg
+*.jpeg
+
+.env
+.env.*
+.DS_Store
