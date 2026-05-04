@@ -298,6 +298,23 @@ class DataAuditEvent(BaseModel):
     details: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[str] = None
 
+class GuardrailFinding(BaseModel):
+    """
+    A structured statistical guardrail finding attached to an analysis run.
+
+    severity:
+    - info: useful context
+    - warning: potential issue
+    - critical: serious issue that may invalidate interpretation
+    """
+    finding_id: str
+    category: str
+    severity: str = "info"
+    title: str
+    message: str
+    evidence: Dict[str, Any] = Field(default_factory=dict)
+    recommendation: Optional[str] = None
+
 class AnalysisRun(BaseModel):
     """
     A structured record of one completed analysis/tool run.
@@ -321,5 +338,10 @@ class AnalysisRun(BaseModel):
     tables: Dict[str, Any] = Field(default_factory=dict)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
 
+    report_blocks: List[Dict[str, Any]] = Field(default_factory=list)
+    guardrails: List[Dict[str, Any]] = Field(default_factory=list)
+
     raw_observation_id: Optional[str] = None
+
+
 

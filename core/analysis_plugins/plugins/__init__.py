@@ -1,0 +1,1 @@
+# Plugin modules are auto-discovered by core.analysis_plugins.load_plugins().

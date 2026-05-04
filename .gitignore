@@ -3,7 +3,8 @@ venv/
 __pycache__/
 *.pyc
 .pytest_cache/
-.streamlit/
+.mypy_cache/
+.ruff_cache/
 
 workspaces/
 artifacts/
@@ -14,4 +15,7 @@ artifacts/
 
 .env
 .env.*
+.streamlit/secrets.toml
+
 .DS_Store
+Thumbs.db

@@ -158,6 +158,26 @@ with st.sidebar:
                     if summary_text:
                         st.write(summary_text)
 
+                    guardrails = run.get("guardrails", [])
+                    if guardrails:
+                        st.markdown("**Guardrails**")
+
+                        for finding in guardrails:
+                            severity = finding.get("severity", "info")
+                            title = finding.get("title", "Guardrail finding")
+                            message = finding.get("message", "")
+                            recommendation = finding.get("recommendation")
+
+                            if severity == "critical":
+                                st.error(f"**{title}** — {message}")
+                            elif severity == "warning":
+                                st.warning(f"**{title}** — {message}")
+                            else:
+                                st.info(f"**{title}** — {message}")
+
+                            if recommendation:
+                                st.caption(f"Recommendation: {recommendation}")
+
                     metrics = run.get("metrics", {})
                     if metrics:
                         st.markdown("**Metrics**")
