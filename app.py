@@ -5,6 +5,7 @@ import uuid
 from core.graph import app
 import pandas as pd
 import time
+from core.data_versions import create_initial_data_version, make_audit_event
 
 def typewriter_effect(text, speed=0.015):
     """Character-by-character typewriter streaming."""
@@ -36,22 +37,102 @@ with st.sidebar:
     st.header("Data import")
     uploaded_file = st.file_uploader("Upload data", type=['csv', 'xls', 'xlsx'])
     if uploaded_file:
-        parquet_path = os.path.join(st.session_state.workspace, "working_data.parquet")
+        file_signature = f"{uploaded_file.name}:{uploaded_file.size}"
 
-        try:
-            if uploaded_file.name.endswith(('.xls', '.xlsx')):
-                df_temp = pd.read_excel(uploaded_file)
-            elif uploaded_file.name.endswith('.csv'):
-                df_temp = pd.read_csv(uploaded_file)
-            else:
-                st.error("Unsupported file format")
-                st.stop()
+        # Only process a newly uploaded file once.
+        if st.session_state.get("uploaded_file_signature") != file_signature:
+            st.session_state.uploaded_file_signature = file_signature
 
-            df_temp.to_parquet(parquet_path, engine='pyarrow', index=False)
-            st.success("✅ Data converted to Parquet and mounted in the sandbox")
+            # New dataset = new graph thread, new messages, new workspace state.
+            st.session_state.thread_id = str(uuid.uuid4())
+            st.session_state.messages = []
+            st.session_state.resume_stream = False
 
-        except Exception as e:
-            st.error(f"Data processing failed: {str(e)}")
+            config = {
+                "configurable": {
+                    "thread_id": st.session_state.thread_id
+                }
+            }
+
+            parquet_path = os.path.join(st.session_state.workspace, "working_data.parquet")
+
+            try:
+                if uploaded_file.name.endswith(('.xls', '.xlsx')):
+                    df_temp = pd.read_excel(uploaded_file)
+                elif uploaded_file.name.endswith('.csv'):
+                    df_temp = pd.read_csv(uploaded_file)
+                else:
+                    st.error("Unsupported file format")
+                    st.stop()
+
+                df_temp.to_parquet(parquet_path, engine='pyarrow', index=False)
+
+                initial_version = create_initial_data_version(
+                    df=df_temp,
+                    workspace_dir=st.session_state.workspace,
+                    created_by="upload",
+                    description=f"Initial uploaded dataset: {uploaded_file.name}",
+                )
+
+                st.session_state.data_versions = [initial_version]
+                st.session_state.active_data_version_id = initial_version["version_id"]
+                st.session_state.data_audit_log = [
+                    make_audit_event(
+                        event_type="data_loaded",
+                        version_id=initial_version["version_id"],
+                        description=f"Uploaded dataset {uploaded_file.name}",
+                        details={
+                            "filename": uploaded_file.name,
+                            "n_rows": int(df_temp.shape[0]),
+                            "n_cols": int(df_temp.shape[1]),
+                        },
+                    )
+                ]
+
+                st.success("✅ Data converted to Parquet and mounted in the sandbox")
+
+            except Exception as e:
+                st.error(f"Data processing failed: {str(e)}")
+
+        else:
+            st.success("✅ Data already mounted in the sandbox")
+
+    if st.session_state.get("active_data_version_id"):
+        st.divider()
+        st.subheader("Data version")
+        st.caption(f"Active version: `{st.session_state.active_data_version_id}`")
+
+        versions = st.session_state.get("data_versions", [])
+        if versions:
+            latest = versions[-1]
+            st.write(f"Rows: {latest.get('n_rows')}, Columns: {latest.get('n_cols')}")
+            st.write(f"Operation: {latest.get('operation')}")
+
+        audit_log = st.session_state.get("data_audit_log", [])
+
+        if audit_log:
+            with st.expander("📜 Data audit trail"):
+                for event in audit_log:
+                    event_type = event.get("event_type", "unknown_event")
+                    version_id = event.get("version_id")
+                    parent_version_id = event.get("parent_version_id")
+                    created_at = event.get("created_at", "")
+
+                    st.markdown(f"**{event_type}**")
+                    if version_id:
+                        st.caption(f"version: `{version_id}`")
+                    if parent_version_id:
+                        st.caption(f"parent: `{parent_version_id}`")
+                    if created_at:
+                        st.caption(created_at)
+
+                    st.write(event.get("description", ""))
+
+                    details = event.get("details", {})
+                    if details:
+                        st.json(details)
+
+                    st.divider()
 
     state_snapshot = app.get_state(config)
     plan = state_snapshot.values.get("analysis_plan")
@@ -126,7 +207,15 @@ if is_interrupted:
             else:
                 vr.status = "allowed"
 
-            app.update_state(config, {"current_verification": vr})
+            app.update_state(config, {
+                "current_verification": vr,
+
+                # Preserve data version state across human-review resume.
+                "data_versions": st.session_state.get("data_versions", []),
+                "active_data_version_id": st.session_state.get("active_data_version_id"),
+                "data_audit_log": st.session_state.get("data_audit_log", []),
+            })
+
             st.session_state.resume_stream = True
             st.rerun()
 
@@ -253,7 +342,11 @@ if (is_new_task or is_resuming) and not is_interrupted:
                 "dataset_profile": profile_dict,
                 "deliverable_gate_attempts": 0,
                 "deliverable_check": None,
-                "task_contract": None
+                "task_contract": None,
+
+                "data_versions": st.session_state.get("data_versions", []),
+                "active_data_version_id": st.session_state.get("active_data_version_id"),
+                "data_audit_log": st.session_state.get("data_audit_log", []),
             }
 
         st.session_state.resume_stream = False
@@ -273,6 +366,15 @@ if (is_new_task or is_resuming) and not is_interrupted:
                 if not isinstance(state_data, dict):
                     continue
 
+                if state_data.get("data_versions") is not None:
+                    st.session_state.data_versions = state_data.get("data_versions")
+
+                if state_data.get("active_data_version_id") is not None:
+                    st.session_state.active_data_version_id = state_data.get("active_data_version_id")
+
+                if state_data.get("data_audit_log") is not None:
+                    st.session_state.data_audit_log = state_data.get("data_audit_log")
+
                 deliverable_check = state_data.get("deliverable_check") if isinstance(state_data, dict) else None
 
                 if deliverable_check:
@@ -288,13 +390,13 @@ if (is_new_task or is_resuming) and not is_interrupted:
 
                         with live_display.container():
                             if reasoning:
-                                st.markdown("🧠 **Agent reasoning:**")
+                                st.markdown("**Agent reasoning:**")
                                 st.write_stream(typewriter_effect(f"> *{reasoning}*"))
 
                             if action_type == "tool_call":
-                                st.info(f"🛠️ Scheduling tool: `{tool_name}`", icon="⚙️")
+                                st.info(f"Scheduling tool: `{tool_name}`", icon="⚙️")
                             elif action_type == "final_answer":
-                                st.success("✨ Reasoning complete, preparing report.", icon="🎉")
+                                st.success("Reasoning complete, preparing report.", icon="🎉")
 
                 elif node_name == "execute_node":
                     execution = state_data.get("current_execution")
@@ -303,7 +405,7 @@ if (is_new_task or is_resuming) and not is_interrupted:
                         if isinstance(execution, str) and (
                             "System intervention" in execution or "Fingerprint gate" in execution or "❌" in execution
                         ):
-                            st.warning(f"🚧 System message: {execution}", icon="⚠️")
+                            st.warning(f"System message: {execution}", icon="⚠️")
                         else:
                             st.success(f"✅ Tool finished; syncing to memory...")
                         time.sleep(0.5)
@@ -325,6 +427,25 @@ if (is_new_task or is_resuming) and not is_interrupted:
                             "content": f"🤖 Agent asks for input: {current_action.reasoning_summary}"
                         })
                         st.rerun()
+
+        post_stream_state = app.get_state(config)
+
+        if post_stream_state and post_stream_state.values:
+            values = post_stream_state.values
+
+            if values.get("data_versions") is not None:
+                st.session_state.data_versions = values.get("data_versions")
+
+            if values.get("active_data_version_id") is not None:
+                st.session_state.active_data_version_id = values.get("active_data_version_id")
+
+            if values.get("data_audit_log") is not None:
+                st.session_state.data_audit_log = values.get("data_audit_log")
+
+        if post_stream_state.next and "human_review" in post_stream_state.next:
+            live_display.empty()
+            st.session_state.resume_stream = False
+            st.rerun()
 
         if pending_final_answer and deliverable_gate_allows_final:
             live_display.empty()

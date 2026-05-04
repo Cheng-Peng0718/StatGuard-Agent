@@ -30,16 +30,15 @@ def verify(action, profile):
 
     tool_spec = registry.tools[tool_name]
 
-
-##### DEBUG
-    print("\n" + "=" * 40)
-    print("[VERIFIER DEBUG]")
-    print(f"tool_name = {tool_name}")
-    print(f"tool_spec = {tool_spec}")
-    print(f"requires_confirmation = {getattr(tool_spec, 'requires_confirmation', None)}")
-    print(f"action.arguments = {getattr(action, 'arguments', {})}")
-    print("=" * 40 + "\n")
-##### DEBUG
+# ##### DEBUG
+#     print("\n" + "=" * 40)
+#     print("[VERIFIER DEBUG]")
+#     print(f"tool_name = {tool_name}")
+#     print(f"tool_spec = {tool_spec}")
+#     print(f"requires_confirmation = {getattr(tool_spec, 'requires_confirmation', None)}")
+#     print(f"action.arguments = {getattr(action, 'arguments', {})}")
+#     print("=" * 40 + "\n")
+# ##### DEBUG
 
     # 2. schema validation
     schema_result = validate_tool_call_schema(

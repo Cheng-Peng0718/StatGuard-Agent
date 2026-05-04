@@ -34,7 +34,18 @@ def build_context_node(state: GraphState):
     # Refresh dataset profile from sandbox.
     new_profile = generate_profile(current_data_path)
 
-    context = build_context(step, state["max_steps"], state["user_request"], new_profile, state["observations"])
+    context = build_context(
+        step=step,
+        max_steps=state["max_steps"],
+        user_request=state["user_request"],
+        profile=new_profile,
+        observations=state.get("observations", []),
+        workspace_dir=state.get("workspace_dir", "./"),
+        deliverable_check=state.get("deliverable_check"),
+        data_versions=state.get("data_versions", []),
+        active_data_version_id=state.get("active_data_version_id"),
+        data_audit_log=state.get("data_audit_log", []),
+    )
 
     return {
         "current_step": step,
@@ -55,6 +66,9 @@ def supervisor_node(state: GraphState):
         observations=state.get("observations", []),
         workspace_dir=current_workspace,
         deliverable_check=state.get("deliverable_check"),
+        data_versions=state.get("data_versions", []),
+        active_data_version_id=state.get("active_data_version_id"),
+        data_audit_log=state.get("data_audit_log", []),
     )
 
     action = call_supervisor(context_pkg)
@@ -69,8 +83,7 @@ def supervisor_node(state: GraphState):
     if contract is not None:
 
         ##### DEBUG
-        print("[TASK CONTRACT DECLARED]")
-        print(contract.model_dump() if hasattr(contract, "model_dump") else contract)
+        print(f"[TASK CONTRACT DECLARED] deliverables={len(contract.get('required_deliverables', []))}")
         ##### DEBUG
 
         if hasattr(contract, "model_dump"):
@@ -304,7 +317,11 @@ def execute_node(state: GraphState):
         user_request=state.get("user_request", "Not provided"),
         profile=state.get("dataset_profile"),
         observations=state.get("observations", []),
-        workspace_dir=state.get("workspace_dir", "./")
+        workspace_dir=state.get("workspace_dir", "./"),
+        deliverable_check=state.get("deliverable_check"),
+        data_versions=state.get("data_versions", []),
+        active_data_version_id=state.get("active_data_version_id"),
+        data_audit_log=state.get("data_audit_log", []),
     )
 
     exec_result = execute_tool(action, context_pkg)
@@ -327,7 +344,6 @@ def summarize_node(state: GraphState):
     arguments = {}
     if current_action and hasattr(current_action, "arguments"):
         arguments = current_action.arguments
-    raw_result = state.get("current_execution", "No execution result")
 
     raw_result = state.get("current_execution", "No execution result")
 
@@ -359,6 +375,10 @@ def summarize_node(state: GraphState):
         "source_action_id": getattr(current_action, "action_id", "unknown"),
         "tool_name": tool_name,
         "arguments": arguments,
+
+        # Phase 2: provenance
+        "data_version_id": state.get("active_data_version_id"),
+
         "status": status,
         "success": success,
         "error_code": error_code,
@@ -372,13 +392,30 @@ def summarize_node(state: GraphState):
             "message": message,
             "artifacts": artifacts,
             "payload": payload,
+            # Phase 2: provenance
+            "data_version_id": state.get("active_data_version_id"),
         },
         "raw_data": raw_result,
     }
 
     print(f"[Summarize]: archived result for {tool_name}.")
 
-    return {
+    data_version_update = None
+
+    if isinstance(raw_result, dict):
+        data_version_update = raw_result.get("data_version_update")
+
+        if data_version_update is None:
+            payload_obj = raw_result.get("payload", {})
+            if isinstance(payload_obj, dict):
+                data_version_update = payload_obj.get("data_version_update")
+
+                if data_version_update is None:
+                    result_obj = payload_obj.get("result")
+                    if isinstance(result_obj, dict):
+                        data_version_update = result_obj.get("data_version_update")
+
+    updates = {
         "observations": [refined_observation],
 
         "current_action": None,
@@ -387,8 +424,29 @@ def summarize_node(state: GraphState):
         "human_review_required": False,
         "pending_action": None,
 
-        "current_step": state.get("current_step", 0) + 1
+        "current_step": state.get("current_step", 0) + 1,
     }
+
+    if data_version_update:
+        new_version = data_version_update.get("new_version")
+        new_active_id = data_version_update.get("active_data_version_id")
+        audit_event = data_version_update.get("audit_event")
+
+        existing_versions = state.get("data_versions", []) or []
+        existing_audit_log = state.get("data_audit_log", []) or []
+
+        if new_version:
+            updates["data_versions"] = existing_versions + [new_version]
+
+        if new_active_id:
+            updates["active_data_version_id"] = new_active_id
+
+        if audit_event:
+            updates["data_audit_log"] = existing_audit_log + [audit_event]
+
+        print(f"[DATA VERSION] active_data_version_id -> {new_active_id}")
+
+    return updates
 
 # --- Routing ---
 def route_after_supervisor(state: GraphState):
@@ -581,7 +639,7 @@ def deliverable_gate_node(state: GraphState):
     This node checks whether required deliverables have been satisfied by observations.
     It does not call tools. It only writes deliverable_check into state.
     """
-    print(">>> ENTERED DELIVERABLE GATE NODE <<<")
+    # print(">>> ENTERED DELIVERABLE GATE NODE <<<")
 
     contract = state.get("task_contract")
     observations = state.get("observations", [])

@@ -115,6 +115,7 @@ If a task_contract already exists in context, do not replace it unless the user 
 - If a requested deliverable was not generated or not observed in tool results, say it is missing.
 - If a task_contract exists and required deliverables are missing, do not produce final_answer unless the blocker is unrecoverable and you explicitly explain what is missing and why.
 - Do not embed local image paths using Markdown image syntax. If a plot artifact was generated, mention that it was generated; the UI will render artifacts separately.
+- When reporting computed results, mention the active data version used if it is available in context. For cleaned or transformed data, briefly state the preprocessing operation that produced the active version.
 
 ### Output constraints
 You must output strictly valid JSON.

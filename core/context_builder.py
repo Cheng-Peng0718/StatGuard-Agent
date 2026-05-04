@@ -2,7 +2,6 @@ import os
 
 import pandas as pd
 from core.schema import ContextPackage, DatasetProfile, ColumnProfile
-from tools.registry import registry
 
 
 def generate_profile(file_path: str) -> DatasetProfile:
@@ -86,7 +85,17 @@ def generate_profile(file_path: str) -> DatasetProfile:
         raise e
 
 
-def build_context(step, max_steps, user_request, profile, observations, workspace_dir="./", deliverable_check=None):
+def build_context(step,
+                  max_steps,
+                  user_request,
+                  profile,
+                  observations,
+                  workspace_dir="./",
+                  deliverable_check=None,
+                  data_versions=None,
+                  active_data_version_id=None,
+                  data_audit_log=None,
+                  ):
     """
     Build the full context text sent to the LLM.
     """
@@ -167,9 +176,28 @@ def build_context(step, max_steps, user_request, profile, observations, workspac
                 "unless the missing deliverable is truly unrecoverable.\n"
             )
 
+    data_version_log = ""
+
+    if active_data_version_id:
+        data_version_log += "\n### Active Data Version\n"
+        data_version_log += f"- active_data_version_id: {active_data_version_id}\n"
+
+        active_version = None
+        for v in data_versions or []:
+            if v.get("version_id") == active_data_version_id:
+                active_version = v
+                break
+
+        if active_version:
+            data_version_log += f"- rows: {active_version.get('n_rows')}\n"
+            data_version_log += f"- columns: {active_version.get('n_cols')}\n"
+            data_version_log += f"- operation: {active_version.get('operation')}\n"
+            data_version_log += f"- parent_version_id: {active_version.get('parent_version_id')}\n"
+
     context_text = (
         f"User request:\n{user_request}\n\n"
         f"Dataset overview:\n- rows: {rows}\n- columns: {cols}\n\n"
+        f"{data_version_log}\n"
         f"History of actions and results:\n{history_log}\n\n"
         f"{deliverable_log}\n"
         f"Read the history carefully. Do not repeat successful tools with the same intent. "
@@ -178,8 +206,17 @@ def build_context(step, max_steps, user_request, profile, observations, workspac
     )
 
     return ContextPackage(
-        context_text=context_text,
-        current_step=step,
+        step=step,
         max_steps=max_steps,
-        workspace_dir=workspace_dir
+        user_request=user_request,
+        context_text=context_text,
+        profile=profile,
+        observations=observations,
+        workspace_dir=workspace_dir,
+        deliverable_check=deliverable_check,
+
+        data_versions=data_versions or [],
+        active_data_version_id=active_data_version_id,
+        data_audit_log=data_audit_log or [],
+
     )

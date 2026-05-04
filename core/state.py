@@ -21,3 +21,6 @@ class GraphState(TypedDict):
     task_contract: Optional[Dict[str, Any]]
     deliverable_check: Optional[Dict[str, Any]]
     deliverable_gate_attempts: int
+    data_versions: Optional[List[Dict[str, Any]]]
+    active_data_version_id: Optional[str]
+    data_audit_log: Optional[List[Dict[str, Any]]]

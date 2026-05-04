@@ -142,16 +142,76 @@ class Observation(BaseModel):
 
 # --- 5. Context packaging ---
 class ContextPackage(BaseModel):
-    context_text: str
-    current_step: int
+    def load_df(self):
+        if self.active_data_version_id and self.data_versions:
+            for version in self.data_versions:
+                if version.get("version_id") == self.active_data_version_id:
+                    path = version.get("path")
+                    if path and os.path.exists(path):
+
+                        ##### DEBUG
+                        print(f"[LOAD DF] active_version={self.active_data_version_id}, path={path}")
+                        ##### DEBUG
+
+                        return pd.read_parquet(path)
+
+        fallback_path = os.path.join(self.workspace_dir, "working_data.parquet")
+        if os.path.exists(fallback_path):
+
+            ##### DEBUG
+            print(f"[LOAD DF] fallback working_data, path={fallback_path}")
+            ##### DEBUG
+
+            return pd.read_parquet(fallback_path)
+
+
+
+        raise FileNotFoundError(
+            f"No active data version or fallback working_data.parquet found in {self.workspace_dir}"
+        )
+
+    def active_data_path(self):
+
+        if self.active_data_version_id and self.data_versions:
+            for version in self.data_versions:
+                if version.get("version_id") == self.active_data_version_id:
+                    path = version.get("path")
+                    if path:
+                        return path
+
+        return os.path.join(self.workspace_dir, "working_data.parquet")
+
+    step: int
     max_steps: int
+    user_request: str
+    profile: Any = None
+    observations: List[Dict[str, Any]] = Field(default_factory=list)
     workspace_dir: str = "./"
+    context_text: str = ""
+
+    data_versions: List[Dict[str, Any]] = Field(default_factory=list)
+    active_data_version_id: Optional[str] = None
+    data_audit_log: List[Dict[str, Any]] = Field(default_factory=list)
 
 class AgentContext:
-    def __init__(self, workspace_dir: str, arguments: dict = None):
+    def __init__(
+        self,
+        workspace_dir: str,
+        arguments: dict = None,
+        data_versions: list = None,
+        active_data_version_id: str = None,
+        data_audit_log: list = None,
+    ):
         self.workspace_dir = workspace_dir
         self.args = arguments or {}
+
+        # Backward-compatible fallback path
         self.file_path = os.path.join(self.workspace_dir, "working_data.parquet")
+
+        # Phase 2: dataset versioning
+        self.data_versions = data_versions or []
+        self.active_data_version_id = active_data_version_id
+        self.data_audit_log = data_audit_log or []
 
     def _get_data_path(self):
         """Resolve a tabular data file inside the sandbox."""
@@ -160,16 +220,81 @@ class AgentContext:
                 return os.path.join(self.workspace_dir, file)
         raise FileNotFoundError(f"No supported tabular file found in sandbox {self.workspace_dir}")
 
+    def active_data_path(self):
+        """
+        Resolve the active data version path.
+
+        Priority:
+        1. active_data_version_id from data_versions
+        2. backward-compatible working_data.parquet
+        """
+        if self.active_data_version_id and self.data_versions:
+            for version in self.data_versions:
+                if version.get("version_id") == self.active_data_version_id:
+                    path = version.get("path")
+                    if path:
+                        return path
+
+        return self.file_path
+
     def load_df(self):
-        """Load dataframe from sandbox Parquet."""
-        if not os.path.exists(self.file_path):
-            raise FileNotFoundError(f"Data file not found in sandbox: {self.file_path}")
-        return pd.read_parquet(self.file_path, engine='pyarrow')
+        """
+        Load dataframe from the active data version if available.
+        Fall back to working_data.parquet for backward compatibility.
+        """
+        path = self.active_data_path()
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Data file not found in sandbox: {path}")
+
+        if self.active_data_version_id:
+            print(f"[LOAD DF] active_version={self.active_data_version_id}, path={path}")
+        else:
+            print(f"[LOAD DF] fallback working_data, path={path}")
+
+        return pd.read_parquet(path, engine='pyarrow')
 
     def save_df(self, df):
-        """Write dataframe back to sandbox Parquet."""
+        """
+        Backward-compatible save.
+
+        Warning:
+        Versioned tools such as clean_data should not use this directly.
+        They should create a new data version instead.
+        """
         df.to_parquet(self.file_path, engine='pyarrow', index=False)
 
     def get_arg(self, key: str, default=None):
         return self.args.get(key, default)
+
+class DataVersion(BaseModel):
+    version_id: str = Field(..., description="Stable data version id, e.g. raw_v1 or data_v0002.")
+    parent_version_id: Optional[str] = Field(default=None, description="Parent data version.")
+    path: str = Field(..., description="Parquet file path for this version.")
+    n_rows: Optional[int] = None
+    n_cols: Optional[int] = None
+    created_by: str = "system"
+    created_at: Optional[str] = None
+    operation: str = "initial_load"
+    description: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DataAuditEvent(BaseModel):
+    event_id: str
+    event_type: Literal[
+        "data_loaded",
+        "data_cleaned",
+        "data_version_created",
+        "data_version_activated",
+        "data_version_rolled_back",
+        "tool_used_data_version",
+    ]
+    version_id: Optional[str] = None
+    parent_version_id: Optional[str] = None
+    tool_name: Optional[str] = None
+    action_id: Optional[str] = None
+    description: str = ""
+    details: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[str] = None
 

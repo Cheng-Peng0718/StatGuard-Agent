@@ -34,7 +34,7 @@ import statsmodels.stats.api as sms
 from scipy import stats
 from scipy.stats import chi2_contingency
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-
+from core.data_versions import create_child_data_version, make_audit_event
 from tools.registry import registry
 
 
@@ -619,6 +619,17 @@ def clean_data(context):
         action = _get_arg(context, "action_type", "standardize_missing")
         cols_arg = _get_arg(context, "columns", "all")
         strategy = _get_arg(context, "strategy", "median")
+
+        workspace_dir = getattr(context, "workspace_dir", None) or _get_arg(context, "workspace_dir", None) or "."
+
+        # data_versions = getattr(context, "data_versions", None) or _get_arg(context, "data_versions", []) or []
+        active_data_version_id = (
+                getattr(context, "active_data_version_id", None)
+                or _get_arg(context, "active_data_version_id", None)
+        )
+
+        parent_version_id = active_data_version_id or "unknown"
+
         missing_col_threshold = float(_get_arg(context, "missing_col_threshold", 0.4))
         constant_value = _get_arg(context, "constant_value", None)
         numeric_parse_threshold = float(_get_arg(context, "numeric_parse_threshold", 0.85))
@@ -694,14 +705,16 @@ def clean_data(context):
                         fill_value = "Unknown" if constant_value is None else constant_value
                     df[col] = s.fillna(fill_value)
 
-                audit["imputations"].append({
+                audit["imputations"].append(
+                    {
                     "column": col,
                     "kind": kind,
                     "strategy_requested": strategy,
                     "fill_value": str(_json_safe_value(fill_value)),
                     "missing_before": before_missing,
                     "missing_after": int(df[col].isna().sum()),
-                })
+                }
+                )
 
         elif action == "drop":
             if strategy == "rows":
@@ -734,8 +747,48 @@ def clean_data(context):
             )
 
         df = _replace_inf(df)
+
+        data_version_update = None
+
         if save:
-            _save_df(context, df)
+            new_version = create_child_data_version(
+                df=df,
+                workspace_dir=workspace_dir,
+                parent_version_id=parent_version_id,
+                operation=f"clean_data:{action}-{strategy}",
+                created_by="clean_data",
+                description=f"Data cleaned using action_type={action}, strategy={strategy}.",
+                metadata={
+                    "action_type": action,
+                    "strategy": strategy,
+                    "requested_columns": cols_arg,
+                    "resolved_columns": cols,
+                    "audit": audit,
+                },
+            )
+
+            audit_event = make_audit_event(
+                event_type="data_cleaned",
+                version_id=new_version["version_id"],
+                parent_version_id=parent_version_id,
+                tool_name="clean_data",
+                description=f"Created new data version {new_version['version_id']} from {parent_version_id}.",
+                details={
+                    "action_type": action,
+                    "strategy": strategy,
+                    "old_shape": tuple(original_shape),
+                    "new_shape": tuple(df.shape),
+                    "dropped_rows": audit.get("dropped_rows", 0),
+                    "dropped_columns": audit.get("dropped_columns", []),
+                    "imputations": audit.get("imputations", []),
+                },
+            )
+
+            data_version_update = {
+                "new_version": new_version,
+                "active_data_version_id": new_version["version_id"],
+                "audit_event": audit_event,
+            }
 
         selected_cols = [c for c in cols if c in df.columns]
         selected_missing_after = {c: int(df[c].isna().sum()) for c in selected_cols}
@@ -756,11 +809,41 @@ def clean_data(context):
             "selected_inf_after": selected_inf_after,
             "final_columns": df.columns.tolist(),
         }
+
+        if data_version_update:
+            details["old_version_id"] = parent_version_id
+            details["new_version_id"] = data_version_update["active_data_version_id"]
+            details["data_version_created"] = True
+        else:
+            details["old_version_id"] = parent_version_id
+            details["new_version_id"] = None
+            details["data_version_created"] = False
+
         if len(df) == 0:
-            return _warning("Data cleaning completed, but the resulting dataset has 0 rows.", details=details, audit=audit)
-        if total_inf_after > 0 or (action in {"impute", "plot_safe"} and any(v > 0 for v in selected_missing_after.values())):
-            return _warning("Data cleaning completed with remaining missing/non-finite values.", details=details, audit=audit)
-        return _ok("Data cleaning completed.", details=details, audit=audit)
+            return _warning(
+                "Data cleaning completed, but the resulting dataset has 0 rows.",
+                details=details,
+                audit=audit,
+                data_version_update=data_version_update,
+            )
+
+        if total_inf_after > 0 or (
+                action in {"impute", "plot_safe"} and any(v > 0 for v in selected_missing_after.values())):
+            return _warning(
+                "Data cleaning completed with remaining missing/non-finite values.",
+                details=details,
+                audit=audit,
+                data_version_update=data_version_update,
+            )
+
+        return _ok(
+            "Data cleaning completed and a new data version was created." if data_version_update else "Data cleaning completed.",
+            details=details,
+            audit=audit,
+            data_version_update=data_version_update,
+        )
+
+
 
     except Exception as e:
         return _failed(
