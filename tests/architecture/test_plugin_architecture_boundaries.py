@@ -34,7 +34,7 @@ def assert_forbidden_terms_absent(
     assert not violations, (
         f"{relative_path} contains forbidden architecture-specific terms: "
         f"{violations}. Move method-specific logic into "
-        f"core/analysis_plugins/plugins/<method>.py instead."
+        f"core/analysis_tool_plugins/plugins/<method>.py instead."
     )
 
 
@@ -110,7 +110,7 @@ def test_analysis_plugin_base_is_method_agnostic():
     ]
 
     assert_forbidden_terms_absent(
-        relative_path="core/analysis_plugins/base.py",
+        relative_path="core/analysis_tool_plugins/base.py",
         forbidden_terms=forbidden_terms,
     )
 
@@ -121,7 +121,7 @@ def test_plugin_files_are_allowed_to_contain_method_specific_terms():
 
     This test documents the intended architecture boundary.
     """
-    plugin_dir = PROJECT_ROOT / "core" / "analysis_plugins" / "plugins"
+    plugin_dir = PROJECT_ROOT / "core" / "analysis_tool_plugins" / "plugins"
     assert plugin_dir.exists(), "Expected plugin directory to exist."
 
     plugin_files = list(plugin_dir.glob("*.py"))
@@ -130,3 +130,11 @@ def test_plugin_files_are_allowed_to_contain_method_specific_terms():
     assert any(path.name == "linear_model.py" for path in plugin_files), (
         "Expected linear_model.py plugin to exist."
     )
+
+def test_analysis_runs_does_not_import_legacy_analysis_plugins():
+    text = read_file("core/analysis_runs.py")
+
+    assert "core.analysis_plugins" not in text
+    assert "analysis_plugins" not in text
+    assert "get_legacy_plugin" not in text
+    assert "_build_legacy_analysis_run" not in text
