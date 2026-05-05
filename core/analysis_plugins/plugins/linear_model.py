@@ -1,9 +1,19 @@
 from typing import Any, Dict, Tuple
 
-from core.analysis_plugins.base import AnalysisPlugin, compact_dict, safe_join_list
+
 from core.analysis_plugins.registry import register_plugin
 from core.guardrails import evaluate_regression_guardrails
 
+from core.analysis_plugins.base import (
+    AnalysisPlugin,
+    DisplayConfig,
+    MetricDisplayConfig,
+    TableDisplayConfig,
+    compact_dict,
+    format_number,
+    format_p_value,
+    safe_join_list,
+)
 
 def extract_linear_model(
     *,
@@ -59,6 +69,68 @@ def extract_linear_model(
     return title, summary, metrics, tables, metadata
 
 
+LINEAR_MODEL_DISPLAY = DisplayConfig(
+    metrics=MetricDisplayConfig(
+        labels={
+            "nobs": "Observations used",
+            "r_squared": "R-squared",
+            "adj_r_squared": "Adjusted R-squared",
+            "f_statistic": "F statistic",
+            "f_p_value": "Model p-value",
+        },
+        formatters={
+            "r_squared": lambda x: format_number(x, digits=4),
+            "adj_r_squared": lambda x: format_number(x, digits=4),
+            "f_statistic": lambda x: format_number(x, digits=4),
+            "f_p_value": format_p_value,
+        },
+        order=[
+            "nobs",
+            "r_squared",
+            "adj_r_squared",
+            "f_statistic",
+            "f_p_value",
+        ],
+    ),
+    tables={
+        "coef_table": TableDisplayConfig(
+            column_labels={
+                "term": "Term",
+                "coef": "Estimate",
+                "std_err": "Std. Error",
+                "t": "t",
+                "p_value": "p-value",
+                "ci_lower": "95% CI lower",
+                "ci_upper": "95% CI upper",
+            },
+            column_formatters={
+                "coef": lambda x: format_number(x, digits=4),
+                "std_err": lambda x: format_number(x, digits=4),
+                "t": lambda x: format_number(x, digits=4),
+                "p_value": format_p_value,
+                "ci_lower": lambda x: format_number(x, digits=4),
+                "ci_upper": lambda x: format_number(x, digits=4),
+            },
+            column_order=[
+                "term",
+                "coef",
+                "std_err",
+                "t",
+                "p_value",
+                "ci_lower",
+                "ci_upper",
+            ],
+            value_mappers={
+                "term": {
+                    "const": "Intercept",
+                    "intercept": "Intercept",
+                    "Intercept": "Intercept",
+                }
+            },
+        )
+    },
+)
+
 PLUGIN = register_plugin(AnalysisPlugin(
     tool_name="run_multiple_regression",
     display_name="Linear Model",
@@ -66,4 +138,5 @@ PLUGIN = register_plugin(AnalysisPlugin(
     guardrail_evaluators=[
         evaluate_regression_guardrails,
     ],
+    display_config=LINEAR_MODEL_DISPLAY,
 ))

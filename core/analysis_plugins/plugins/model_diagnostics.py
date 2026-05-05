@@ -1,9 +1,17 @@
 from typing import Any, Dict, Tuple
-
-from core.analysis_plugins.base import AnalysisPlugin, compact_dict
 from core.analysis_plugins.registry import register_plugin
 from core.guardrails import evaluate_diagnostics_guardrails
 
+from core.analysis_plugins.base import (
+    AnalysisPlugin,
+    DisplayConfig,
+    MetricDisplayConfig,
+    TableDisplayConfig,
+    compact_dict,
+    format_bool_yes_no,
+    format_number,
+    format_p_value,
+)
 
 def extract_model_diagnostics(
     *,
@@ -37,12 +45,56 @@ def extract_model_diagnostics(
 
     if vif:
         tables["vif"] = vif
-    if bp:
-        tables["breusch_pagan"] = bp
 
     metadata: Dict[str, Any] = {}
     return title, summary, metrics, tables, metadata
 
+MODEL_DIAGNOSTICS_DISPLAY = DisplayConfig(
+    metrics=MetricDisplayConfig(
+        labels={
+            "max_vif": "Maximum VIF",
+            "breusch_pagan_lm_statistic": "Breusch-Pagan LM statistic",
+            "breusch_pagan_lm_p_value": "Breusch-Pagan LM p-value",
+            "breusch_pagan_f_statistic": "Breusch-Pagan F statistic",
+            "breusch_pagan_f_p_value": "Breusch-Pagan F-test p-value",
+            "heteroscedasticity_flag_0_05": "Heteroscedasticity flag",
+        },
+        formatters={
+            "max_vif": lambda x: format_number(x, digits=4),
+            "breusch_pagan_lm_statistic": lambda x: format_number(x, digits=4),
+            "breusch_pagan_lm_p_value": format_p_value,
+            "breusch_pagan_f_statistic": lambda x: format_number(x, digits=4),
+            "breusch_pagan_f_p_value": format_p_value,
+            "heteroscedasticity_flag_0_05": format_bool_yes_no,
+        },
+        order=[
+            "max_vif",
+            "breusch_pagan_lm_statistic",
+            "breusch_pagan_lm_p_value",
+            "breusch_pagan_f_statistic",
+            "breusch_pagan_f_p_value",
+            "heteroscedasticity_flag_0_05",
+        ],
+    ),
+    tables={
+        "vif": TableDisplayConfig(
+            column_labels={
+                "term": "Term",
+                "vif": "VIF",
+                "flag": "Flag",
+            },
+            column_formatters={
+                "vif": lambda x: format_number(x, digits=4),
+                "flag": format_bool_yes_no,
+            },
+            column_order=[
+                "term",
+                "vif",
+                "flag",
+            ],
+        ),
+    },
+)
 
 PLUGIN = register_plugin(AnalysisPlugin(
     tool_name="regression_diagnostics",
@@ -51,4 +103,5 @@ PLUGIN = register_plugin(AnalysisPlugin(
     guardrail_evaluators=[
         evaluate_diagnostics_guardrails,
     ],
+    display_config=MODEL_DIAGNOSTICS_DISPLAY,
 ))

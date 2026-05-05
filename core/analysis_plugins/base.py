@@ -52,28 +52,108 @@ def clean_metric_value(value: Any) -> Any:
         return "Yes" if value else "No"
     return value
 
+def format_number(value: Any, digits: int = 4) -> Any:
+    """
+    Generic numeric formatter for plugin display values.
 
-def metric_rows_from_dict(metrics: Dict[str, Any]) -> List[Dict[str, Any]]:
-    rows = []
+    This is not method-specific.
+    """
+    try:
+        v = float(value)
+    except Exception:
+        return value
 
-    for key, value in (metrics or {}).items():
+    if abs(v) < 1e-10:
+        return "0"
+
+    if abs(v) < 0.0001:
+        return f"{v:.2e}"
+
+    return f"{v:.{digits}f}".rstrip("0").rstrip(".")
+
+
+def format_p_value(value: Any) -> str:
+    """
+    Generic p-value formatter.
+
+    This is general statistical display behavior, not tied to one method.
+    """
+    try:
+        v = float(value)
+    except Exception:
+        return str(value)
+
+    if v < 0.0001:
+        return "<0.0001"
+
+    return f"{v:.4f}".rstrip("0").rstrip(".")
+
+
+def format_bool_yes_no(value: Any) -> str:
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    return str(value)
+
+
+def format_list_semicolon(value: Any) -> str:
+    if isinstance(value, list):
+        return "; ".join(str(x) for x in value)
+    return str(value)
+
+
+def metric_rows_from_dict_with_display(
+    metrics: Dict[str, Any],
+    config: MetricDisplayConfig,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+
+    metrics = metrics or {}
+
+    ordered_keys: List[str] = []
+
+    for key in config.order or []:
+        if key in metrics and key not in ordered_keys:
+            ordered_keys.append(key)
+
+    for key in metrics.keys():
+        if key not in ordered_keys:
+            ordered_keys.append(key)
+
+    for key in ordered_keys:
+        value = metrics.get(key)
+
         if value is None:
             continue
 
+        label = config.labels.get(key, humanize_key(key))
+        formatter = config.formatters.get(key)
+
+        if formatter:
+            display_value = formatter(value)
+        else:
+            display_value = clean_metric_value(value)
+
         rows.append({
-            "label": humanize_key(key),
-            "value": clean_metric_value(value),
+            "label": label,
+            "value": display_value,
             "raw_key": key,
         })
 
     return rows
 
 
-def normalize_table_from_list(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def normalize_table_from_list_with_display(
+    rows: List[Dict[str, Any]],
+    config: TableDisplayConfig,
+) -> Dict[str, Any]:
     if not rows:
         return {"columns": [], "rows": []}
 
-    raw_columns = []
+    raw_columns: List[str] = []
+
+    for key in config.column_order or []:
+        if key not in raw_columns:
+            raw_columns.append(key)
 
     for row in rows:
         if isinstance(row, dict):
@@ -83,7 +163,7 @@ def normalize_table_from_list(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     columns = [
         {
-            "label": humanize_key(col),
+            "label": config.column_labels.get(col, humanize_key(col)),
             "raw_key": col,
         }
         for col in raw_columns
@@ -92,10 +172,23 @@ def normalize_table_from_list(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     normalized_rows = []
 
     for row in rows:
-        normalized_rows.append([
-            clean_metric_value(row.get(col, ""))
-            for col in raw_columns
-        ])
+        normalized_row = []
+
+        for col in raw_columns:
+            value = row.get(col, "") if isinstance(row, dict) else ""
+
+            if col in config.value_mappers:
+                value = config.value_mappers[col].get(value, value)
+
+            formatter = config.column_formatters.get(col)
+            if formatter:
+                value = formatter(value)
+            else:
+                value = clean_metric_value(value)
+
+            normalized_row.append(value)
+
+        normalized_rows.append(normalized_row)
 
     return {
         "columns": columns,
@@ -109,12 +202,16 @@ def build_generic_report_blocks(
     metrics: Dict[str, Any],
     tables: Dict[str, Any],
     artifacts: List[Dict[str, Any]],
+    display_config: Optional[DisplayConfig] = None,
 ) -> List[Dict[str, Any]]:
     """
     Convert extracted metrics/tables/artifacts into generic report blocks.
 
-    This function is method-agnostic.
+    This function is method-agnostic. Display behavior comes from the plugin's
+    DisplayConfig, not from hardcoded method logic.
     """
+    display_config = display_config or DisplayConfig()
+
     blocks: List[Dict[str, Any]] = []
 
     if summary:
@@ -124,7 +221,11 @@ def build_generic_report_blocks(
             "content": summary,
         })
 
-    metric_rows = metric_rows_from_dict(metrics or {})
+    metric_rows = metric_rows_from_dict_with_display(
+        metrics or {},
+        display_config.metrics,
+    )
+
     if metric_rows:
         blocks.append({
             "type": "metric_table",
@@ -133,20 +234,28 @@ def build_generic_report_blocks(
         })
 
     for table_name, table_data in (tables or {}).items():
+        table_display = display_config.tables.get(table_name, TableDisplayConfig())
+
         if isinstance(table_data, list) and all(isinstance(x, dict) for x in table_data):
-            normalized = normalize_table_from_list(table_data)
+            normalized = normalize_table_from_list_with_display(
+                table_data,
+                table_display,
+            )
+
             blocks.append({
                 "type": "table",
                 "title": humanize_key(table_name),
                 "columns": normalized["columns"],
                 "rows": normalized["rows"],
             })
+
         elif isinstance(table_data, dict):
             blocks.append({
                 "type": "json",
                 "title": humanize_key(table_name),
                 "content": table_data,
             })
+
         else:
             blocks.append({
                 "type": "text",
@@ -198,12 +307,37 @@ def default_extractor(
 
     return title, summary, metrics, tables, metadata
 
+
+DisplayFormatter = Callable[[Any], Any]
+
+
+@dataclass
+class MetricDisplayConfig:
+    labels: Dict[str, str] = field(default_factory=dict)
+    formatters: Dict[str, DisplayFormatter] = field(default_factory=dict)
+    order: List[str] = field(default_factory=list)
+
+
+@dataclass
+class TableDisplayConfig:
+    column_labels: Dict[str, str] = field(default_factory=dict)
+    column_formatters: Dict[str, DisplayFormatter] = field(default_factory=dict)
+    column_order: List[str] = field(default_factory=list)
+    value_mappers: Dict[str, Dict[Any, Any]] = field(default_factory=dict)
+
+
+@dataclass
+class DisplayConfig:
+    metrics: MetricDisplayConfig = field(default_factory=MetricDisplayConfig)
+    tables: Dict[str, TableDisplayConfig] = field(default_factory=dict)
+
 @dataclass
 class AnalysisPlugin:
     tool_name: str
     display_name: str
     extractor: Optional[ExtractorFn] = None
     guardrail_evaluators: List[GuardrailFn] = field(default_factory=list)
+    display_config: DisplayConfig = field(default_factory=DisplayConfig)
 
     def extract(
         self,
@@ -285,6 +419,7 @@ class AnalysisPlugin:
             metrics=metrics,
             tables=tables,
             artifacts=artifacts,
+            display_config=self.display_config,
         )
 
         analysis_run = {
