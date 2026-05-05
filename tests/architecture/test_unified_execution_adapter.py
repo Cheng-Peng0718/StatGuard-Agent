@@ -51,6 +51,6 @@ def test_execute_analysis_tool_uses_unified_plugin_execute():
 
 
 def test_legacy_tools_execution_adapter_imports():
-    from tools.execution import execute_tool
+    from core.analysis_tool_plugins.execution import execute_analysis_tool
 
-    assert execute_tool is not None
+    assert execute_analysis_tool is not None

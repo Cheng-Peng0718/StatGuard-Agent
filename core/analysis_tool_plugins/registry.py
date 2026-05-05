@@ -31,6 +31,8 @@ def get_tool_specs_for_llm() -> List[Dict[str, Any]]:
     specs = []
 
     for tool_name, plugin in sorted(PLUGIN_REGISTRY.items()):
+        if plugin.execute is None:
+            continue
         schema = plugin.argument_schema
 
         required = {

@@ -1,55 +1,70 @@
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.registry import register_plugin
-from tools.registry import ToolRegistry
+from core.analysis_tool_plugins import (
+    PLUGIN_REGISTRY,
+    get_plugin,
+    get_tool_specs_for_llm,
+)
 
 
-def test_tool_registry_can_register_unified_plugin_as_tool():
-    def execute_demo(context):
-        return {
-            "status": "ok",
-            "message": "Demo plugin executed.",
-            "recoverable": False,
-            "details": {"value": 123},
-            "artifacts": [],
-        }
+def test_clean_data_registered_in_plugin_registry():
+    plugin = get_plugin("clean_data")
 
-    plugin = AnalysisToolPlugin(
-        tool_name="unit_test_unified_tool",
-        display_name="Unit Test Unified Tool",
-        execute=execute_demo,
-    )
-
-    registry = ToolRegistry()
-    registry.register_analysis_tool_plugin(plugin)
-
-    assert "unit_test_unified_tool" in registry.tools
-
-    spec = registry.tools["unit_test_unified_tool"]
-    result = spec.func(context=None)
-
-    assert result["status"] == "ok"
-    assert result["details"]["value"] == 123
+    assert plugin is not None
+    assert plugin.tool_name == "clean_data"
+    assert plugin.requires_confirmation is True
 
 
-def test_tool_registry_loads_registered_unified_plugins():
-    def execute_demo(context):
-        return {
-            "status": "ok",
-            "message": "Registered plugin executed.",
-            "recoverable": False,
-            "details": {"value": 456},
-            "artifacts": [],
-        }
+def test_plugin_registry_exports_tool_specs_for_llm():
+    specs = get_tool_specs_for_llm()
 
-    plugin = AnalysisToolPlugin(
-        tool_name="unit_test_registered_unified_tool",
-        display_name="Unit Test Registered Unified Tool",
-        execute=execute_demo,
-    )
+    names = [spec["name"] for spec in specs]
 
-    register_plugin(plugin)
+    assert "clean_data" in names
 
-    registry = ToolRegistry()
-    registry.load_all_tools()
+    clean_data_spec = next(spec for spec in specs if spec["name"] == "clean_data")
 
-    assert "unit_test_registered_unified_tool" in registry.tools
+    assert clean_data_spec["requires_confirmation"] is True
+    assert "arguments" in clean_data_spec
+    assert "allowed_values" in clean_data_spec["arguments"]
+    assert "conditional_allowed_values" in clean_data_spec["arguments"]
+    assert "value_aliases" in clean_data_spec["arguments"]
+
+from core.analysis_tool_plugins import (
+    PLUGIN_REGISTRY,
+    get_plugin,
+    get_tool_specs_for_llm,
+)
+
+
+def test_clean_data_registered_in_plugin_registry():
+    plugin = get_plugin("clean_data")
+
+    assert plugin is not None
+    assert plugin.tool_name == "clean_data"
+    assert plugin.requires_confirmation is True
+    assert plugin.execute is not None
+
+
+def test_plugin_registry_exports_tool_specs_for_llm():
+    specs = get_tool_specs_for_llm()
+
+    names = [spec["name"] for spec in specs]
+
+    assert "clean_data" in names
+
+    clean_data_spec = next(spec for spec in specs if spec["name"] == "clean_data")
+
+    assert clean_data_spec["requires_confirmation"] is True
+    assert "arguments" in clean_data_spec
+    assert "allowed_values" in clean_data_spec["arguments"]
+    assert "conditional_allowed_values" in clean_data_spec["arguments"]
+    assert "value_aliases" in clean_data_spec["arguments"]
+
+
+def test_llm_tool_specs_do_not_expose_non_executable_plugins():
+    specs = get_tool_specs_for_llm()
+
+    for spec in specs:
+        plugin = get_plugin(spec["name"])
+
+        assert plugin is not None
+        assert plugin.execute is not None
