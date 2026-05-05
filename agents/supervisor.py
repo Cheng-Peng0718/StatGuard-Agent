@@ -1,12 +1,11 @@
 from core.schema import ContextPackage, ActionProposal
-from tools.registry import registry
 import json
 import uuid
 import re
 from langchain_openai import ChatOpenAI
 from core.schema import ContextPackage, ActionProposal
-from tools.registry import registry
 from langsmith import traceable
+from core.analysis_tool_plugins import PLUGIN_REGISTRY
 
 SUPERVISOR_PROMPT = """You are an expert data-analysis supervisor. Your job is to choose tools, track required deliverables, and produce evidence-based final reports.
 
@@ -297,7 +296,10 @@ def normalize_supervisor_payload(data: dict) -> dict:
 @traceable(run_type="llm", name="Supervisor_Reasoning")
 def call_supervisor(context_pkg: ContextPackage) -> ActionProposal:
     # 1. Collect all tools
-    all_tools_info = registry.get_tool_specs_for_llm()
+    all_tools_info = {
+    name: plugin.display_name
+    for name, plugin in PLUGIN_REGISTRY.items()
+}
 
     # 2. Format prompt (SUPERVISOR_PROMPT must include anti-hallucination and retry rules)
     full_prompt = SUPERVISOR_PROMPT.replace(

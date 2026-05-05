@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 from core.schema import ActionProposal, ToolExecutionResult, AgentContext
 from core.analysis_tool_plugins import get_plugin
-from tools.registry import registry
+
 
 
 def _normalize_tool_result_payload(result_payload: Any) -> Dict[str, Any]:
@@ -55,12 +55,7 @@ def execute_analysis_tool(action: ActionProposal, context_pkg) -> ToolExecutionR
     """
     Unified execution entrypoint.
 
-    Priority:
-    1. Execute unified AnalysisToolPlugin if available and it defines execute.
-    2. Fallback to legacy tools.registry ToolSpec.
-
-    This keeps the migration safe while allowing new tools to live only in
-    core.analysis_tool_plugins.plugins.
+    Executes registered AnalysisToolPlugin objects only.
     """
     execution_id = f"exec_{uuid.uuid4().hex[:8]}"
     tool_name = action.tool_name
@@ -80,18 +75,11 @@ def execute_analysis_tool(action: ActionProposal, context_pkg) -> ToolExecutionR
 
         plugin = get_plugin(tool_name)
 
-        if plugin is not None and plugin.execute is not None:
-            result_payload = plugin.run(context)
-        else:
-            if tool_name not in registry.tools:
-                # Ensure legacy registry has been lazy-loaded.
-                registry.load_all_tools()
+        if plugin is None or plugin.execute is None:
+            raise ValueError(
+                f"Unified analysis tool plugin '{tool_name}' is not registered or has no execute function.")
 
-            if tool_name not in registry.tools:
-                raise ValueError(f"Tool '{tool_name}' is not registered.")
-
-            tool_spec = registry.tools[tool_name]
-            result_payload = tool_spec.func(context)
+        result_payload = plugin.run(context)
 
         result_payload = _normalize_tool_result_payload(result_payload)
 

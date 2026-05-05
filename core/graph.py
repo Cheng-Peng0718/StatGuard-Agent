@@ -12,7 +12,7 @@ from core.schema import Observation, ContextPackage, VerificationResult
 # Import generate_profile for build_context_node.
 from core.context_builder import build_context, generate_profile
 from agents.supervisor import call_supervisor
-from tools.execution import execute_tool
+from core.analysis_tool_plugins.execution import execute_analysis_tool
 import hashlib
 import json
 from core.deliverables import check_deliverables
@@ -199,7 +199,10 @@ def human_review_node(state: GraphState):
     # Routing after human_review will send it to execute.
     if vr_status == "allowed":
         print("[HUMAN REVIEW] User approved action; routing to execute.")
-        return {}
+        return {
+            "human_review_required": False,
+            "approval_consumed": True,
+        }
 
     # Case 1: high-risk tool needs user confirmation
     if vr_status == "needs_review":
@@ -307,13 +310,35 @@ def execute_node(state: GraphState):
 
     # 3. Fingerprint gate: block identical parameters
     if current_hash in executed_hashes:
-        error_msg = (
-            f"[System intervention]: 🚫 Execution refused. You are calling '{action.tool_name}' "
-            f"with parameters identical to a previous attempt.\n"
-            f"To retry, change arguments (e.g. add .dropna() in chart code or change cleaning strategy)."
+        message = (
+            f"Duplicate tool call skipped: `{action.tool_name}` was already run "
+            "with the same arguments in this conversation state. I will use the "
+            "archived result instead of rerunning it."
         )
+
         print(f"[Fingerprint gate]: blocked duplicate {action.tool_name} (fp: {current_hash[:6]})")
-        return {"current_execution": error_msg}
+
+        return {
+            "current_execution": {
+                "execution_id": f"exec_{uuid.uuid4().hex[:8]}",
+                "action_id": getattr(action, "action_id", "unknown"),
+                "tool_name": action.tool_name,
+                "success": False,
+                "status": "blocked",
+                "error_code": "DUPLICATE_TOOL_CALL",
+                "message": message,
+                "recoverable": False,
+                "payload": {
+                    "duplicate_tool_blocked": True,
+                    "tool_name": action.tool_name,
+                    "arguments": action.arguments,
+                    "fingerprint": current_hash,
+                },
+                "artifacts": [],
+            },
+            "duplicate_tool_blocked": True,
+            "should_end_turn": True,
+        }
 
     print(f"[Execute]: {action.tool_name}")
     context_pkg = build_context(
@@ -329,7 +354,7 @@ def execute_node(state: GraphState):
         data_audit_log=state.get("data_audit_log", []),
     )
 
-    exec_result = execute_tool(action, context_pkg)
+    exec_result = execute_analysis_tool(action, context_pkg)
 
     if hasattr(exec_result, 'model_dump'):
         raw_payload = exec_result.model_dump()
@@ -420,6 +445,17 @@ def summarize_node(state: GraphState):
                     if isinstance(result_obj, dict):
                         data_version_update = result_obj.get("data_version_update")
 
+    should_end_after_summarize = (
+            status in {"ok", "warning"}
+            and tool_name == "clean_data"
+            and data_version_update is not None
+    )
+
+    if data_version_update is not None:
+        refined_observation["structured_data"]["payload"]["data_version_update"] = data_version_update
+
+        if isinstance(refined_observation.get("raw_data"), dict):
+            refined_observation["raw_data"]["data_version_update"] = data_version_update
 
     updates = {
         "observations": [refined_observation],
@@ -431,8 +467,18 @@ def summarize_node(state: GraphState):
         "pending_action": None,
 
         "current_step": state.get("current_step", 0) + 1,
-
     }
+
+    if should_end_after_summarize:
+        updates["should_end_turn"] = True
+        updates["approval_consumed"] = True
+
+    if (
+        isinstance(raw_result, dict)
+        and raw_result.get("error_code") == "DUPLICATE_TOOL_CALL"
+    ):
+        updates["duplicate_tool_blocked"] = True
+        updates["should_end_turn"] = True
 
     # Phase 3: append successful tool result to Analysis Results registry
     if status in {"ok", "warning"} and tool_name not in {"unknown_tool"}:
@@ -452,13 +498,54 @@ def summarize_node(state: GraphState):
         existing_runs = state.get("analysis_runs", []) or []
         updates["analysis_runs"] = existing_runs + [analysis_run]
 
+    print(f"[DATA VERSION DEBUG] data_version_update = {data_version_update}")
+
     if data_version_update:
+        existing_versions = state.get("data_versions", []) or []
+        existing_audit_log = state.get("data_audit_log", []) or []
+
+        # Legacy shape support.
         new_version = data_version_update.get("new_version")
         new_active_id = data_version_update.get("active_data_version_id")
         audit_event = data_version_update.get("audit_event")
 
-        existing_versions = state.get("data_versions", []) or []
-        existing_audit_log = state.get("data_audit_log", []) or []
+        # Unified plugin shape support.
+        if new_version is None and data_version_update.get("new_version_id"):
+            new_version_id = data_version_update.get("new_version_id")
+            parent_version_id = (
+                    data_version_update.get("parent_version_id")
+                    or data_version_update.get("old_version_id")
+                    or state.get("active_data_version_id")
+            )
+
+            new_version = {
+                "version_id": new_version_id,
+                "parent_version_id": parent_version_id,
+                "operation": data_version_update.get("operation", "unknown"),
+                "description": data_version_update.get("description", ""),
+                "n_rows": data_version_update.get("n_rows"),
+                "n_cols": data_version_update.get("n_cols"),
+                "columns": data_version_update.get("columns", []),
+            }
+
+        if new_active_id is None:
+            new_active_id = (
+                    data_version_update.get("new_version_id")
+                    or data_version_update.get("active_data_version_id")
+            )
+
+        if audit_event is None and new_active_id:
+            audit_event = {
+                "event": "data_version_created",
+                "version_id": new_active_id,
+                "parent_version_id": (
+                        data_version_update.get("parent_version_id")
+                        or data_version_update.get("old_version_id")
+                        or state.get("active_data_version_id")
+                ),
+                "operation": data_version_update.get("operation", "unknown"),
+                "description": data_version_update.get("description", ""),
+            }
 
         if new_version:
             updates["data_versions"] = existing_versions + [new_version]
@@ -549,10 +636,56 @@ def route_after_review(state: GraphState):
 
     return "build_context"
 
+def _last_observation_is_successful_clean_data_with_version(state: GraphState) -> bool:
+    observations = state.get("observations", []) or []
+
+    if not observations:
+        return False
+
+    last_obs = observations[-1]
+
+    if not isinstance(last_obs, dict):
+        return False
+
+    if last_obs.get("tool_name") != "clean_data":
+        return False
+
+    if last_obs.get("status") not in {"ok", "warning"}:
+        return False
+
+    # Check structured_data payload.
+    structured_data = last_obs.get("structured_data", {}) or {}
+    payload = structured_data.get("payload", {}) or {}
+
+    if isinstance(payload, dict) and payload.get("data_version_update"):
+        return True
+
+    # Check raw_data payload.
+    raw_data = last_obs.get("raw_data", {}) or {}
+
+    if isinstance(raw_data, dict):
+        if raw_data.get("data_version_update"):
+            return True
+
+        raw_payload = raw_data.get("payload", {}) or {}
+        if isinstance(raw_payload, dict) and raw_payload.get("data_version_update"):
+            return True
+
+    return False
+
 
 def route_after_summarize(state: GraphState):
+    if _last_observation_is_successful_clean_data_with_version(state):
+        print("[ROUTE AFTER SUMMARIZE] clean_data created new data version -> end")
+        return "end"
+
+    if state.get("should_end_turn") or state.get("duplicate_tool_blocked"):
+        print("[ROUTE AFTER SUMMARIZE] duplicate/end-turn flag -> end")
+        return "end"
+
     if state.get("current_step", 0) >= state.get("max_steps", 12):
         return "end"
+
     return "build_context"
 
 def call_llm_to_route(state: GraphState):

@@ -276,10 +276,26 @@ for msg in st.session_state.messages:
 state_snapshot = app.get_state(config)
 is_interrupted = bool(state_snapshot.next and "human_review" in state_snapshot.next)
 
-if is_interrupted:
-    values = state_snapshot.values
-    action = values.get("current_action")
-    vr = values.get("current_verification")
+snapshot_values = state_snapshot.values if state_snapshot and state_snapshot.values else {}
+approval_consumed = bool(
+    snapshot_values.get("approval_consumed")
+    or st.session_state.get("approval_consumed", False)
+)
+
+pending_action_for_review = snapshot_values.get("current_action")
+pending_verification_for_review = snapshot_values.get("current_verification")
+
+show_approval_panel = (
+    is_interrupted
+    and pending_action_for_review is not None
+    and pending_verification_for_review is not None
+    and not approval_consumed
+)
+
+if show_approval_panel:
+    values = snapshot_values
+    action = pending_action_for_review
+    vr = pending_verification_for_review
 
     with st.chat_message("assistant"):
         tool_name = getattr(action, "tool_name", "unknown_tool") if action else "unknown_tool"
@@ -312,7 +328,17 @@ if is_interrupted:
 
         c1, c2 = st.columns(2)
 
-        if c1.button("✅ Approve", use_container_width=True):
+        approve_disabled = bool(st.session_state.get("approval_consumed", False))
+
+        if c1.button(
+                "✅ Approve",
+                use_container_width=True,
+                disabled=approve_disabled,
+                key="approve_pending_action",
+        ):
+            st.session_state.approval_consumed = True
+            st.session_state.human_review_required = False
+
             vr = state_snapshot.values.get("current_verification")
 
             if vr is None:
@@ -331,6 +357,10 @@ if is_interrupted:
             app.update_state(config, {
                 "current_verification": vr,
 
+                # Mark this approval as consumed immediately.
+                "human_review_required": False,
+                "approval_consumed": True,
+
                 # Preserve data version state across human-review resume.
                 "data_versions": st.session_state.get("data_versions", []),
                 "active_data_version_id": st.session_state.get("active_data_version_id"),
@@ -340,7 +370,12 @@ if is_interrupted:
             st.session_state.resume_stream = True
             st.rerun()
 
-        if c2.button("❌ Reject and rethink", use_container_width=True):
+        if c2.button(
+                "❌ Reject and rethink",
+                use_container_width=True,
+                disabled=approve_disabled,
+                key="reject_pending_action",
+        ):
             values = state_snapshot.values
             vr = values.get("current_verification")
             action = values.get("current_action")
@@ -419,6 +454,7 @@ if is_interrupted:
                     "observations": [rejection_observation],
                     "human_review_required": False,
                     "pending_action": None,
+                    "approval_consumed": True,
                 })
 
             else:
@@ -426,6 +462,7 @@ if is_interrupted:
                     "current_verification": vr,
                     "human_review_required": False,
                     "pending_action": None,
+                    "approval_consumed": True,
                 })
 
             st.session_state.resume_stream = True
@@ -435,6 +472,10 @@ elif prompt := st.chat_input("Enter your analysis request..."):
     if not uploaded_file:
         st.warning("Please upload data first")
         st.stop()
+
+    st.session_state.approval_consumed = False
+    st.session_state.human_review_required = False
+
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
@@ -500,6 +541,12 @@ if (is_new_task or is_resuming) and not is_interrupted:
                 if state_data.get("analysis_runs") is not None:
                     st.session_state.analysis_runs = state_data.get("analysis_runs")
 
+                if state_data.get("approval_consumed") is not None:
+                    st.session_state.approval_consumed = state_data.get("approval_consumed")
+
+                if state_data.get("human_review_required") is not None:
+                    st.session_state.human_review_required = state_data.get("human_review_required")
+
                 deliverable_check = state_data.get("deliverable_check") if isinstance(state_data, dict) else None
 
                 if deliverable_check:
@@ -545,11 +592,11 @@ if (is_new_task or is_resuming) and not is_interrupted:
 
                     elif current_action.action_type == "ask_user":
                         live_display.empty()
-                        st.warning(f"🤖 Agent asks for input: {current_action.reasoning_summary}")
+                        st.warning(f"Agent asks for input: {current_action.reasoning_summary}")
 
                         st.session_state.messages.append({
                             "role": "assistant",
-                            "content": f"🤖 Agent asks for input: {current_action.reasoning_summary}"
+                            "content": f"Agent asks for input: {current_action.reasoning_summary}"
                         })
                         st.rerun()
 
@@ -561,6 +608,12 @@ if (is_new_task or is_resuming) and not is_interrupted:
             if values.get("data_versions") is not None:
                 st.session_state.data_versions = values.get("data_versions")
 
+            if values.get("approval_consumed") is not None:
+                st.session_state.approval_consumed = values.get("approval_consumed")
+
+            if values.get("human_review_required") is not None:
+                st.session_state.human_review_required = values.get("human_review_required")
+
             if values.get("active_data_version_id") is not None:
                 st.session_state.active_data_version_id = values.get("active_data_version_id")
 
@@ -570,7 +623,17 @@ if (is_new_task or is_resuming) and not is_interrupted:
             if values.get("analysis_runs") is not None:
                 st.session_state.analysis_runs = values.get("analysis_runs")
 
-        if post_stream_state.next and "human_review" in post_stream_state.next:
+        post_values = post_stream_state.values if post_stream_state and post_stream_state.values else {}
+        post_approval_consumed = bool(
+            post_values.get("approval_consumed")
+            or st.session_state.get("approval_consumed", False)
+        )
+
+        if (
+                post_stream_state.next
+                and "human_review" in post_stream_state.next
+                and not post_approval_consumed
+        ):
             live_display.empty()
             st.session_state.resume_stream = False
             st.rerun()

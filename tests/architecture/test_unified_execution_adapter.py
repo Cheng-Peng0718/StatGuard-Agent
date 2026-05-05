@@ -48,9 +48,3 @@ def test_execute_analysis_tool_uses_unified_plugin_execute():
     assert result.success is True
     assert result.payload["value"] == 123
     assert result.payload["arg_value"] == "A"
-
-
-def test_legacy_tools_execution_adapter_imports():
-    from tools.execution import execute_tool
-
-    assert execute_tool is not None

@@ -1,7 +1,64 @@
 from core.analysis_tool_plugins.base import AnalysisToolPlugin, ArgumentSchema
 from core.analysis_tool_plugins.registry import register_plugin
-from tools.tool_schema import validate_tool_call_schema
+from core.analysis_tool_plugins.validation import validate_tool_call_schema
 
+
+def test_clean_data_drop_rejects_invalid_strategy():
+    result = validate_tool_call_schema(
+        "clean_data",
+        {
+            "action_type": "drop",
+            "strategy": "any",
+            "columns": ["GPA", "SATM"],
+        },
+        profile=None,
+    )
+
+    assert result["status"] == "blocked"
+    assert "strategy must be 'rows'" in result["message"]
+
+
+def test_clean_data_drop_rows_passes_validation():
+    result = validate_tool_call_schema(
+        "clean_data",
+        {
+            "action_type": "drop",
+            "strategy": "rows",
+            "columns": ["GPA", "SATM"],
+        },
+        profile=None,
+    )
+
+    assert result["status"] == "ok"
+
+
+def test_clean_data_impute_rejects_invalid_strategy():
+    result = validate_tool_call_schema(
+        "clean_data",
+        {
+            "action_type": "impute",
+            "strategy": "rows",
+            "columns": ["GPA"],
+        },
+        profile=None,
+    )
+
+    assert result["status"] == "blocked"
+    assert "strategy must be 'mean' or 'median'" in result["message"]
+
+
+def test_clean_data_impute_mean_passes_validation():
+    result = validate_tool_call_schema(
+        "clean_data",
+        {
+            "action_type": "impute",
+            "strategy": "mean",
+            "columns": ["GPA"],
+        },
+        profile=None,
+    )
+
+    assert result["status"] == "ok"
 
 def test_unified_plugin_schema_is_used_by_legacy_validator():
     plugin = AnalysisToolPlugin(
