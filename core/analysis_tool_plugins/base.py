@@ -102,15 +102,63 @@ def format_list_semicolon(value: Any) -> str:
 class ArgumentSchema:
     required: Dict[str, type] = field(default_factory=dict)
     optional: Dict[str, type] = field(default_factory=dict)
+
+    # Column-aware arguments
     column_args: List[str] = field(default_factory=list)
     column_list_args: List[str] = field(default_factory=list)
     allow_all_columns: bool = False
 
-    def to_legacy_schema_dict(self) -> Dict[str, Any]:
-        """
-        Convert unified plugin ArgumentSchema into the legacy schema dictionary shape.
+    # Value-domain validation
+    allowed_values: Dict[str, List[Any]] = field(default_factory=dict)
 
-        This keeps the old validator working during migration.
+    # Conditional validation:
+    # Example:
+    # {
+    #   "action_type": {
+    #       "drop": {"strategy": ["rows"]},
+    #       "impute": {"strategy": ["mean", "median"]}
+    #   }
+    # }
+    conditional_allowed_values: Dict[str, Dict[Any, Dict[str, List[Any]]]] = field(default_factory=dict)
+
+    # Optional argument aliases / canonicalization.
+    # Example:
+    # {"row": "rows", "drop_rows": "rows"}
+    value_aliases: Dict[str, Dict[Any, Any]] = field(default_factory=dict)
+
+    def canonicalize_arguments(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize tool arguments before validation/execution.
+
+        This is part of the unified plugin contract.
+        It should stay deterministic and non-LLM.
+        """
+        args = dict(arguments or {})
+
+        for arg_name, alias_map in self.value_aliases.items():
+            if arg_name not in args:
+                continue
+
+            value = args[arg_name]
+
+            if isinstance(value, str):
+                key = value.strip().lower()
+            else:
+                key = value
+
+            if key in alias_map:
+                args[arg_name] = alias_map[key]
+            elif isinstance(value, str):
+                args[arg_name] = key
+
+        return args
+
+    def to_contract_dict(self) -> Dict[str, Any]:
+        """
+        New canonical contract representation.
+
+        Use this for validation, prompt tool listing, and tests.
+        Avoid adding more legacy-schema adapters.
         """
         return {
             "required": self.required,
@@ -118,7 +166,19 @@ class ArgumentSchema:
             "column_args": self.column_args,
             "column_list_args": self.column_list_args,
             "allow_all_columns": self.allow_all_columns,
+            "allowed_values": self.allowed_values,
+            "conditional_allowed_values": self.conditional_allowed_values,
+            "value_aliases": self.value_aliases,
         }
+
+    def to_legacy_schema_dict(self) -> Dict[str, Any]:
+        """
+        Temporary adapter only.
+
+        Keep this while some old tests still import tools.tool_schema.
+        Do not let new runtime code depend on this.
+        """
+        return self.to_contract_dict()
 
 # ==========================================================
 # Display config

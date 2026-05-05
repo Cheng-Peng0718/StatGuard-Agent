@@ -276,10 +276,26 @@ for msg in st.session_state.messages:
 state_snapshot = app.get_state(config)
 is_interrupted = bool(state_snapshot.next and "human_review" in state_snapshot.next)
 
-if is_interrupted:
-    values = state_snapshot.values
-    action = values.get("current_action")
-    vr = values.get("current_verification")
+snapshot_values = state_snapshot.values if state_snapshot and state_snapshot.values else {}
+pending_action_for_review = snapshot_values.get("current_action")
+pending_verification_for_review = snapshot_values.get("current_verification")
+
+if isinstance(pending_verification_for_review, dict):
+    review_status = pending_verification_for_review.get("status")
+else:
+    review_status = getattr(pending_verification_for_review, "status", None)
+
+show_approval_panel = (
+    is_interrupted
+    and pending_action_for_review is not None
+    and pending_verification_for_review is not None
+    and review_status == "needs_review"
+)
+
+if show_approval_panel:
+    values = snapshot_values
+    action = pending_action_for_review
+    vr = pending_verification_for_review
 
     with st.chat_message("assistant"):
         tool_name = getattr(action, "tool_name", "unknown_tool") if action else "unknown_tool"
@@ -441,7 +457,7 @@ elif prompt := st.chat_input("Enter your analysis request..."):
 is_new_task = (st.session_state.messages and st.session_state.messages[-1]["role"] == "user")
 is_resuming = st.session_state.get("resume_stream", False)
 
-if (is_new_task or is_resuming) and not is_interrupted:
+if (is_new_task and not is_interrupted) or is_resuming:
     with st.chat_message("assistant"):
 
         state_input = None
@@ -570,7 +586,18 @@ if (is_new_task or is_resuming) and not is_interrupted:
             if values.get("analysis_runs") is not None:
                 st.session_state.analysis_runs = values.get("analysis_runs")
 
-        if post_stream_state.next and "human_review" in post_stream_state.next:
+        post_values = post_stream_state.values if post_stream_state and post_stream_state.values else {}
+        post_vr = post_values.get("current_verification")
+        if isinstance(post_vr, dict):
+            post_vr_status = post_vr.get("status")
+        else:
+            post_vr_status = getattr(post_vr, "status", None)
+
+        if (
+            post_stream_state.next
+            and "human_review" in post_stream_state.next
+            and post_vr_status == "needs_review"
+        ):
             live_display.empty()
             st.session_state.resume_stream = False
             st.rerun()

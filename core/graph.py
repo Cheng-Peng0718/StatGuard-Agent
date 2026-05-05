@@ -12,26 +12,123 @@ from core.schema import Observation, ContextPackage, VerificationResult
 # Import generate_profile for build_context_node.
 from core.context_builder import build_context, generate_profile
 from agents.supervisor import call_supervisor
-from tools.execution import execute_tool
+from core.analysis_tool_plugins.execution import execute_analysis_tool
 import hashlib
 import json
 from core.deliverables import check_deliverables
 from core.analysis_runs import build_analysis_run_from_observation
+from core.data_versions import get_active_data_path
+
+def _as_plain_dict(obj):
+    if obj is None:
+        return {}
+
+    if isinstance(obj, dict):
+        return obj
+
+    if hasattr(obj, "model_dump"):
+        return obj.model_dump()
+
+    return {}
+
+
+def _extract_data_version_update(raw_execution):
+    """
+    Extract plugin data_version_update from ToolExecutionResult.
+
+    New protocol:
+    execute_analysis_tool() places plugin-level data_version_update into
+    ToolExecutionResult.payload["data_version_update"].
+
+    We also check top-level for defensive compatibility, but the canonical
+    path is payload.data_version_update.
+    """
+    raw = _as_plain_dict(raw_execution)
+
+    update = raw.get("data_version_update")
+    if update is not None:
+        return update
+
+    payload = raw.get("payload", {}) or {}
+    payload = _as_plain_dict(payload)
+
+    return payload.get("data_version_update")
+
+
+def _validate_data_version_update(data_version_update):
+    """
+    Hard validation for mutating analysis_tool_plugins.
+
+    Mutating plugins must return:
+    {
+        "new_version": {...},
+        "active_data_version_id": new_version["version_id"],
+        "audit_event": {...} | None
+    }
+    """
+    if data_version_update is None:
+        return None
+
+    if not isinstance(data_version_update, dict):
+        raise ValueError(
+            "Invalid data_version_update: expected dict from analysis_tool_plugins."
+        )
+
+    new_version = data_version_update.get("new_version")
+    new_active_id = data_version_update.get("active_data_version_id")
+    audit_event = data_version_update.get("audit_event")
+
+    if not isinstance(new_version, dict):
+        raise ValueError(
+            "Invalid data_version_update: missing `new_version` dict. "
+            "Mutating plugins must return "
+            "{'new_version', 'active_data_version_id', 'audit_event'}."
+        )
+
+    if not new_active_id:
+        raise ValueError(
+            "Invalid data_version_update: missing `active_data_version_id`."
+        )
+
+    if new_version.get("version_id") != new_active_id:
+        raise ValueError(
+            "Invalid data_version_update: "
+            "`new_version.version_id` does not match `active_data_version_id`."
+        )
+
+    if not new_version.get("path"):
+        raise ValueError(
+            "Invalid data_version_update: new_version is missing `path`."
+        )
+
+    return {
+        "new_version": new_version,
+        "active_data_version_id": new_active_id,
+        "audit_event": audit_event,
+    }
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):
     step = state.get("current_step", 0) + 1
 
     current_workspace = state["workspace_dir"]
-    # Resolve data file dynamically (any working_data* in sandbox).
-    current_data_path = None
-    for file in os.listdir(current_workspace):
-        if file.startswith("working_data"):
-            current_data_path = os.path.join(current_workspace, file)
-            break
 
-    if not current_data_path:
-        raise FileNotFoundError(f"No data file found in sandbox {current_workspace}.")
+    # Resolve data file dynamically (any working_data* in sandbox).
+    current_data_path = get_active_data_path(
+        workspace_dir=current_workspace,
+        data_versions=state.get("data_versions", []) or [],
+        active_data_version_id=state.get("active_data_version_id"),
+        fallback_file="working_data.parquet",
+    )
+
+    if not current_data_path or not os.path.exists(current_data_path):
+        raise FileNotFoundError(
+            f"No active data file found. "
+            f"workspace={current_workspace}, "
+            f"active_data_version_id={state.get('active_data_version_id')}, "
+            f"resolved_path={current_data_path}"
+        )
+
     # Refresh dataset profile from sandbox.
     new_profile = generate_profile(current_data_path)
 
@@ -103,26 +200,30 @@ def supervisor_node(state: GraphState):
 
 def verify_node(state: GraphState):
     """
-    Verification node: run verify().
+    Verification node.
 
-    Always persist current_verification for allowed / needs_review / rejected
-    so routing does not mis-send low-risk tools to human_review.
+    New contract:
+    verify() returns a full VerificationResult produced from
+    analysis_tool_plugins.validation.
     """
     action = state["current_action"]
 
-    status, feedback = verify(action, state["dataset_profile"])
+    status, feedback, verify_result = verify(action, state["dataset_profile"])
 
-    verify_result = VerificationResult(
-        action_id=action.action_id,
-        status=status,
-        feedback=feedback
+    action_hash = get_action_hash(
+        getattr(action, "tool_name", None),
+        getattr(action, "arguments", {}) or {},
     )
+
+    verify_result.details["action_hash"] = action_hash
 
     print("\n" + "=" * 40)
     print("[VERIFY NODE DEBUG]")
     print(f"tool_name = {getattr(action, 'tool_name', None)}")
     print(f"verify_result.status = {verify_result.status}")
+    print(f"verify_result.error_code = {verify_result.error_code}")
     print(f"verify_result.feedback = {verify_result.feedback}")
+    print(f"verify_result.details = {verify_result.details}")
     print("=" * 40 + "\n")
 
     if verify_result.status in ["rejected_recoverable", "rejected_terminal"]:
@@ -133,27 +234,32 @@ def verify_node(state: GraphState):
             arguments=getattr(action, "arguments", {}) or {},
             status="rejected",
             success=False,
-            error_code=getattr(verify_result, "error_code", None) or "VERIFICATION_FAILED",
+            error_code=verify_result.error_code or "VERIFICATION_FAILED",
             message=verify_result.feedback,
             artifacts=[],
-            summary=f"Validation failed for {getattr(action, 'tool_name', None)}: {verify_result.feedback}",
+            summary=(
+                f"Validation failed for {getattr(action, 'tool_name', None)}: "
+                f"{verify_result.feedback}"
+            ),
             structured_data={
                 "status": "rejected",
                 "success": False,
-                "error_code": getattr(verify_result, "error_code", None) or "VERIFICATION_FAILED",
+                "error_code": verify_result.error_code or "VERIFICATION_FAILED",
                 "message": verify_result.feedback,
+                "details": verify_result.details,
             },
-            raw_data={"verification": verify_result.model_dump()},
+            raw_data={
+                "verification": verify_result.model_dump(),
+            },
         )
 
         return {
             "current_verification": verify_result,
-            "observations": [obs.model_dump()]
+            "observations": [obs.model_dump()],
         }
 
-    # allowed and needs_review must also return current_verification
     return {
-        "current_verification": verify_result
+        "current_verification": verify_result,
     }
 
 
@@ -190,6 +296,13 @@ def human_review_node(state: GraphState):
 
     tool_name = getattr(action, "tool_name", None)
     arguments = getattr(action, "arguments", {}) or {}
+
+    if isinstance(vr, dict):
+        vr_details = vr.get("details", {}) or {}
+    else:
+        vr_details = getattr(vr, "details", {}) or {}
+
+    canonical_arguments = vr_details.get("canonical_arguments") or arguments
     vr_status = getattr(vr, "status", None)
     feedback = getattr(vr, "feedback", None)
 
@@ -215,7 +328,7 @@ def human_review_node(state: GraphState):
             artifacts=[],
             summary=(
                 f"Tool {tool_name} requires human confirmation and was not executed. "
-                f"Arguments: {arguments}. Feedback: {feedback}"
+                f"Arguments: {canonical_arguments}. Feedback: {feedback}"
             ),
             structured_data={
                 "status": "needs_review",
@@ -329,7 +442,7 @@ def execute_node(state: GraphState):
         data_audit_log=state.get("data_audit_log", []),
     )
 
-    exec_result = execute_tool(action, context_pkg)
+    exec_result = execute_analysis_tool(action, context_pkg)
 
     if hasattr(exec_result, 'model_dump'):
         raw_payload = exec_result.model_dump()
@@ -405,22 +518,9 @@ def summarize_node(state: GraphState):
 
     print(f"[Summarize]: archived result for {tool_name}.")
 
-    data_version_update = None
-
-    if isinstance(raw_result, dict):
-        data_version_update = raw_result.get("data_version_update")
-
-        if data_version_update is None:
-            payload_obj = raw_result.get("payload", {})
-            if isinstance(payload_obj, dict):
-                data_version_update = payload_obj.get("data_version_update")
-
-                if data_version_update is None:
-                    result_obj = payload_obj.get("result")
-                    if isinstance(result_obj, dict):
-                        data_version_update = result_obj.get("data_version_update")
-
-
+    # Base graph-state updates for every executed action.
+    # IMPORTANT:
+    # Define updates BEFORE applying data_version_update.
     updates = {
         "observations": [refined_observation],
 
@@ -431,16 +531,55 @@ def summarize_node(state: GraphState):
         "pending_action": None,
 
         "current_step": state.get("current_step", 0) + 1,
-
     }
 
-    # Phase 3: append successful tool result to Analysis Results registry
+    # Extract data_version_update from the new plugin execution protocol.
+    # Canonical path:
+    # ToolExecutionResult.payload["data_version_update"]
+    data_version_update = _extract_data_version_update(raw_result)
+    validated_version_update = _validate_data_version_update(data_version_update)
+
+    if validated_version_update is not None:
+        new_version = validated_version_update["new_version"]
+        new_active_id = validated_version_update["active_data_version_id"]
+        audit_event = validated_version_update.get("audit_event")
+
+        existing_versions = state.get("data_versions", []) or []
+        existing_audit_log = state.get("data_audit_log", []) or []
+
+        updates["data_versions"] = existing_versions + [new_version]
+        updates["active_data_version_id"] = new_active_id
+
+        if audit_event:
+            updates["data_audit_log"] = existing_audit_log + [audit_event]
+
+        # Mutating tools should make the observation point to the new active version.
+        refined_observation["data_version_id"] = new_active_id
+
+        structured_data = refined_observation.get("structured_data")
+        if isinstance(structured_data, dict):
+            structured_data["data_version_id"] = new_active_id
+
+        # Also keep payload provenance aligned.
+        if isinstance(payload, dict):
+            payload["active_data_version_id"] = new_active_id
+            payload["data_version_id"] = new_active_id
+
+        print(f"[DATA VERSION] active_data_version_id -> {new_active_id}")
+
+    # Phase 3: append successful tool result to Analysis Results registry.
+    # Put this AFTER data_version_update so mutating tools record the new data version.
     if status in {"ok", "warning"} and tool_name not in {"unknown_tool"}:
+        analysis_run_data_version_id = refined_observation.get(
+            "data_version_id",
+            state.get("active_data_version_id"),
+        )
+
         analysis_run = build_analysis_run_from_observation(
             tool_name=tool_name,
             action_id=getattr(current_action, "action_id", "unknown"),
             arguments=arguments,
-            data_version_id=state.get("active_data_version_id"),
+            data_version_id=analysis_run_data_version_id,
             status=status,
             success=success,
             message=message,
@@ -451,25 +590,6 @@ def summarize_node(state: GraphState):
 
         existing_runs = state.get("analysis_runs", []) or []
         updates["analysis_runs"] = existing_runs + [analysis_run]
-
-    if data_version_update:
-        new_version = data_version_update.get("new_version")
-        new_active_id = data_version_update.get("active_data_version_id")
-        audit_event = data_version_update.get("audit_event")
-
-        existing_versions = state.get("data_versions", []) or []
-        existing_audit_log = state.get("data_audit_log", []) or []
-
-        if new_version:
-            updates["data_versions"] = existing_versions + [new_version]
-
-        if new_active_id:
-            updates["active_data_version_id"] = new_active_id
-
-        if audit_event:
-            updates["data_audit_log"] = existing_audit_log + [audit_event]
-
-        print(f"[DATA VERSION] active_data_version_id -> {new_active_id}")
 
     return updates
 
@@ -553,7 +673,34 @@ def route_after_review(state: GraphState):
 def route_after_summarize(state: GraphState):
     if state.get("current_step", 0) >= state.get("max_steps", 12):
         return "end"
-    return "build_context"
+
+    observations = state.get("observations", []) or []
+    last_obs = observations[-1] if observations else {}
+
+    status = last_obs.get("status") if isinstance(last_obs, dict) else None
+    error_code = last_obs.get("error_code") if isinstance(last_obs, dict) else None
+
+    raw_data = last_obs.get("raw_data", {}) if isinstance(last_obs, dict) else {}
+    recoverable = False
+
+    if isinstance(raw_data, dict):
+        recoverable = bool(raw_data.get("recoverable", False))
+
+    # Successful or warning result: continue normal loop.
+    if status in {"ok", "warning"}:
+        return "build_context"
+
+    # Human confirmation required is an interrupt/review state, not a tool failure.
+    if error_code == "HUMAN_CONFIRMATION_REQUIRED":
+        return "end"
+
+    # Recoverable tool/schema failures can go back once or twice.
+    # For now, use max_steps as the safety brake.
+    if status in {"blocked", "failed", "rejected"} and recoverable:
+        return "build_context"
+
+    # Non-recoverable failures should stop and let final answer/report explain blocker.
+    return "end"
 
 def call_llm_to_route(state: GraphState):
     """

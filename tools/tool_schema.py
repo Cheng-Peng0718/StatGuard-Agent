@@ -1,3 +1,13 @@
+"""
+DEPRECATED.
+
+Runtime validation now lives in:
+    core.analysis_tool_plugins.validation
+
+This module exists only for backward-compatible tests during migration.
+Do not add new tool schemas here.
+"""
+
 from typing import Any, Dict
 
 

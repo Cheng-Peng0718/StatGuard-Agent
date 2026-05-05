@@ -3,17 +3,9 @@ from typing import Any, Dict
 
 from core.schema import ActionProposal, ToolExecutionResult, AgentContext
 from core.analysis_tool_plugins import get_plugin
-from tools.registry import registry
 
 
 def _normalize_tool_result_payload(result_payload: Any) -> Dict[str, Any]:
-    """
-    Normalize raw plugin/tool return value into the project result shape.
-
-    During migration, both unified plugins and legacy tools may return:
-    - structured dicts with status/message/details/artifacts
-    - non-dict values
-    """
     if not isinstance(result_payload, dict):
         return {
             "status": "ok",
@@ -27,12 +19,6 @@ def _normalize_tool_result_payload(result_payload: Any) -> Dict[str, Any]:
 
 
 def _payload_from_result_payload(result_payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Convert a raw tool result into ToolExecutionResult.payload.
-
-    Preferred source is result_payload['details'], matching current tool contract.
-    Important top-level fields used by data versioning are preserved.
-    """
     details = result_payload.get("details", {})
 
     if not isinstance(details, dict):
@@ -55,17 +41,26 @@ def execute_analysis_tool(action: ActionProposal, context_pkg) -> ToolExecutionR
     """
     Unified execution entrypoint.
 
-    Priority:
-    1. Execute unified AnalysisToolPlugin if available and it defines execute.
-    2. Fallback to legacy tools.registry ToolSpec.
-
-    This keeps the migration safe while allowing new tools to live only in
-    core.analysis_tool_plugins.plugins.
+    New architecture:
+    - Only core.analysis_tool_plugins is authoritative.
+    - No fallback to tools.registry.
     """
     execution_id = f"exec_{uuid.uuid4().hex[:8]}"
     tool_name = action.tool_name
 
     try:
+        plugin = get_plugin(tool_name)
+
+        if plugin is None:
+            raise ValueError(
+                f"Tool '{tool_name}' is not registered in analysis_tool_plugins."
+            )
+
+        if plugin.execute is None:
+            raise ValueError(
+                f"Tool '{tool_name}' has no execute function."
+            )
+
         workspace_dir = getattr(context_pkg, "workspace_dir", "./")
 
         context = AgentContext(
@@ -76,23 +71,9 @@ def execute_analysis_tool(action: ActionProposal, context_pkg) -> ToolExecutionR
             data_audit_log=getattr(context_pkg, "data_audit_log", []) or [],
         )
 
-        print(f"Running tool: {tool_name}, arguments: {action.arguments}")
+        print(f"Running plugin tool: {tool_name}, arguments: {action.arguments}")
 
-        plugin = get_plugin(tool_name)
-
-        if plugin is not None and plugin.execute is not None:
-            result_payload = plugin.run(context)
-        else:
-            if tool_name not in registry.tools:
-                # Ensure legacy registry has been lazy-loaded.
-                registry.load_all_tools()
-
-            if tool_name not in registry.tools:
-                raise ValueError(f"Tool '{tool_name}' is not registered.")
-
-            tool_spec = registry.tools[tool_name]
-            result_payload = tool_spec.func(context)
-
+        result_payload = plugin.run(context)
         result_payload = _normalize_tool_result_payload(result_payload)
 
         status = result_payload.get("status", "ok")
@@ -117,11 +98,11 @@ def execute_analysis_tool(action: ActionProposal, context_pkg) -> ToolExecutionR
         )
 
     except Exception as e:
-        print(f"❌ Tool execution crashed: {str(e)}")
+        print(f"❌ Plugin execution crashed: {str(e)}")
 
         return ToolExecutionResult(
             execution_id=execution_id,
-            action_id=action.action_id,
+            action_id=getattr(action, "action_id", "unknown"),
             tool_name=tool_name,
             success=False,
             status="failed",

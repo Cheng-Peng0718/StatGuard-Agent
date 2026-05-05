@@ -3,8 +3,8 @@ from core.analysis_tool_plugins.registry import (
     get_plugin,
     has_plugin,
     register_plugin,
+    get_tool_specs_for_llm,
 )
-
 
 def load_plugins() -> None:
     """
