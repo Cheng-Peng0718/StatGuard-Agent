@@ -6,9 +6,8 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
-ExtractorFn = Callable[..., Tuple[str, str, Dict[str, Any], Dict[str, Any]]]
+ExtractorFn = Callable[..., Tuple[str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]]
 GuardrailFn = Callable[[Dict[str, Any]], List[Dict[str, Any]]]
-
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -183,7 +182,7 @@ def default_extractor(
     arguments: Dict[str, Any],
     default_title: str,
     default_summary: str,
-) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Fallback extractor for unregistered tools.
     """
@@ -192,12 +191,12 @@ def default_extractor(
 
     metrics: Dict[str, Any] = {}
     tables: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = {}
 
     if isinstance(payload, dict) and payload:
         tables["payload"] = payload
 
-    return title, summary, metrics, tables
-
+    return title, summary, metrics, tables, metadata
 
 @dataclass
 class AnalysisPlugin:
@@ -213,7 +212,7 @@ class AnalysisPlugin:
         arguments: Dict[str, Any],
         default_title: str,
         default_summary: str,
-    ) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
+    ) -> Tuple[str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
         if self.extractor is None:
             return default_extractor(
                 tool_name=self.tool_name,
@@ -274,7 +273,7 @@ class AnalysisPlugin:
         if message:
             default_summary += f" {message}"
 
-        title, summary, metrics, tables = self.extract(
+        title, summary, metrics, tables, metadata = self.extract(
             payload=payload,
             arguments=arguments,
             default_title=default_title,
@@ -302,6 +301,7 @@ class AnalysisPlugin:
             "metrics": metrics,
             "tables": tables,
             "artifacts": artifacts,
+            "metadata": metadata,
             "report_blocks": report_blocks,
             "guardrails": [],
             "raw_observation_id": observation_id,

@@ -11,7 +11,7 @@ def extract_linear_model(
     arguments: Dict[str, Any],
     default_title: str,
     default_summary: str,
-) -> Tuple[str, str, Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     target = arguments.get("target_col")
     features = arguments.get("feature_cols", [])
     feature_text = safe_join_list(features)
@@ -21,12 +21,23 @@ def extract_linear_model(
     else:
         title = "Linear Model"
 
+    # User-facing metrics only.
     metrics = compact_dict({
         "nobs": payload.get("nobs"),
         "r_squared": payload.get("r_squared"),
         "adj_r_squared": payload.get("adj_r_squared"),
         "f_statistic": payload.get("f_statistic"),
         "f_p_value": payload.get("f_p_value"),
+    })
+
+    # Internal/system metrics. These should not show in the main report by default.
+    metadata = compact_dict({
+        "aic": payload.get("aic"),
+        "bic": payload.get("bic"),
+        "df_model": payload.get("df_model"),
+        "df_resid": payload.get("df_resid"),
+        "n_eff": payload.get("n_eff"),
+        "p_eff": payload.get("p_eff"),
     })
 
     tables: Dict[str, Any] = {}
@@ -45,7 +56,7 @@ def extract_linear_model(
     if payload.get("r_squared") is not None:
         summary += f" R²={payload.get('r_squared')}."
 
-    return title, summary, metrics, tables
+    return title, summary, metrics, tables, metadata
 
 
 PLUGIN = register_plugin(AnalysisPlugin(

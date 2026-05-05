@@ -25,7 +25,8 @@ def extract_summary_stats(
     if categorical_summary:
         tables["categorical_summary"] = categorical_summary
 
-    return title, summary, metrics, tables
+    metadata: Dict[str, Any] = {}
+    return title, summary, metrics, tables, metadata
 
 
 PLUGIN = register_plugin(AnalysisPlugin(

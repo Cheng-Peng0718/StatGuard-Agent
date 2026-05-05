@@ -24,25 +24,34 @@ def _new_finding(
 
 def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Evaluate guardrails for OLS regression results.
+    Guardrails for a fitted linear/regression-type model.
+
+    Uses:
+    - run["metrics"] for user-facing model metrics
+    - run["metadata"] for internal fields such as p_eff / n_eff
     """
     findings: List[Dict[str, Any]] = []
 
     metrics = run.get("metrics", {}) or {}
+    metadata = run.get("metadata", {}) or {}
     tables = run.get("tables", {}) or {}
-    args = run.get("arguments", {}) or {}
+    arguments = run.get("arguments", {}) or {}
 
-    nobs = metrics.get("nobs")
+    nobs = metrics.get("nobs", metadata.get("nobs"))
     r2 = metrics.get("r_squared")
     adj_r2 = metrics.get("adj_r_squared")
     f_p = metrics.get("f_p_value")
-    p_eff = metrics.get("p_eff")
 
-    target = args.get("target_col")
-    features = args.get("feature_cols", [])
+    # Important after Plugin Quality Layer:
+    # p_eff should live in metadata, not user-facing metrics.
+    p_eff = metadata.get("p_eff", metrics.get("p_eff"))
+    n_eff = metadata.get("n_eff", metrics.get("n_eff"))
+
+    target = arguments.get("target_col")
+    features = arguments.get("feature_cols", [])
 
     # ------------------------------------------------------------
-    # Sample size guardrail
+    # Sample size / model complexity
     # ------------------------------------------------------------
     if nobs is not None and p_eff is not None:
         try:
@@ -63,6 +72,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
                         ),
                         evidence={
                             "nobs": nobs,
+                            "n_eff": n_eff,
                             "p_eff": p_eff,
                             "nobs_per_parameter": ratio,
                         },
@@ -82,6 +92,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
                         ),
                         evidence={
                             "nobs": nobs,
+                            "n_eff": n_eff,
                             "p_eff": p_eff,
                             "nobs_per_parameter": ratio,
                         },
@@ -90,7 +101,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
             pass
 
     # ------------------------------------------------------------
-    # Explanatory power guardrail
+    # Explanatory power
     # ------------------------------------------------------------
     if r2 is not None:
         try:
@@ -147,7 +158,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
             pass
 
     # ------------------------------------------------------------
-    # Significance vs causality guardrail
+    # Significance vs causality
     # ------------------------------------------------------------
     if f_p is not None:
         try:
@@ -159,9 +170,9 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
                     severity="info",
                     title="Statistically significant association",
                     message=(
-                        "The overall regression model is statistically significant. "
-                        "This supports an association between the predictor set and the outcome, "
-                        "but does not establish causality."
+                        "The overall model is statistically significant. This supports an "
+                        "association between the predictor set and the outcome, but does not "
+                        "establish causality."
                     ),
                     evidence={
                         "f_p_value": f_p,
@@ -176,7 +187,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
             pass
 
     # ------------------------------------------------------------
-    # Coefficient table guardrail
+    # Coefficient table interpretation
     # ------------------------------------------------------------
     coef_table = tables.get("coef_table", []) or []
 
@@ -186,7 +197,9 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
                 continue
 
             term = row.get("term")
-            if term == "const":
+
+            # Do not interpret intercept as a predictor.
+            if term in {"const", "intercept", "Intercept"}:
                 continue
 
             p_value = row.get("p_value")
@@ -198,6 +211,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
 
                 if p_f < 0.05:
                     direction = "positive" if coef_f > 0 else "negative"
+
                     findings.append(_new_finding(
                         category="coefficient_interpretation",
                         severity="info",
@@ -223,7 +237,7 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def evaluate_diagnostics_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Evaluate guardrails for regression diagnostics.
+    Guardrails for model diagnostics.
     """
     findings: List[Dict[str, Any]] = []
 
@@ -234,7 +248,7 @@ def evaluate_diagnostics_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]
     hetero_flag = metrics.get("heteroscedasticity_flag_0_05")
 
     # ------------------------------------------------------------
-    # VIF guardrail
+    # Multicollinearity / VIF
     # ------------------------------------------------------------
     if max_vif is not None:
         try:
@@ -281,7 +295,7 @@ def evaluate_diagnostics_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]
             pass
 
     # ------------------------------------------------------------
-    # Heteroscedasticity guardrail
+    # Heteroscedasticity
     # ------------------------------------------------------------
     if bp_p is not None:
         try:
@@ -294,7 +308,7 @@ def evaluate_diagnostics_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]
                     title="Possible heteroscedasticity",
                     message=(
                         "The Breusch-Pagan test suggests non-constant error variance. "
-                        "Standard OLS standard errors may be unreliable."
+                        "Standard model standard errors may be unreliable."
                     ),
                     evidence={
                         "breusch_pagan_lm_p_value": bp_p,
@@ -326,7 +340,7 @@ def evaluate_diagnostics_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]
 
 def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
-    Evaluate guardrails for residual histogram / residual diagnostics.
+    Guardrails for residual summaries / residual histogram outputs.
     """
     findings: List[Dict[str, Any]] = []
 
@@ -418,6 +432,9 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
         except Exception:
             pass
 
+    # ------------------------------------------------------------
+    # Recorded screening flags
+    # ------------------------------------------------------------
     if flags:
         findings.append(_new_finding(
             category="diagnostic_flags",
@@ -428,40 +445,5 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
             ),
             evidence={"diagnostic_flags": flags},
         ))
-
-    return findings
-
-
-GUARDRAIL_REGISTRY = {
-    "run_multiple_regression": [evaluate_regression_guardrails],
-    "regression_diagnostics": [evaluate_diagnostics_guardrails],
-    "generate_residual_histogram": [evaluate_residual_guardrails],
-}
-
-
-def evaluate_analysis_run_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Evaluate guardrails through registry.
-
-    The dispatcher is generic. Adding support for a new analysis should only
-    require registering check functions here, not modifying report_builder.
-    """
-    tool_name = run.get("tool_name")
-    evaluators = GUARDRAIL_REGISTRY.get(tool_name, [])
-
-    findings: List[Dict[str, Any]] = []
-
-    for evaluator in evaluators:
-        try:
-            findings.extend(evaluator(run) or [])
-        except Exception as e:
-            findings.append(_new_finding(
-                category="guardrail_execution",
-                severity="warning",
-                title="Guardrail evaluator failed",
-                message=f"A guardrail evaluator failed for tool `{tool_name}`.",
-                evidence={"error": str(e), "evaluator": getattr(evaluator, "__name__", str(evaluator))},
-                recommendation="Inspect the guardrail evaluator implementation.",
-            ))
 
     return findings

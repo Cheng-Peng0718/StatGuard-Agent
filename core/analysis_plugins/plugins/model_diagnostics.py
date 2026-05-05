@@ -40,7 +40,8 @@ def extract_model_diagnostics(
     if bp:
         tables["breusch_pagan"] = bp
 
-    return title, summary, metrics, tables
+    metadata: Dict[str, Any] = {}
+    return title, summary, metrics, tables, metadata
 
 
 PLUGIN = register_plugin(AnalysisPlugin(

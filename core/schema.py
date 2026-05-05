@@ -338,6 +338,7 @@ class AnalysisRun(BaseModel):
     tables: Dict[str, Any] = Field(default_factory=dict)
     artifacts: List[Dict[str, Any]] = Field(default_factory=list)
 
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     report_blocks: List[Dict[str, Any]] = Field(default_factory=list)
     guardrails: List[Dict[str, Any]] = Field(default_factory=list)
 

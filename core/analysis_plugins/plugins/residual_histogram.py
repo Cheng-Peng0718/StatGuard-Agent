@@ -33,7 +33,8 @@ def extract_residual_histogram(
     if diagnostic_flags:
         summary += f" Diagnostic flags: {', '.join(str(x) for x in diagnostic_flags)}."
 
-    return title, summary, metrics, tables
+    metadata: Dict[str, Any] = {}
+    return title, summary, metrics, tables, metadata
 
 
 PLUGIN = register_plugin(AnalysisPlugin(
