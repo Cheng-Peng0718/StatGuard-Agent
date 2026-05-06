@@ -6,6 +6,24 @@ from pydantic import BaseModel, Field
 
 from core.deliverables.contracts import TaskContract, normalize_task_contract
 
+from core.deliverables.evidence import (
+    as_dict,
+    get_state_value,
+    normalize_string_list,
+    extract_final_answer_content_from_state,
+    get_satisfied_criterion_names,
+    get_satisfied_deliverable_names,
+    criterion_satisfied_by_final_answer_text,
+)
+
+def _get_contract(state: Any) -> TaskContract:
+    contract = get_state_value(state, "task_contract")
+
+    if contract is None:
+        contract = get_state_value(state, "deliverable_contract")
+
+    return normalize_task_contract(contract)
+
 class DeliverableGateResult(BaseModel):
     status: Literal["ok", "needs_more_work", "blocked"]
     message: str
@@ -15,55 +33,6 @@ class DeliverableGateResult(BaseModel):
     blocked: List[str] = Field(default_factory=list)
 
     evidence: Dict[str, Any] = Field(default_factory=dict)
-
-
-def _as_dict(value: Any) -> Dict[str, Any]:
-    if value is None:
-        return {}
-
-    if isinstance(value, dict):
-        return value
-
-    if hasattr(value, "model_dump"):
-        return value.model_dump()
-
-    if hasattr(value, "dict"):
-        return value.dict()
-
-    return {}
-
-
-def _get_state_value(state: Any, key: str, default=None):
-    if isinstance(state, dict):
-        return state.get(key, default)
-
-    return getattr(state, key, default)
-
-
-def _get_contract(state: Any) -> TaskContract:
-    contract = _get_state_value(state, "task_contract")
-
-    if contract is None:
-        contract = _get_state_value(state, "deliverable_contract")
-
-    return normalize_task_contract(contract)
-
-
-def _normalize_string_list(value: Any) -> List[str]:
-    if value is None:
-        return []
-
-    if isinstance(value, str):
-        return [value]
-
-    if isinstance(value, list):
-        return [str(v) for v in value if v is not None]
-
-    if isinstance(value, tuple):
-        return [str(v) for v in value if v is not None]
-
-    return []
-
 
 def _run_success(run: Dict[str, Any]) -> bool:
     status = run.get("status")
@@ -82,7 +51,7 @@ def _successful_tools(analysis_runs: List[Dict[str, Any]]) -> set[str]:
     tools = set()
 
     for run in analysis_runs:
-        run_dict = _as_dict(run)
+        run_dict = as_dict(run)
         tool_name = run_dict.get("tool_name")
 
         if tool_name and _run_success(run_dict):
@@ -98,7 +67,7 @@ def _failed_required_tools(
     failed = []
 
     for run in analysis_runs:
-        run_dict = _as_dict(run)
+        run_dict = as_dict(run)
         tool_name = run_dict.get("tool_name")
 
         if tool_name not in required_tools:
@@ -114,10 +83,10 @@ def _available_artifact_kinds(analysis_runs: List[Dict[str, Any]]) -> set[str]:
     kinds = set()
 
     for run in analysis_runs:
-        run_dict = _as_dict(run)
+        run_dict = as_dict(run)
 
         for artifact in run_dict.get("artifacts", []) or []:
-            artifact_dict = _as_dict(artifact)
+            artifact_dict = as_dict(artifact)
 
             kind = (
                 artifact_dict.get("artifact_type")
@@ -164,12 +133,30 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     required_deliverables = contract.required_deliverables
     success_criteria = contract.success_criteria
 
-    raw_analysis_runs = _get_state_value(state, "analysis_runs", []) or []
-    analysis_runs = [_as_dict(run) for run in raw_analysis_runs]
+    raw_analysis_runs = get_state_value(state, "analysis_runs", []) or []
+    analysis_runs = [as_dict(run) for run in raw_analysis_runs]
 
     successful_tools = _successful_tools(analysis_runs)
     failed_required = _failed_required_tools(analysis_runs, required_tools)
     artifact_kinds = _available_artifact_kinds(analysis_runs)
+
+    final_answer_text = extract_final_answer_content_from_state(state)
+    satisfied_deliverable_names = get_satisfied_deliverable_names(state)
+    satisfied_criterion_names = get_satisfied_criterion_names(state)
+
+    base_evidence = {
+        "task_contract_present": True,
+        "required_tools": required_tools,
+        "required_artifacts": required_artifacts,
+        "required_deliverables": required_deliverables,
+        "success_criteria": success_criteria,
+        "allow_partial": contract.allow_partial,
+        "successful_tools": sorted(successful_tools),
+        "artifact_kinds": sorted(artifact_kinds),
+        "has_final_answer_text": bool(final_answer_text),
+        "satisfied_deliverable_names": sorted(satisfied_deliverable_names),
+        "satisfied_criterion_names": sorted(satisfied_criterion_names),
+    }
 
     satisfied = []
     missing = []
@@ -197,7 +184,9 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     for deliverable in required_deliverables:
         label = f"deliverable:{deliverable}"
 
-        if label not in missing:
+        if deliverable in satisfied_deliverable_names or label in satisfied_deliverable_names:
+            satisfied.append(label)
+        else:
             missing.append(label)
 
     # S10B also conservatively marks success criteria missing.
@@ -205,7 +194,13 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     for criterion in success_criteria:
         label = f"criterion:{criterion}"
 
-        if label not in missing:
+        if (
+                criterion in satisfied_criterion_names
+                or label in satisfied_criterion_names
+                or criterion_satisfied_by_final_answer_text(criterion, final_answer_text)
+        ):
+            satisfied.append(label)
+        else:
             missing.append(label)
 
     for tool_name in failed_required:
@@ -221,16 +216,7 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
             satisfied=satisfied,
             missing=missing,
             blocked=blocked,
-            evidence={
-                "task_contract_present": True,
-                "required_tools": required_tools,
-                "required_artifacts": required_artifacts,
-                "required_deliverables": required_deliverables,
-                "successful_tools": sorted(successful_tools),
-                "artifact_kinds": sorted(artifact_kinds),
-                "success_criteria": success_criteria,
-                "allow_partial": contract.allow_partial,
-            },
+            evidence=base_evidence,
         )
 
     if missing and contract.allow_partial and not blocked:
@@ -243,16 +229,7 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
             satisfied=satisfied,
             missing=missing,
             blocked=[],
-            evidence={
-                "task_contract_present": True,
-                "required_tools": required_tools,
-                "required_artifacts": required_artifacts,
-                "required_deliverables": required_deliverables,
-                "success_criteria": success_criteria,
-                "allow_partial": contract.allow_partial,
-                "successful_tools": sorted(successful_tools),
-                "artifact_kinds": sorted(artifact_kinds),
-            },
+            evidence=base_evidence,
         )
 
     if missing:
@@ -265,14 +242,7 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
             satisfied=satisfied,
             missing=missing,
             blocked=[],
-            evidence={
-                "task_contract_present": True,
-                "required_tools": required_tools,
-                "required_artifacts": required_artifacts,
-                "required_deliverables": required_deliverables,
-                "successful_tools": sorted(successful_tools),
-                "artifact_kinds": sorted(artifact_kinds),
-            },
+            evidence=base_evidence,
         )
 
     return DeliverableGateResult(
@@ -281,12 +251,5 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
         satisfied=satisfied,
         missing=[],
         blocked=[],
-        evidence={
-            "task_contract_present": True,
-            "required_tools": required_tools,
-            "required_artifacts": required_artifacts,
-            "required_deliverables": required_deliverables,
-            "successful_tools": sorted(successful_tools),
-            "artifact_kinds": sorted(artifact_kinds),
-        },
+        evidence=base_evidence,
     )

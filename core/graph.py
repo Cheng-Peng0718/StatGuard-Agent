@@ -28,6 +28,7 @@ from core.planning.execution_queue import (
     mark_plan_step_after_execution,
 )
 from core.deliverables.gate import evaluate_deliverable_gate_state
+from core.deliverables.evidence import extract_final_answer_content_from_state
 
 
 def _as_plain_dict(obj):
@@ -139,50 +140,6 @@ def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
         return pd.read_excel(path)
 
     raise ValueError(f"Unsupported active data file type for profiling: {path}")
-
-def _get_action_field(action, field_name, default=None):
-    if action is None:
-        return default
-
-    if isinstance(action, dict):
-        return action.get(field_name, default)
-
-    return getattr(action, field_name, default)
-
-
-def _extract_final_answer_content(state: GraphState) -> str | None:
-    """
-    Extract final-answer text from the legacy supervisor final-answer action.
-
-    This is a bridge helper for S8.
-    After legacy final-answer action is fully removed, this helper can be deleted.
-    """
-    # Prefer explicit state-level final answer if present.
-    direct = state.get("final_answer")
-    if isinstance(direct, str) and direct.strip():
-        return direct
-
-    action = state.get("current_action")
-
-    # Try common direct fields on ActionProposal-like objects.
-    for field_name in ["final_answer", "answer", "content", "message"]:
-        value = _get_action_field(action, field_name)
-
-        if isinstance(value, str) and value.strip():
-            return value
-
-    # Try arguments payload.
-    arguments = _get_action_field(action, "arguments", {}) or {}
-
-    if isinstance(arguments, dict):
-        for key in ["final_answer", "answer", "content", "message"]:
-            value = arguments.get(key)
-
-            if isinstance(value, str) and value.strip():
-                return value
-
-    return None
-
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):
@@ -1098,7 +1055,7 @@ def final_response_node(state: GraphState):
     DeliverableGate remains the quality gate.
     This node is only the output-envelope adapter.
     """
-    content = _extract_final_answer_content(state)
+    content = extract_final_answer_content_from_state(state)
 
     if not content:
         content = (
