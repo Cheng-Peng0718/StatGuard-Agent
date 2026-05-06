@@ -494,10 +494,6 @@ if (is_new_task and not is_interrupted) or is_resuming:
 
         live_display = st.empty()
 
-        pending_final_answer = None
-        deliverable_gate_status = None
-        deliverable_gate_allows_final = False
-
         for event in app.stream(state_input, config):
             for node_name, state_data in event.items():
 
@@ -505,8 +501,7 @@ if (is_new_task and not is_interrupted) or is_resuming:
                     continue
 
                 # New direct-response protocol:
-                # advisory_answer_node / plan_only_node / execute_pending_plan_node
-                # return {"final_answer": "..."} directly and do not go through
+                # nodes return {"assistant_response": {...}} directly.
 
                 # New canonical response protocol.
                 if state_data.get("assistant_response") is not None:
@@ -540,7 +535,6 @@ if (is_new_task and not is_interrupted) or is_resuming:
 
                 if deliverable_check:
                     deliverable_gate_status = deliverable_check.get("status")
-                    deliverable_gate_allows_final = deliverable_gate_status in {"ok", "blocked"}
 
                 if node_name == "supervisor_node" or node_name == "supervisor":
                     action = state_data.get("current_action")
@@ -557,7 +551,7 @@ if (is_new_task and not is_interrupted) or is_resuming:
                             if action_type == "tool_call":
                                 st.info(f"Scheduling tool: `{tool_name}`", icon="⚙️")
                             elif action_type == "final_answer":
-                                st.success("Reasoning complete, preparing report.", icon="🎉")
+                                st.success("Reasoning complete, preparing report.")
 
                 elif node_name == "execute_node":
                     execution = state_data.get("current_execution")
@@ -572,22 +566,6 @@ if (is_new_task and not is_interrupted) or is_resuming:
                         time.sleep(0.5)
 
                 current_action = state_data.get("current_action")
-
-                if current_action and hasattr(current_action, "action_type"):
-
-                    if current_action.action_type == "final_answer":
-                        pending_final_answer = current_action.reasoning_summary
-                        continue
-
-                    elif current_action.action_type == "ask_user":
-                        live_display.empty()
-                        st.warning(f"🤖 Agent asks for input: {current_action.reasoning_summary}")
-
-                        st.session_state.messages.append({
-                            "role": "assistant",
-                            "content": f"🤖 Agent asks for input: {current_action.reasoning_summary}"
-                        })
-                        st.rerun()
 
         post_stream_state = app.get_state(config)
 
@@ -638,47 +616,3 @@ if (is_new_task and not is_interrupted) or is_resuming:
 
             st.rerun()
 
-        if pending_final_answer and deliverable_gate_allows_final:
-            live_display.empty()
-
-            if deliverable_gate_status == "blocked":
-                st.warning("【Final conclusion with limitations】")
-            else:
-                st.success("【Final conclusion】")
-
-            st.markdown(pending_final_answer)
-
-            current_imgs = set([f for f in os.listdir(workspace_path) if f.endswith(".png")])
-            new_imgs = current_imgs - existing_imgs
-
-            for img in new_imgs:
-                img_path = os.path.join(workspace_path, img)
-
-                if deliverable_gate_status == "blocked":
-                    chart_msg = (
-                        f"Generated chart artifact: {img}\n\n"
-                        "Note: at least one deliverable was blocked or incomplete, "
-                        "so this artifact should be interpreted with the limitations stated above."
-                    )
-                else:
-                    chart_msg = f"Generated chart: {img}"
-
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": chart_msg,
-                    "image_path": img_path,
-                })
-
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": pending_final_answer,
-            })
-
-            st.rerun()
-
-
-        elif pending_final_answer and not deliverable_gate_allows_final:
-            live_display.empty()
-            st.info("Final answer was held back because required deliverables are not yet satisfied.")
-            # Do not rerun here. The graph should continue through build_context while streaming.
-            # If the stream ended here, avoid triggering an infinite UI rerun loop.

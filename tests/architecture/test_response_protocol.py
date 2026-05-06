@@ -17,9 +17,3 @@ def test_new_response_nodes_do_not_return_final_answer_directly():
 
         assert '"final_answer"' not in body
         assert "'final_answer'" not in body
-
-
-def test_app_does_not_use_pending_direct_answer():
-    app_text = Path("app.py").read_text(encoding="utf-8")
-
-    assert "pending_direct_answer" not in app_text

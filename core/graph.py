@@ -12,7 +12,6 @@ from agents.supervisor import call_supervisor
 from core.analysis_tool_plugins.execution import execute_analysis_tool
 import hashlib
 import json
-from core.deliverables import check_deliverables
 from core.analysis_runs import build_analysis_run_from_observation
 from core.data_versions import get_active_data_path
 from core.dataset_intelligence.profiler import profile_dataframe, summarize_profile
@@ -28,6 +27,7 @@ from core.planning.execution_queue import (
     mark_plan_step_started,
     mark_plan_step_after_execution,
 )
+from core.deliverables.gate import evaluate_deliverable_gate_state
 
 
 def _as_plain_dict(obj):
@@ -139,6 +139,50 @@ def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
         return pd.read_excel(path)
 
     raise ValueError(f"Unsupported active data file type for profiling: {path}")
+
+def _get_action_field(action, field_name, default=None):
+    if action is None:
+        return default
+
+    if isinstance(action, dict):
+        return action.get(field_name, default)
+
+    return getattr(action, field_name, default)
+
+
+def _extract_final_answer_content(state: GraphState) -> str | None:
+    """
+    Extract final-answer text from the legacy supervisor final-answer action.
+
+    This is a bridge helper for S8.
+    After legacy final-answer action is fully removed, this helper can be deleted.
+    """
+    # Prefer explicit state-level final answer if present.
+    direct = state.get("final_answer")
+    if isinstance(direct, str) and direct.strip():
+        return direct
+
+    action = state.get("current_action")
+
+    # Try common direct fields on ActionProposal-like objects.
+    for field_name in ["final_answer", "answer", "content", "message"]:
+        value = _get_action_field(action, field_name)
+
+        if isinstance(value, str) and value.strip():
+            return value
+
+    # Try arguments payload.
+    arguments = _get_action_field(action, "arguments", {}) or {}
+
+    if isinstance(arguments, dict):
+        for key in ["final_answer", "answer", "content", "message"]:
+            value = arguments.get(key)
+
+            if isinstance(value, str) and value.strip():
+                return value
+
+    return None
+
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):
@@ -1046,6 +1090,60 @@ def summarize_node(state: GraphState):
 
     return updates
 
+
+def final_response_node(state: GraphState):
+    """
+    Convert a deliverable-gate-approved final answer into assistant_response.
+
+    DeliverableGate remains the quality gate.
+    This node is only the output-envelope adapter.
+    """
+    content = _extract_final_answer_content(state)
+
+    if not content:
+        content = (
+            "The final answer passed the deliverable gate, but no final-answer "
+            "content could be extracted from the current graph state."
+        )
+
+        updates = make_response_update(
+            response_type="error",
+            content=content,
+            source_node="final_response",
+            data_version_id=state.get("active_data_version_id"),
+            metadata={
+                "reason": "missing_final_answer_content",
+                "deliverable_check": state.get("deliverable_check"),
+            },
+        )
+
+        updates.update({
+            "current_action": None,
+            "current_execution": None,
+            "current_verification": None,
+        })
+
+        return updates
+
+    updates = make_response_update(
+        response_type="final_answer",
+        content=content,
+        source_node="final_response",
+        data_version_id=state.get("active_data_version_id"),
+        metadata={
+            "deliverable_check": state.get("deliverable_check"),
+        },
+    )
+
+    updates.update({
+        # Clear completed final-answer action.
+        "current_action": None,
+        "current_execution": None,
+        "current_verification": None,
+    })
+
+    return updates
+
 # --- Routing ---
 def route_after_supervisor(state: GraphState):
     """
@@ -1207,45 +1305,17 @@ def get_action_hash(tool_name: str, arguments: dict):
     return hashlib.md5(f"{tool_name}_{arg_str}".encode('utf-8')).hexdigest()
 
 def deliverable_gate_node(state: GraphState):
-    """
-    Gate final_answer based on the declared task_contract.
+    result = evaluate_deliverable_gate_state(state)
 
-    This node checks whether required deliverables have been satisfied by observations.
-    It does not call tools. It only writes deliverable_check into state.
-    """
-    # print(">>> ENTERED DELIVERABLE GATE NODE <<<")
-
-    contract = state.get("task_contract")
-    observations = state.get("observations", [])
-
-    check = check_deliverables(contract, observations)
-
-    gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
-
-    if check.get("status") == "missing" and gate_attempts >= 3:
-        check = {
-            **check,
-            "status": "blocked",
-            "message": (
-                "DeliverableGate retry limit reached. "
-                "Remaining missing deliverables are treated as blocked."
-            ),
-            "blocked": (check.get("blocked", []) or []) + [
-                {
-                    "reason": "deliverable_gate_retry_limit_reached",
-                    "missing": check.get("missing", []),
-                }
-            ],
-        }
+    deliverable_check = result.model_dump()
 
     print("\n" + "=" * 40)
     print("[DELIVERABLE GATE]")
-    print(json.dumps(check, ensure_ascii=False, indent=2)[:4000])
+    print(deliverable_check)
     print("=" * 40 + "\n")
 
     return {
-        "deliverable_check": check,
-        "deliverable_gate_attempts": gate_attempts,
+        "deliverable_check": deliverable_check,
     }
 
 def route_after_deliverable_gate(state: GraphState):
@@ -1253,20 +1323,23 @@ def route_after_deliverable_gate(state: GraphState):
     If deliverables are satisfied, allow final_answer to end.
     If deliverables are missing, go back to build_context so Supervisor can continue.
     """
-    check = state.get("deliverable_check") or {}
-    status = check.get("status")
+    deliverable_check = state.get("deliverable_check") or {}
+
+    if isinstance(deliverable_check, dict):
+        status = deliverable_check.get("status")
+    else:
+        status = getattr(deliverable_check, "status", None)
 
     print(f"[ROUTE AFTER DELIVERABLE GATE] status = {status}")
 
     if status == "ok":
-        return "end"
+        return "final_response"
 
-    # If a deliverable is explicitly blocked/unrecoverable,
-    # allow the final answer to end with limitations.
-    if status == "blocked":
-        return "end"
+    if status in {"needs_more_work", "missing", "blocked"}:
+        return "build_context"
 
-    return "build_context"
+    return "end"
+
 
 # --- Compile graph ---
 workflow = StateGraph(GraphState)
@@ -1283,6 +1356,7 @@ workflow.add_node("human_review", human_review_node)
 workflow.add_node("execute", execute_node)
 workflow.add_node("summarize", summarize_node)
 workflow.add_node("deliverable_gate", deliverable_gate_node)
+workflow.add_node("final_response", final_response_node)
 
 workflow.set_entry_point("build_context")
 
@@ -1328,10 +1402,13 @@ workflow.add_conditional_edges(
     "deliverable_gate",
     route_after_deliverable_gate,
     {
-        "end": END,
+        "final_response": "final_response",
         "build_context": "build_context",
-    }
+        "end": END,
+    },
 )
+
+workflow.add_edge("final_response", END)
 
 workflow.add_conditional_edges(
     "verify",
