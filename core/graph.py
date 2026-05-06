@@ -3,13 +3,10 @@ from verifiers.validators import verify
 import uuid
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-import re
 import numpy as np
 import pandas as pd
 from core.state import GraphState
-# Import VerificationResult for verify_node.
-from core.schema import Observation, ContextPackage, VerificationResult
-# Import generate_profile for build_context_node.
+from core.schema import Observation
 from core.context_builder import build_context, generate_profile
 from agents.supervisor import call_supervisor
 from core.analysis_tool_plugins.execution import execute_analysis_tool
@@ -25,10 +22,9 @@ from core.dataset_intelligence.schemas import CapabilityMap, DatasetProfileV2
 from core.planning.planner import build_plan_from_capability_map
 from core.planning.verifier import verify_plan
 from core.planning.renderer import render_plan_for_user
-from core.responses import make_assistant_response
+from core.responses import make_assistant_response, make_response_update
 from core.planning.execution_queue import (
     find_next_executable_step,
-    plan_step_to_action,
     mark_plan_step_started,
     mark_plan_step_after_execution,
 )
@@ -292,7 +288,7 @@ def advisory_answer_node(state: GraphState):
 
     answer = "\n".join(lines)
 
-    assistant_response = make_assistant_response(
+    updates = make_response_update(
         response_type="advisory",
         content=answer,
         source_node="advisory_answer",
@@ -302,34 +298,43 @@ def advisory_answer_node(state: GraphState):
         },
     )
 
-    return {
-        "assistant_response": assistant_response,
-
-        # Temporary legacy compatibility.
-        # Eventually remove final_answer after UI fully migrates.
-        "final_answer": answer,
-
+    updates.update({
         "current_action": None,
         "current_execution": None,
         "current_verification": None,
-    }
+    })
+
+    return updates
 
 def plan_only_node(state: GraphState):
     capability_map_dict = state.get("capability_map")
     profile_dict = state.get("dataset_profile_v2")
 
     if not capability_map_dict or not profile_dict:
-        return {
-            "final_answer": (
-                "I cannot create a data-aware plan yet because the dataset profile "
-                "is not available. Please upload or reload a dataset first."
-            ),
+        content = (
+            "I cannot create a data-aware plan yet because the dataset profile "
+            "is not available. Please upload or reload a dataset first."
+        )
+
+        updates = make_response_update(
+            response_type="error",
+            content=content,
+            source_node="plan_only",
+            data_version_id=state.get("active_data_version_id"),
+            metadata={
+                "reason": "missing_dataset_profile_or_capability_map",
+            },
+        )
+
+        updates.update({
             "pending_plan": None,
             "plan_status": "blocked",
             "current_action": None,
             "current_execution": None,
             "current_verification": None,
-        }
+        })
+
+        return updates
 
     capability_map = CapabilityMap.model_validate(capability_map_dict)
     dataset_profile = DatasetProfileV2.model_validate(profile_dict)
@@ -350,7 +355,7 @@ def plan_only_node(state: GraphState):
     print(f"n_blocked = {len(verified_plan.blocked_or_not_recommended)}")
     print("=" * 40 + "\n")
 
-    assistant_response = make_assistant_response(
+    updates = make_response_update(
         response_type="plan",
         content=rendered,
         source_node="plan_only",
@@ -364,13 +369,9 @@ def plan_only_node(state: GraphState):
         },
     )
 
-    return {
+    updates.update({
         "pending_plan": verified_plan.model_dump(),
         "plan_status": verified_plan.status,
-        "assistant_response": assistant_response,
-
-        # Temporary legacy compatibility.
-        "final_answer": rendered,
 
         # Hard safety reset.
         "current_action": None,
@@ -378,7 +379,9 @@ def plan_only_node(state: GraphState):
         "current_verification": None,
         "human_review_required": False,
         "pending_action": None,
-    }
+    })
+
+    return updates
 
 def route_after_intent(state: GraphState):
     intent = state.get("interaction_intent")
@@ -394,11 +397,16 @@ def route_after_intent(state: GraphState):
     if intent == "execute_plan":
         return "execute_pending_plan"
 
-    # For direct_tool or unknown, fall back to the existing router gate.
-    # This preserves your old planner/supervisor behavior.
-    return router_gate(state)
+    # Direct tool requests and unknown requests go to the unified supervisor path.
+    return "supervisor"
 
 def execute_pending_plan_node(state: GraphState):
+    print("\n" + "=" * 40)
+    print("[EXECUTE PENDING PLAN NODE ENTERED]")
+    print(f"plan_status = {state.get('plan_status')}")
+    print(f"has_pending_plan = {state.get('pending_plan') is not None}")
+    print("=" * 40 + "\n")
+
     pending_plan = state.get("pending_plan")
 
     if not pending_plan:
@@ -407,50 +415,73 @@ def execute_pending_plan_node(state: GraphState):
             "Please ask me to make a plan first."
         )
 
-        assistant_response = make_assistant_response(
+        updates = make_response_update(
             response_type="plan_execution_status",
             content=content,
             source_node="execute_pending_plan",
             data_version_id=state.get("active_data_version_id"),
-            metadata={"reason": "no_pending_plan"},
+            metadata={
+                "reason": "no_pending_plan",
+            },
         )
 
-        return {
-            "assistant_response": assistant_response,
-            "final_answer": content,
+        updates.update({
             "current_action": None,
             "current_execution": None,
             "current_verification": None,
-        }
+            "plan_execution_status": "no_pending_plan",
+        })
 
-    next_step = find_next_executable_step(pending_plan)
+        return updates
 
-    if next_step is None:
-        content = (
-            "The pending plan has no execution-ready steps. "
-            "Some steps may need your variable choices, or they may be blocked/not applicable."
-        )
+    next_step, readiness = find_next_executable_step(
+        pending_plan,
+        profile=state.get("dataset_profile"),
+    )
 
-        assistant_response = make_assistant_response(
+    if next_step is None or readiness is None or not readiness.executable:
+        reason = readiness.reason if readiness is not None else "No candidate step found."
+        missing_choices = readiness.missing_user_choices if readiness is not None else []
+
+        lines = []
+        lines.append("The pending plan has no execution-ready steps.")
+        lines.append("")
+        lines.append(f"Reason: {reason}")
+
+        if missing_choices:
+            lines.append("")
+            lines.append("Missing choices:")
+            for choice in missing_choices:
+                lines.append(f"- {choice}")
+
+        lines.append("")
+        lines.append("No tools were executed.")
+
+        content = "\n".join(lines)
+
+        updates = make_response_update(
             response_type="plan_execution_status",
             content=content,
             source_node="execute_pending_plan",
             data_version_id=state.get("active_data_version_id"),
             plan_id=pending_plan.get("plan_id"),
             plan_status=pending_plan.get("status"),
-            metadata={"reason": "no_execution_ready_steps"},
+            metadata={
+                "reason": "no_executable_step",
+                "readiness": readiness.model_dump() if readiness is not None else None,
+            },
         )
 
-        return {
-            "assistant_response": assistant_response,
-            "final_answer": content,
+        updates.update({
             "plan_execution_status": "blocked_no_ready_steps",
             "current_action": None,
             "current_execution": None,
             "current_verification": None,
-        }
+        })
 
-    action = plan_step_to_action(next_step)
+        return updates
+
+    action = readiness.action
 
     updated_plan = mark_plan_step_started(
         pending_plan,
@@ -464,6 +495,7 @@ def execute_pending_plan_node(state: GraphState):
     print(f"step_id = {next_step.get('step_id')}")
     print(f"tool_name = {action.tool_name}")
     print(f"arguments = {action.arguments}")
+    print(f"readiness_status = {readiness.status}")
     print("=" * 40 + "\n")
 
     return {
@@ -472,7 +504,11 @@ def execute_pending_plan_node(state: GraphState):
         "current_plan_step_id": next_step["step_id"],
         "plan_execution_status": "started_step",
 
-        # This enters the existing verify -> human_review/execute path.
+        # Important for S4:
+        # This action came from a pending plan, not a direct user tool request.
+        "action_origin": "pending_plan",
+
+        # Existing verify -> human_review / execute path.
         "current_action": action,
         "current_execution": None,
         "current_verification": None,
@@ -584,14 +620,66 @@ def verify_node(state: GraphState):
                 "details": verify_result.details,
             },
             raw_data={
-                "verification": verify_result.model_dump(),
+                "verification": (
+                    verify_result.model_dump()
+                    if hasattr(verify_result, "model_dump")
+                    else verify_result
+                ),
+                "recoverable": verify_result.status == "rejected_recoverable",
             },
         )
 
-        return {
+        updates = {
             "current_verification": verify_result,
             "observations": [obs.model_dump()],
         }
+
+        # Phase 4 safety:
+        # If a pending-plan step fails verification, mark that step failed and stop.
+        # Do not loop back into build_context with the same "run the plan" request.
+        current_plan_step_id = state.get("current_plan_step_id")
+        pending_plan = state.get("pending_plan")
+
+        if current_plan_step_id and pending_plan:
+            updated_plan = mark_plan_step_after_execution(
+                pending_plan,
+                step_id=current_plan_step_id,
+                success=False,
+                execution_id=None,
+                message=verify_result.feedback,
+            )
+
+            content = (
+                "I tried to execute the next ready step in the pending plan, "
+                "but it failed validation before execution.\n\n"
+                f"Tool: {getattr(action, 'tool_name', None)}\n"
+                f"Reason: {verify_result.feedback}\n\n"
+                "I marked this plan step as failed and stopped execution to avoid a retry loop."
+            )
+
+            updates.update({
+                "pending_plan": updated_plan,
+                "plan_status": updated_plan.get("status"),
+                "current_plan_step_id": None,
+                "current_action": None,
+                "current_execution": None,
+                "plan_execution_status": "step_verification_failed",
+                "assistant_response": make_assistant_response(
+                    response_type="error",
+                    content=content,
+                    source_node="verify",
+                    data_version_id=state.get("active_data_version_id"),
+                    plan_id=updated_plan.get("plan_id"),
+                    plan_status=updated_plan.get("status"),
+                    metadata={
+                        "error_code": verify_result.error_code,
+                        "tool_name": getattr(action, "tool_name", None),
+                        "step_id": current_plan_step_id,
+                    },
+                ),
+            })
+
+        return updates
 
     return {
         "current_verification": verify_result,
@@ -946,6 +1034,11 @@ def summarize_node(state: GraphState):
         updates["plan_status"] = updated_plan.get("status")
         updates["current_plan_step_id"] = None
 
+        # S4: after a pending-plan step is summarized,
+        # clear the action origin. Routing will still see the previous state,
+        # but subsequent state should not keep stale origin.
+        updates["action_origin"] = None
+
         print(
             f"[PLAN EXECUTION] step {current_plan_step_id} "
             f"marked as {'completed' if success else 'failed'}"
@@ -980,6 +1073,22 @@ def route_after_verify(state: GraphState):
     - needs_review: interrupt before human_review and wait for user approval
     - rejected_*: do not execute; go back to build_context so Supervisor can rethink/respond
     """
+
+    # S4: if a pending-plan action fails verification,
+    # do not loop back and continue the same "run the plan" turn.
+    if (
+            state.get("action_origin") == "pending_plan"
+            and state.get("current_verification") is not None
+    ):
+        verification = state.get("current_verification")
+        status = getattr(verification, "status", None)
+
+        if status in {"rejected_recoverable", "rejected_terminal"}:
+            return "end"
+
+    if state.get("plan_execution_status") == "step_verification_failed":
+        return "end"
+
     vr = state.get("current_verification")
 
     if vr is None:
@@ -1031,6 +1140,11 @@ def route_after_review(state: GraphState):
 
 
 def route_after_summarize(state: GraphState):
+    # S4: a single "run the plan" turn executes at most one PlanStep.
+    # If the action came from pending_plan, stop after summarize.
+    if state.get("action_origin") == "pending_plan":
+        return "end"
+
     if state.get("current_step", 0) >= state.get("max_steps", 12):
         return "end"
 
@@ -1061,78 +1175,6 @@ def route_after_summarize(state: GraphState):
 
     # Non-recoverable failures should stop and let final answer/report explain blocker.
     return "end"
-
-def call_llm_to_route(state: GraphState):
-    """
-    Semantic routing stub (replace with LLM call).
-    """
-    prompt = f"""
-    Classify the user's task intent.
-
-    User request: "{state['user_request']}"
-    Number of columns: {len(state.get('dataset_profile').columns) if state.get('dataset_profile') else 0}
-
-    Rules:
-    - Simple lookups (single values, column names, row counts, univariate stats) -> reply 'SUPERVISOR'.
-    - Multivariate analysis, modeling, plotting, prediction, exploration -> reply 'PLANNER'.
-
-    Reply only 'PLANNER' or 'SUPERVISOR'.
-    """
-
-    return "PLANNER"  # Stub; replace with llm.invoke(prompt).
-
-def call_llm_to_plan(state: GraphState):
-    """Stub for LLM-generated analysis plan."""
-
-    prompt = f"""
-    You are a data analyst. Produce a concise analysis plan.
-
-    User request: {state['user_request']}
-    Dataset profile: {state.get('dataset_profile', 'not available')}
-
-    Rules:
-    1. If the task is trivial (e.g. row count, column names), reply only "DIRECT".
-    2. Otherwise list logical steps (at most 5).
-    3. Each step starts with a number, e.g. "1. [step content]".
-    """
-    return "1. Check missing values\n2. Compute GPA mean\n3. Run t-test"
-
-
-def parse_plan(text: str) -> list:
-    """Parse numbered steps from LLM text."""
-    if "DIRECT" in text.upper():
-        return ["Execute the user instruction directly"]
-    steps = re.findall(r'\d\.\s*(.*)', text)
-    return steps if steps else [text]
-
-def planner_node(state: GraphState):
-    """Planner: derive analysis_plan from profile (stub)."""
-    if state.get("analysis_plan"):
-        return {}
-
-    response = call_llm_to_plan(state)
-
-    if "DIRECT" in response:
-        return {"analysis_plan": ["Answer the user directly"]}
-
-    plan_steps = parse_plan(response)
-    return {"analysis_plan": plan_steps}
-
-
-def router_gate(state: GraphState):
-    """
-    Route after build_context: planner vs supervisor.
-    """
-    if state.get("analysis_plan") or state.get("current_step", 0) > 1:
-        return "supervisor"
-
-    route_decision = call_llm_to_route(state)
-
-    if "PLANNER" in route_decision:
-        return "planner"
-
-    return "supervisor"
-
 
 def sanitize_results(obj):
     """
@@ -1235,7 +1277,6 @@ workflow.add_node("advisory_answer", advisory_answer_node)
 workflow.add_node("plan_only", plan_only_node)
 workflow.add_node("execute_pending_plan", execute_pending_plan_node)
 
-workflow.add_node("planner", planner_node)
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("verify", verify_node)
 workflow.add_node("human_review", human_review_node)
@@ -1256,9 +1297,6 @@ workflow.add_conditional_edges(
         "advisory_answer": "advisory_answer",
         "plan_only": "plan_only",
         "execute_pending_plan": "execute_pending_plan",
-
-        # Existing runtime path.
-        "planner": "planner",
         "supervisor": "supervisor",
     },
 )
@@ -1275,9 +1313,6 @@ workflow.add_conditional_edges(
         "end": END,
     },
 )
-
-# Existing planner -> supervisor path.
-workflow.add_edge("planner", "supervisor")
 
 workflow.add_conditional_edges(
     "supervisor",

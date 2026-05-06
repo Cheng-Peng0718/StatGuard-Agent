@@ -53,3 +53,33 @@ def make_assistant_response(
     )
 
     return response.model_dump()
+
+def make_response_update(
+    *,
+    response_type: str,
+    content: str,
+    source_node: str,
+    data_version_id: Optional[str] = None,
+    plan_id: Optional[str] = None,
+    plan_status: Optional[str] = None,
+    artifacts: Optional[List[Dict[str, Any]]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Canonical graph-state update for user-visible assistant responses.
+
+    New graph nodes should return assistant_response through this helper,
+    not final_answer.
+    """
+    return {
+        "assistant_response": make_assistant_response(
+            response_type=response_type,
+            content=content,
+            source_node=source_node,
+            data_version_id=data_version_id,
+            plan_id=plan_id,
+            plan_status=plan_status,
+            artifacts=artifacts,
+            metadata=metadata,
+        )
+    }

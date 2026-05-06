@@ -489,6 +489,22 @@ class RepairPolicy:
     allow_method_fallback: bool = True
     requires_user_for_missing_roles: bool = True
 
+@dataclass
+class PlanningPolicy:
+    """
+    Generic planning contract.
+    """
+    include_in_capability_map: bool = True
+    ready_without_user_variables: bool = False
+    allow_default_arguments: bool = False
+    planning_description: str = ""
+    requires_variable_contract: bool = True
+
+    # Non-column choices required before a plan step can execute.
+    # Examples:
+    # - clean_data: action_type, strategy
+    # - independent t-test: group1_val, group2_val
+    required_user_choices: List[str] = field(default_factory=list)
 
 # ==========================================================
 # Unified plugin
@@ -520,6 +536,9 @@ class AnalysisToolPlugin:
 
     # Generic repair contract
     repair_policy: RepairPolicy = field(default_factory=RepairPolicy)
+
+    # Generic planning policy
+    planning_policy: PlanningPolicy = field(default_factory=PlanningPolicy)
 
     def run(self, context) -> Dict[str, Any]:
         if self.execute is None:

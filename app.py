@@ -495,7 +495,6 @@ if (is_new_task and not is_interrupted) or is_resuming:
         live_display = st.empty()
 
         pending_final_answer = None
-        pending_direct_answer = None
         deliverable_gate_status = None
         deliverable_gate_allows_final = False
 
@@ -508,9 +507,6 @@ if (is_new_task and not is_interrupted) or is_resuming:
                 # New direct-response protocol:
                 # advisory_answer_node / plan_only_node / execute_pending_plan_node
                 # return {"final_answer": "..."} directly and do not go through
-                # supervisor final_answer or deliverable_gate.
-                if state_data.get("final_answer"):
-                    pending_direct_answer = state_data.get("final_answer")
 
                 # New canonical response protocol.
                 if state_data.get("assistant_response") is not None:
@@ -624,16 +620,6 @@ if (is_new_task and not is_interrupted) or is_resuming:
         ):
             live_display.empty()
             st.session_state.resume_stream = False
-            st.rerun()
-
-        if pending_direct_answer:
-            live_display.empty()
-            st.markdown(pending_direct_answer)
-
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": pending_direct_answer,
-            })
 
             st.rerun()
 

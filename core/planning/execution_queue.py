@@ -1,60 +1,40 @@
 from __future__ import annotations
 
-import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from core.schema import ActionProposal
+from core.planning.readiness import (
+    PlanStepReadiness,
+    assess_plan_step_readiness,
+)
 
 
-def find_next_executable_step(pending_plan: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def find_next_executable_step(
+    pending_plan: Dict[str, Any],
+    profile: Any = None,
+) -> Tuple[Optional[Dict[str, Any]], Optional[PlanStepReadiness]]:
     """
-    Return the next plan step that is safe to execute.
+    Return the next truly executable plan step.
 
-    A step is executable only if:
-    - execution_ready is True
-    - status is ready
-    - tool_name exists
-    - step is not already completed / failed / skipped
+    This function does NOT trust step["execution_ready"] by itself.
+    Every candidate step must pass PlanStepReadinessGate.
     """
     steps = pending_plan.get("steps", []) or []
 
+    first_blocker: Optional[PlanStepReadiness] = None
+
     for step in steps:
-        if step.get("status") != "ready":
-            continue
+        assessment = assess_plan_step_readiness(
+            step=step,
+            profile=profile,
+        )
 
-        if step.get("execution_ready") is not True:
-            continue
+        if assessment.executable:
+            return step, assessment
 
-        if not step.get("tool_name"):
-            continue
+        if first_blocker is None:
+            first_blocker = assessment
 
-        if step.get("execution_status") in {"completed", "failed", "skipped"}:
-            continue
-
-        return step
-
-    return None
-
-
-def plan_step_to_action(step: Dict[str, Any]) -> ActionProposal:
-    """
-    Convert a verified PlanStep into an ActionProposal.
-
-    This is the only allowed bridge from planning to execution.
-    """
-    tool_name = step["tool_name"]
-    arguments = step.get("arguments") or {}
-
-    return ActionProposal(
-        action_id=f"act_{uuid.uuid4().hex[:8]}",
-        action_type="tool_call",
-        tool_name=tool_name,
-        arguments=arguments,
-        reasoning_summary=(
-            f"Executing verified plan step {step.get('step_id')} "
-            f"using tool {tool_name}."
-        ),
-    )
+    return None, first_blocker
 
 
 def mark_plan_step_started(
@@ -103,12 +83,20 @@ def mark_plan_step_after_execution(
 
     plan["steps"] = steps
 
-    remaining_ready = [
-        s for s in steps
-        if s.get("status") == "ready"
-        and s.get("execution_ready") is True
-        and s.get("execution_status") not in {"completed", "failed", "skipped"}
-    ]
+    remaining_ready = []
+
+    for step in steps:
+        if step.get("execution_status") in {
+            "running",
+            "completed",
+            "failed",
+            "skipped",
+            "blocked",
+        }:
+            continue
+
+        if step.get("status") == "ready" and step.get("execution_ready") is True:
+            remaining_ready.append(step)
 
     if remaining_ready:
         plan["status"] = "partially_executed"

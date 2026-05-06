@@ -29,24 +29,57 @@ def _generic_applicability_from_variable_roles(plugin, profile: DatasetProfileV2
     Generic fallback when a plugin has variable_roles but no custom checker.
 
     This is intentionally conservative:
-    - If required roles exist, status becomes needs_user_choice.
-    - We do not auto-select variables for execution.
+    - Explicit PlanningPolicy.required_user_choices always prevent auto-ready.
+    - Required variable roles require user choice unless already selected.
+    - Plugins without planning contracts stay conservative.
     """
+    planning_policy = getattr(plugin, "planning_policy", None)
+
+    policy_required_choices = []
+    if planning_policy is not None:
+        policy_required_choices = list(
+            getattr(planning_policy, "required_user_choices", []) or []
+        )
+
+    if planning_policy and not planning_policy.include_in_capability_map:
+        return ApplicabilityResult(
+            status="blocked",
+            reason="Plugin is excluded from capability-map planning.",
+            warnings=["Plugin planning_policy.include_in_capability_map=False."],
+        )
+
+    if (
+        planning_policy
+        and planning_policy.ready_without_user_variables
+        and not getattr(plugin, "variable_roles", None)
+        and not policy_required_choices
+    ):
+        return ApplicabilityResult(
+            status="ready",
+            reason=(
+                planning_policy.planning_description
+                or "This tool can run without user-selected variables."
+            ),
+            required_user_choices=[],
+            candidate_variables={},
+            warnings=[],
+        )
+
     candidate_variables: Dict[str, List[str]] = {}
-    required_user_choices: List[str] = []
+    required_user_choices: List[str] = list(policy_required_choices)
     warnings: List[str] = []
 
     if not getattr(plugin, "variable_roles", None):
         return ApplicabilityResult(
             status="needs_user_choice",
             reason=(
-                "No applicability checker or variable-role contract is registered. "
-                "This method cannot be considered execution-ready during planning."
+                "No variable-role contract is registered, or this plugin requires "
+                "non-column user choices before execution."
             ),
-            required_user_choices=["analysis goal and variables"],
+            required_user_choices=required_user_choices or ["analysis goal and variables"],
             candidate_variables={},
             warnings=[
-                "Plugin has no applicability contract. Add variable_roles or applicability_checker."
+                "Plugin is not execution-ready during planning without explicit user choices."
             ],
         )
 
@@ -59,7 +92,8 @@ def _generic_applicability_from_variable_roles(plugin, profile: DatasetProfileV2
         candidate_variables[role.role_name] = candidates
 
         if role.required and role.user_must_select:
-            required_user_choices.append(role.role_name)
+            if role.role_name not in required_user_choices:
+                required_user_choices.append(role.role_name)
 
         if role.required and not candidates:
             warnings.append(

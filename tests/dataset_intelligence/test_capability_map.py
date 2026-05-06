@@ -99,3 +99,78 @@ def test_capability_map_blocks_when_no_compatible_columns():
 
     assert cap.status == "not_applicable"
     assert cap.warnings
+
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
+    PlanningPolicy,
+)
+from core.dataset_intelligence.capability_map import build_capability_map
+from core.dataset_intelligence.profiler import profile_dataframe
+import pandas as pd
+
+
+def dummy_execute(context):
+    return {"status": "ok", "details": {}}
+
+
+def test_capability_map_marks_no_variable_plugin_as_ready_when_policy_allows():
+    df = pd.DataFrame({
+        "y": [1.2, 2.4, 3.1, 4.7],
+        "x": [10.5, 20.2, 30.8, 40.1],
+    })
+
+    profile = profile_dataframe(df, data_version_id="raw_v1")
+
+    plugin = AnalysisToolPlugin(
+        tool_name="generic_overview",
+        display_name="Generic Overview",
+        execute=dummy_execute,
+        argument_schema=ArgumentSchema(),
+        method_family="eda",
+        variable_roles=[],
+        planning_policy=PlanningPolicy(
+            include_in_capability_map=True,
+            ready_without_user_variables=True,
+            allow_default_arguments=True,
+            requires_variable_contract=False,
+            planning_description="Can summarize the dataset without user-selected variables.",
+        ),
+    )
+
+    capability_map = build_capability_map(
+        profile,
+        plugins={"generic_overview": plugin},
+    )
+
+    cap = capability_map.capabilities[0]
+
+    assert cap.tool_name == "generic_overview"
+    assert cap.status == "ready"
+    assert cap.required_user_choices == []
+    assert cap.candidate_variables == {}
+
+def test_capability_map_keeps_no_contract_plugin_conservative():
+    df = pd.DataFrame({
+        "y": [1.2, 2.4, 3.1, 4.7],
+    })
+
+    profile = profile_dataframe(df, data_version_id="raw_v1")
+
+    plugin = AnalysisToolPlugin(
+        tool_name="no_contract_tool",
+        display_name="No Contract Tool",
+        execute=dummy_execute,
+        argument_schema=ArgumentSchema(),
+        method_family="unknown",
+        variable_roles=[],
+    )
+
+    capability_map = build_capability_map(
+        profile,
+        plugins={"no_contract_tool": plugin},
+    )
+
+    cap = capability_map.capabilities[0]
+
+    assert cap.status == "needs_user_choice"

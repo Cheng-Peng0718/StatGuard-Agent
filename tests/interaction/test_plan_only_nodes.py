@@ -42,8 +42,10 @@ def test_plan_only_node_does_not_create_action():
     assert result["current_action"] is None
     assert result["current_execution"] is None
     assert result["current_verification"] is None
-    assert "No tools have been executed" in result["final_answer"]
 
+    assert "assistant_response" in result
+    assert result["assistant_response"]["response_type"] == "plan"
+    assert "No tools have been executed" in result["assistant_response"]["content"]
 
 def test_advisory_answer_node_does_not_create_action():
     state = make_state()
@@ -54,4 +56,7 @@ def test_advisory_answer_node_does_not_create_action():
     assert result["current_action"] is None
     assert result["current_execution"] is None
     assert result["current_verification"] is None
-    assert "I have not run any analysis tools yet" in result["final_answer"]
+
+    assert "assistant_response" in result
+    assert result["assistant_response"]["response_type"] == "advisory"
+    assert "I have not run any analysis tools yet" in result["assistant_response"]["content"]

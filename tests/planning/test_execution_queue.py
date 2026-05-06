@@ -1,6 +1,5 @@
 from core.planning.execution_queue import (
     find_next_executable_step,
-    plan_step_to_action,
     mark_plan_step_started,
     mark_plan_step_after_execution,
 )
@@ -12,13 +11,13 @@ def test_find_next_executable_step_skips_non_ready_steps():
         "steps": [
             {
                 "step_id": "s1",
-                "tool_name": "tool_a",
+                "tool_name": "clean_data",
                 "status": "needs_user_choice",
                 "execution_ready": False,
             },
             {
                 "step_id": "s2",
-                "tool_name": "tool_b",
+                "tool_name": "get_summary_stats",
                 "status": "ready",
                 "execution_ready": True,
                 "arguments": {},
@@ -26,9 +25,13 @@ def test_find_next_executable_step_skips_non_ready_steps():
         ],
     }
 
-    step = find_next_executable_step(plan)
+    step, readiness = find_next_executable_step(plan)
 
+    assert step is not None
     assert step["step_id"] == "s2"
+    assert readiness is not None
+    assert readiness.executable is True
+    assert readiness.action.tool_name == "get_summary_stats"
 
 
 def test_find_next_executable_step_returns_none_when_no_ready_steps():
@@ -44,26 +47,46 @@ def test_find_next_executable_step_returns_none_when_no_ready_steps():
         ],
     }
 
-    step = find_next_executable_step(plan)
+    step, readiness = find_next_executable_step(plan)
 
     assert step is None
+    assert readiness is not None
+    assert readiness.executable is False
 
 
 
-def test_plan_step_to_action_uses_verified_arguments():
-    step = {
-        "step_id": "s1",
-        "tool_name": "generic_tool",
-        "status": "ready",
-        "execution_ready": True,
-        "arguments": {"x": "GPA"},
+def test_find_next_executable_step_returns_action_with_verified_arguments():
+    plan = {
+        "plan_id": "plan_test",
+        "steps": [
+            {
+                "step_id": "s1",
+                "tool_name": "get_correlation_matrix",
+                "status": "ready",
+                "execution_ready": True,
+                "arguments": {
+                    "columns": ["GPA", "SATM"],
+                },
+            }
+        ],
     }
 
-    action = plan_step_to_action(step)
+    step, readiness = find_next_executable_step(plan)
+
+    assert step is not None
+    assert step["step_id"] == "s1"
+
+    assert readiness is not None
+    assert readiness.executable is True
+    assert readiness.action is not None
+
+    action = readiness.action
 
     assert action.action_type == "tool_call"
-    assert action.tool_name == "generic_tool"
-    assert action.arguments == {"x": "GPA"}
+    assert action.tool_name == "get_correlation_matrix"
+    assert action.arguments == {
+        "columns": ["GPA", "SATM"],
+    }
 
 
 def test_mark_plan_step_started():
@@ -128,10 +151,10 @@ def test_execute_pending_plan_creates_action_for_ready_step():
                 {
                     "step_id": "s1",
                     "title": "Ready Step",
-                    "tool_name": "some_tool",
+                    "tool_name": "get_summary_stats",
                     "status": "ready",
                     "execution_ready": True,
-                    "arguments": {"x": "GPA"},
+                    "arguments": {},
                 }
             ],
         },
@@ -140,5 +163,7 @@ def test_execute_pending_plan_creates_action_for_ready_step():
     result = execute_pending_plan_node(state)
 
     assert result["current_action"] is not None
-    assert result["current_action"].tool_name == "some_tool"
+    assert result["current_action"].tool_name == "get_summary_stats"
+    assert result["current_action"].arguments == {}
     assert result["current_plan_step_id"] == "s1"
+    assert result["plan_execution_status"] == "started_step"
