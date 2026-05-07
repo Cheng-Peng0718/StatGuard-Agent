@@ -13,7 +13,11 @@ from core.analysis_tool_plugins.execution import execute_analysis_tool
 import hashlib
 import json
 from core.analysis_runs import build_analysis_run_from_observation
-from core.data_versions import get_active_data_path
+from core.data_versions import (
+    get_active_data_path,
+    extract_data_version_update,
+    validate_data_version_update,
+)
 from core.dataset_intelligence.profiler import profile_dataframe, summarize_profile
 from core.dataset_intelligence.capability_map import build_capability_map
 from core.interaction_intent import classify_interaction_intent
@@ -43,66 +47,6 @@ def _as_plain_dict(obj):
 
     return {}
 
-
-def _extract_data_version_update(raw_execution):
-    """
-    Extract plugin data_version_update from ToolExecutionResult.
-
-    New protocol:
-    execute_analysis_tool() places plugin-level data_version_update into
-    ToolExecutionResult.payload["data_version_update"].
-
-    We also check top-level for defensive compatibility, but the canonical
-    path is payload.data_version_update.
-    """
-    raw = _as_plain_dict(raw_execution)
-
-    update = raw.get("data_version_update")
-    if update is not None:
-        return update
-
-    payload = raw.get("payload", {}) or {}
-    payload = _as_plain_dict(payload)
-
-    return payload.get("data_version_update")
-
-
-def _validate_data_version_update(data_version_update):
-    if not data_version_update:
-        return None
-
-    if not isinstance(data_version_update, dict):
-        return None
-
-    new_version = data_version_update.get("new_version")
-    active_data_version_id = data_version_update.get("active_data_version_id")
-
-    if not isinstance(new_version, dict):
-        return None
-
-    new_version_id = (
-        data_version_update.get("new_version_id")
-        or new_version.get("version_id")
-    )
-
-    if not new_version_id:
-        return None
-
-    if not active_data_version_id:
-        return None
-
-    if active_data_version_id != new_version_id:
-        return None
-
-    if not new_version.get("version_id"):
-        new_version["version_id"] = new_version_id
-
-    return {
-        **data_version_update,
-        "new_version_id": new_version_id,
-        "active_data_version_id": active_data_version_id,
-        "new_version": new_version,
-    }
 
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
@@ -989,8 +933,8 @@ def summarize_node(state: GraphState):
     # Extract data_version_update from the new plugin execution protocol.
     # Canonical path:
     # ToolExecutionResult.payload["data_version_update"]
-    data_version_update = _extract_data_version_update(raw_result)
-    validated_version_update = _validate_data_version_update(data_version_update)
+    data_version_update = extract_data_version_update(raw_result)
+    validated_version_update = validate_data_version_update(data_version_update)
 
     if validated_version_update is not None:
         new_version = validated_version_update["new_version"]

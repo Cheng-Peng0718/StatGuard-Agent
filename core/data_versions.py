@@ -132,3 +132,87 @@ def get_active_data_path(
             return version["path"]
 
     return os.path.join(workspace_dir, fallback_file)
+
+from typing import Any, Dict, Optional
+
+
+def extract_data_version_update(raw_result: Any) -> Optional[Dict[str, Any]]:
+    """
+    Extract data_version_update from plugin execution output.
+
+    Supported locations:
+    1. raw_result["data_version_update"]
+    2. raw_result["payload"]["data_version_update"]
+    3. raw_result["details"]["data_version_update"]
+
+    Returns None if no data_version_update is present.
+    """
+    if not isinstance(raw_result, dict):
+        return None
+
+    top_level = raw_result.get("data_version_update")
+    if top_level is not None:
+        return top_level
+
+    payload = raw_result.get("payload")
+    if isinstance(payload, dict):
+        from_payload = payload.get("data_version_update")
+        if from_payload is not None:
+            return from_payload
+
+    details = raw_result.get("details")
+    if isinstance(details, dict):
+        from_details = details.get("data_version_update")
+        if from_details is not None:
+            return from_details
+
+    return None
+
+
+def validate_data_version_update(
+    data_version_update: Any,
+) -> Optional[Dict[str, Any]]:
+    """
+    Validate mutating analysis_tool_plugins data_version_update.
+
+    Contract:
+    - valid update -> normalized dict
+    - invalid/malformed update -> None
+
+    Invalid updates must never set active_data_version_id to None.
+    """
+    if data_version_update is None:
+        return None
+
+    if not isinstance(data_version_update, dict):
+        return None
+
+    new_version = data_version_update.get("new_version")
+    active_data_version_id = data_version_update.get("active_data_version_id")
+
+    if not isinstance(new_version, dict):
+        return None
+
+    new_version_id = (
+        data_version_update.get("new_version_id")
+        or new_version.get("version_id")
+    )
+
+    if not new_version_id:
+        return None
+
+    if not active_data_version_id:
+        return None
+
+    if active_data_version_id != new_version_id:
+        return None
+
+    if not new_version.get("version_id"):
+        new_version["version_id"] = new_version_id
+
+    return {
+        **data_version_update,
+        "new_version_id": new_version_id,
+        "active_data_version_id": active_data_version_id,
+        "new_version": new_version,
+    }

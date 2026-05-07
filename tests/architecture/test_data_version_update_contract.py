@@ -1,8 +1,8 @@
-from core.graph import _validate_data_version_update
+from core.data_versions import validate_data_version_update
 
 
 def test_validate_data_version_update_rejects_none_active_version():
-    result = _validate_data_version_update({
+    result = validate_data_version_update({
         "old_version_id": "raw_v1",
         "new_version_id": None,
         "active_data_version_id": None,
@@ -13,7 +13,7 @@ def test_validate_data_version_update_rejects_none_active_version():
 
 
 def test_validate_data_version_update_requires_active_id_to_match_new_version_id():
-    result = _validate_data_version_update({
+    result = validate_data_version_update({
         "old_version_id": "raw_v1",
         "new_version_id": "data_v_1",
         "active_data_version_id": "data_v_other",
@@ -26,7 +26,7 @@ def test_validate_data_version_update_requires_active_id_to_match_new_version_id
 
 
 def test_validate_data_version_update_accepts_valid_update():
-    result = _validate_data_version_update({
+    result = validate_data_version_update({
         "old_version_id": "raw_v1",
         "new_version_id": "data_v_1",
         "active_data_version_id": "data_v_1",
