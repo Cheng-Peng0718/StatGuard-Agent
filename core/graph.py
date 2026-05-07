@@ -835,12 +835,59 @@ def human_review_node(state: GraphState):
 
     if isinstance(vr, dict):
         vr_details = vr.get("details", {}) or {}
+        vr_status = vr.get("status")
+        feedback = vr.get("feedback")
     else:
         vr_details = getattr(vr, "details", {}) or {}
+        vr_status = getattr(vr, "status", None)
+        feedback = getattr(vr, "feedback", None)
 
     canonical_arguments = vr_details.get("canonical_arguments") or arguments
-    vr_status = getattr(vr, "status", None)
-    feedback = getattr(vr, "feedback", None)
+
+    human_review_decision = state.get("human_review_decision")
+
+    # Case -1: backend/user explicitly approved a needs_review action.
+    # This is the approval bridge for mutating tools such as clean_data.
+    # Do NOT create a rejection observation here, because execute_node's
+    # fingerprint gate treats prior observations as executed/attempted actions.
+    if vr_status == "needs_review" and human_review_decision == "approved":
+        print("[HUMAN REVIEW] User approved needs_review action; routing to execute.")
+
+        approved_feedback = (
+            "Human review approved this action for execution."
+        )
+
+
+        if isinstance(vr, dict):
+            approved_vr = {
+                **vr,
+                "status": "allowed",
+                "feedback": approved_feedback,
+            }
+
+        elif hasattr(vr, "model_copy"):
+            approved_vr = vr.model_copy(
+                update={
+                    "status": "allowed",
+                    "feedback": approved_feedback,
+                }
+            )
+
+        else:
+            approved_vr = vr
+            try:
+                approved_vr.status = "allowed"
+                approved_vr.feedback = approved_feedback
+            except Exception:
+                pass
+
+        return {
+            "current_verification": approved_vr,
+            "human_review_required": False,
+            "pending_action": None,
+            "human_review_decision": None,
+            "current_action": action,
+        }
 
     # Case 0: user approved the pending action.
     # Because the graph was interrupted before human_review,
