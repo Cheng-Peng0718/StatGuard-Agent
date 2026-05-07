@@ -164,3 +164,27 @@ def test_app_v2_renders_pending_data_cleaning_block():
 
     assert "blocked_pending_data_cleaning" in text
     assert "waiting for data cleaning" in text
+
+def test_app_v2_smoke_flow_uses_controller_boundary():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    assert "submit_ui_event" in text
+    assert "apply_ui_event_to_state" in text
+    assert "run_backend_turn" in text
+    assert "build_ui_snapshot" in text
+
+    forbidden = [
+        "verify_node(",
+        "execute_node(",
+        "summarize_node(",
+        "execute_pending_plan_node(",
+        "plan_only_node(",
+    ]
+
+    offenders = [
+        item
+        for item in forbidden
+        if item in text
+    ]
+
+    assert offenders == []

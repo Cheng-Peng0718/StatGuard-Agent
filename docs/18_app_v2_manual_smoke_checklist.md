@@ -400,3 +400,12 @@ If a failure occurs:
 
 Do not add business logic to `ui/app_v2.py` to hide backend bugs.
 
+
+# First successful smoke result
+
+The first successful App V2 manual smoke result is recorded in:
+
+```text
+docs/19_app_v2_manual_smoke_results.md
+```
+That document is now the reference for the current manually verified App V2 baseline.
