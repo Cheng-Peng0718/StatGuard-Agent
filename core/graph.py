@@ -1038,23 +1038,13 @@ def summarize_node(state: GraphState):
 
     # Phase 3: append successful tool result to Analysis Results registry.
     # Put this AFTER data_version_update so mutating tools record the new data version.
+    #
+    # S12B:
+    # AnalysisRun must be built from the canonical Observation contract,
+    # not from scattered local variables.
     if status in {"ok", "warning"} and tool_name not in {"unknown_tool"}:
-        analysis_run_data_version_id = refined_observation.get(
-            "data_version_id",
-            state.get("active_data_version_id"),
-        )
-
         analysis_run = build_analysis_run_from_observation(
-            tool_name=tool_name,
-            action_id=getattr(current_action, "action_id", "unknown"),
-            arguments=arguments,
-            data_version_id=analysis_run_data_version_id,
-            status=status,
-            success=success,
-            message=message,
-            payload=payload,
-            artifacts=artifacts,
-            observation_id=refined_observation["observation_id"],
+            observation=refined_observation,
         )
 
         existing_runs = state.get("analysis_runs", []) or []

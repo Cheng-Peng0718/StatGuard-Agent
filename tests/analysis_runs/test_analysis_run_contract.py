@@ -145,3 +145,23 @@ def test_analysis_run_keeps_guardrails_if_present():
             "message": "Residuals may be non-normal.",
         }
     ]
+
+def test_analysis_run_observation_contract_keeps_plugin_summary_separate():
+    observation = {
+        "observation_id": "obs_123",
+        "tool_name": "get_summary_stats",
+        "arguments": {},
+        "status": "ok",
+        "success": True,
+        "message": "Canonical message.",
+        "summary": "Canonical summary.",
+        "data_version_id": "raw_v1",
+        "artifacts": [],
+        "structured_data": {},
+        "raw_data": {},
+    }
+
+    run = build_analysis_run_from_observation(observation=observation)
+
+    assert run["summary"] == "Canonical summary."
+    assert "plugin_summary" in run
