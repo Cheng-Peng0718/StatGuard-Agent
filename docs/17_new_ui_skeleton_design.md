@@ -303,7 +303,7 @@ S17A: document new UI skeleton design.
 S17B: create backend controller contract.
 S17C: create ui/app_v2.py skeleton with no business logic. Completed: ui/app_v2.py now renders UISnapshot sections and sends UIEvent objects through the backend controller.
 S17D: add dataset upload boundary through prepare_uploaded_dataset_state. Completed.
-S17E: wire user_message and run_plan events.
+S17E: create App V2 manual smoke checklist. Completed.
 S17F: wire human_review approve/reject events.
 S17G: run manual UI smoke tests.
 S17H: freeze or delete legacy app.py.
@@ -335,4 +335,14 @@ updates = prepare_uploaded_dataset_state(
 )
 backend_state.update(updates)
 ```
+
+## Manual smoke checklist
+
+Before manually running the new UI, follow:
+
+```text
+docs/18_app_v2_manual_smoke_checklist.md
+```
+
+Manual UI testing should follow the checklist and should not introduce backend business logic into `ui/app_v2.py`.
 
