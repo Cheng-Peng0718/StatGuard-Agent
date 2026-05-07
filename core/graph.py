@@ -42,6 +42,7 @@ from core.repair.attempts import (
     make_repair_attempt,
 )
 from core.repair.proposal_generator import generate_repair_proposal
+from core.audit.state_serialization import audit_state_serialization
 
 def _as_plain_dict(obj):
     if obj is None:
@@ -100,6 +101,52 @@ def _merge_state_for_audit(state: GraphState, updates: dict) -> dict:
 
     return merged
 
+def _compact_state_serialization_audit(audit_result) -> dict:
+    """
+    Store only compact serialization-audit metadata in GraphState.
+
+    Do NOT store audit_result.safe_state inside GraphState, because that would
+    duplicate the entire state and can create huge nested state snapshots.
+    """
+    return {
+        "status": audit_result.status,
+        "n_issues": len(audit_result.issues),
+        "issues": [
+            issue.model_dump()
+            if hasattr(issue, "model_dump")
+            else dict(issue)
+            for issue in audit_result.issues
+        ],
+    }
+
+
+def _attach_state_serialization_audit(state: GraphState, updates: dict) -> dict:
+    """
+    Observe-only serialization audit.
+
+    This does not mutate business state, does not block routing, and does not
+    persist the full safe_state. It only records whether the post-update state
+    contains objects that may be unsafe for checkpoint/UI serialization.
+    """
+    audit_state = dict(state)
+    audit_state.update(updates)
+
+    # Avoid recursively auditing/storing older audit snapshots.
+    audit_state.pop("state_serialization_audit", None)
+
+    audit_result = audit_state_serialization(audit_state)
+    updates["state_serialization_audit"] = _compact_state_serialization_audit(
+        audit_result
+    )
+
+    if audit_result.status != "ok":
+        print("\n" + "=" * 40)
+        print("[STATE SERIALIZATION AUDIT]")
+        print(updates["state_serialization_audit"])
+        print("=" * 40 + "\n")
+
+    return updates
+
 
 def _attach_execution_audit(state: GraphState, updates: dict) -> dict:
     """
@@ -118,7 +165,7 @@ def _attach_execution_audit(state: GraphState, updates: dict) -> dict:
         print(audit_result.model_dump())
         print("=" * 40 + "\n")
 
-    return updates
+    return _attach_state_serialization_audit(state, updates)
 
 def _attach_repair_decision(state: GraphState, updates: dict) -> dict:
     """
