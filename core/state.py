@@ -35,3 +35,4 @@ class GraphState(TypedDict):
     plan_status: str
     final_answer: str
     assistant_response: dict
+    execution_audit: dict

@@ -29,7 +29,7 @@ from core.planning.execution_queue import (
 )
 from core.deliverables.gate import evaluate_deliverable_gate_state
 from core.deliverables.evidence import extract_final_answer_content_from_state
-
+from core.audit.execution_state import audit_execution_state
 
 def _as_plain_dict(obj):
     if obj is None:
@@ -140,6 +140,49 @@ def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
         return pd.read_excel(path)
 
     raise ValueError(f"Unsupported active data file type for profiling: {path}")
+
+def _merge_state_for_audit(state: GraphState, updates: dict) -> dict:
+    """
+    Build a best-effort post-node state snapshot for backend audit.
+
+    This does not mutate graph state. It only gives audit_execution_state()
+    a view of what state will look like after this node's updates.
+    """
+    merged = dict(state)
+
+    for key, value in updates.items():
+        if key in {"observations", "analysis_runs", "data_versions", "data_audit_log"}:
+            old_value = merged.get(key, []) or []
+            new_value = value or []
+
+            if isinstance(old_value, list) and isinstance(new_value, list):
+                merged[key] = old_value + new_value
+            else:
+                merged[key] = value
+        else:
+            merged[key] = value
+
+    return merged
+
+
+def _attach_execution_audit(state: GraphState, updates: dict) -> dict:
+    """
+    Run backend execution-state audit after a node update.
+
+    S11B is observe-only: audit findings are recorded but do not alter routing.
+    """
+    audit_state = _merge_state_for_audit(state, updates)
+    audit_result = audit_execution_state(audit_state)
+
+    updates["execution_audit"] = audit_result.model_dump()
+
+    if audit_result.status != "ok":
+        print("\n" + "=" * 40)
+        print("[EXECUTION AUDIT]")
+        print(audit_result.model_dump())
+        print("=" * 40 + "\n")
+
+    return updates
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):
@@ -1045,7 +1088,7 @@ def summarize_node(state: GraphState):
             f"marked as {'completed' if success else 'failed'}"
         )
 
-    return updates
+    return _attach_execution_audit(state, updates)
 
 
 def final_response_node(state: GraphState):
