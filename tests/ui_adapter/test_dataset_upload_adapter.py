@@ -118,3 +118,34 @@ def test_prepare_uploaded_dataset_state_rejects_empty_dataset(tmp_path):
             workspace_dir=str(tmp_path / "workspace"),
             filename="empty.csv",
         )
+
+def test_prepare_uploaded_dataset_state_creates_dataset_summary(tmp_path):
+    df = pd.DataFrame({
+        "GPA": [3.0, 3.2, None, 3.8, 4.0],
+        "SATM": [600, None, 650, 680, 700],
+        "Sex": ["F", "M", "F", "M", "F"],
+    })
+
+    updates = prepare_uploaded_dataset_state(
+        df=df,
+        workspace_dir=str(tmp_path / "workspace"),
+        filename="test_data.csv",
+    )
+
+    assert "dataset_summary" in updates
+
+    summary = updates["dataset_summary"]
+
+    assert summary["data_version_id"] == "raw_v1"
+    assert summary["n_rows"] == 5
+    assert summary["n_cols"] == 3
+
+    assert summary["numeric_columns"] == ["GPA", "SATM"]
+    assert summary["categorical_columns"] == ["Sex"]
+    assert summary["binary_columns"] == ["Sex"]
+
+    assert summary["missingness_summary"]["n_columns_with_missing"] == 2
+    assert "GPA" in summary["missingness_summary"]["missing_by_column"]
+    assert "SATM" in summary["missingness_summary"]["missing_by_column"]
+
+    json.dumps(summary)

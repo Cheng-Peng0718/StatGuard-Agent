@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any, Dict
 
+# Ensure project root is importable when Streamlit runs this file from ui/.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+import pandas as pd
 import streamlit as st
 
 from core.controller.backend_turn import run_backend_turn
+from core.ui_adapter.dataset_upload import prepare_uploaded_dataset_state
 from core.ui_adapter.events import (
     apply_ui_event_to_state,
     make_approve_human_review_event,
@@ -13,10 +23,6 @@ from core.ui_adapter.events import (
     make_user_message_event,
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
-
-import pandas as pd
-
-from core.ui_adapter.dataset_upload import prepare_uploaded_dataset_state
 
 APP_TITLE = "Analysis Agent V2"
 

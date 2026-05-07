@@ -108,3 +108,22 @@ def test_app_v2_upload_uses_dataset_upload_adapter():
     ]
 
     assert offenders == []
+
+def test_app_v2_bootstraps_project_root_before_core_imports():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    bootstrap_idx = None
+    first_core_import_idx = None
+
+    for idx, line in enumerate(lines):
+        if "sys.path.insert" in line:
+            bootstrap_idx = idx
+
+        if line.startswith("from core.") or line.startswith("import core."):
+            first_core_import_idx = idx
+            break
+
+    assert bootstrap_idx is not None
+    assert first_core_import_idx is not None
+    assert bootstrap_idx < first_core_import_idx
