@@ -33,6 +33,7 @@ def render_plan_timeline(snapshot: Dict[str, Any]) -> None:
 
     plan_section = snapshot.get("plan") or {}
     pending_plan = plan_section.get("pending_plan")
+    current_step_id = plan_section.get("current_plan_step_id")
 
     st.caption(f"Status: `{plan_section.get('plan_status')}`")
     st.caption(f"Execution: `{plan_section.get('plan_execution_status')}`")
@@ -49,9 +50,12 @@ def render_plan_timeline(snapshot: Dict[str, Any]) -> None:
             title = _compact_title(step)
             tool = step.get("tool_name")
             status = step.get("status")
+            step_id = step.get("step_id")
+
+            active_marker = " ← current" if step_id == current_step_id else ""
 
             st.markdown(
-                f"{icon} **{title}**  \n"
+                f"{icon} **{title}**{active_marker}  \n"
                 f"<span class='app-v3-muted'>`{tool}` · `{status}`</span>",
                 unsafe_allow_html=True,
             )

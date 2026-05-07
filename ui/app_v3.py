@@ -19,6 +19,7 @@ from core.ui_adapter.events import (
     make_approve_human_review_event,
     make_reject_human_review_event,
     make_run_plan_event,
+    make_update_plan_step_choices_event,
     make_user_message_event,
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
@@ -160,6 +161,14 @@ def on_dataset_upload(df: pd.DataFrame, filename: str) -> None:
         refresh_snapshot()
 
 
+def on_save_choices(step_id: str, choices: Dict[str, Any]) -> None:
+    submit_ui_event(
+        make_update_plan_step_choices_event(
+            step_id=step_id,
+            choices=choices,
+        )
+    )
+
 def on_run_plan() -> None:
     submit_ui_event(make_run_plan_event())
 
@@ -227,6 +236,7 @@ def main() -> None:
         render_active_workspace(
             snapshot=snapshot,
             on_dataset_upload=on_dataset_upload,
+            on_save_choices=on_save_choices,
         )
 
     with right:

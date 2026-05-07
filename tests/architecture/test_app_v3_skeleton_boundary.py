@@ -77,3 +77,44 @@ def test_app_v3_mentions_one_screen_sections():
 
     for item in required:
         assert item in text
+
+def test_app_v3_active_workspace_renders_choice_controls():
+    text = Path("ui/components/active_workspace.py").read_text(encoding="utf-8")
+
+    required = [
+        "render_choice_form",
+        "on_save_choices",
+        "required_user_choices",
+        "Save choices for this step",
+        "st.form",
+        "multiselect",
+        "selectbox",
+    ]
+
+    for item in required:
+        assert item in text
+
+
+def test_app_v3_active_workspace_prioritizes_human_review():
+    text = Path("ui/components/active_workspace.py").read_text(encoding="utf-8")
+
+    assert "determine_active_focus" in text
+    assert "human_review.get(\"required\")" in text
+    assert "return \"human_review\"" in text
+    assert "render_human_review_focus" in text
+
+
+def test_app_v3_uses_update_plan_step_choices_event():
+    text = Path("ui/app_v3.py").read_text(encoding="utf-8")
+
+    assert "make_update_plan_step_choices_event" in text
+    assert "def on_save_choices" in text
+    assert "on_save_choices=on_save_choices" in text
+
+
+def test_app_v3_action_bar_prioritizes_human_review_message():
+    text = Path("ui/components/action_bar.py").read_text(encoding="utf-8")
+
+    assert "Human review is required" in text
+    assert "Approve" in text
+    assert "Reject" in text
