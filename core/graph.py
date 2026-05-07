@@ -68,57 +68,41 @@ def _extract_data_version_update(raw_execution):
 
 
 def _validate_data_version_update(data_version_update):
-    """
-    Hard validation for mutating analysis_tool_plugins.
-
-    Mutating plugins must return:
-    {
-        "new_version": {...},
-        "active_data_version_id": new_version["version_id"],
-        "audit_event": {...} | None
-    }
-    """
-    if data_version_update is None:
+    if not data_version_update:
         return None
 
     if not isinstance(data_version_update, dict):
-        raise ValueError(
-            "Invalid data_version_update: expected dict from analysis_tool_plugins."
-        )
+        return None
 
     new_version = data_version_update.get("new_version")
-    new_active_id = data_version_update.get("active_data_version_id")
-    audit_event = data_version_update.get("audit_event")
+    active_data_version_id = data_version_update.get("active_data_version_id")
 
     if not isinstance(new_version, dict):
-        raise ValueError(
-            "Invalid data_version_update: missing `new_version` dict. "
-            "Mutating plugins must return "
-            "{'new_version', 'active_data_version_id', 'audit_event'}."
-        )
+        return None
 
-    if not new_active_id:
-        raise ValueError(
-            "Invalid data_version_update: missing `active_data_version_id`."
-        )
+    new_version_id = (
+        data_version_update.get("new_version_id")
+        or new_version.get("version_id")
+    )
 
-    if new_version.get("version_id") != new_active_id:
-        raise ValueError(
-            "Invalid data_version_update: "
-            "`new_version.version_id` does not match `active_data_version_id`."
-        )
+    if not new_version_id:
+        return None
 
-    if not new_version.get("path"):
-        raise ValueError(
-            "Invalid data_version_update: new_version is missing `path`."
-        )
+    if not active_data_version_id:
+        return None
+
+    if active_data_version_id != new_version_id:
+        return None
+
+    if not new_version.get("version_id"):
+        new_version["version_id"] = new_version_id
 
     return {
+        **data_version_update,
+        "new_version_id": new_version_id,
+        "active_data_version_id": active_data_version_id,
         "new_version": new_version,
-        "active_data_version_id": new_active_id,
-        "audit_event": audit_event,
     }
-
 
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
