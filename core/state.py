@@ -39,3 +39,4 @@ class GraphState(TypedDict):
     repair_decision: dict
     repair_attempts: list
     repair_proposal: dict
+    state_serialization_audit: dict
