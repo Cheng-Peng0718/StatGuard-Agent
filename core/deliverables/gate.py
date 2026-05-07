@@ -99,6 +99,48 @@ def _available_artifact_kinds(analysis_runs: List[Dict[str, Any]]) -> set[str]:
 
     return kinds
 
+def _get_execution_audit(state: Any) -> Dict[str, Any]:
+    return as_dict(get_state_value(state, "execution_audit", {}))
+
+
+def _execution_audit_codes_by_severity(
+    execution_audit: Dict[str, Any],
+    severity: str,
+) -> List[str]:
+    issues = execution_audit.get("issues", []) or []
+    codes = []
+
+    for issue in issues:
+        issue_dict = as_dict(issue)
+
+        if issue_dict.get("severity") == severity:
+            code = issue_dict.get("code")
+
+            if code:
+                codes.append(str(code))
+
+    return sorted(set(codes))
+
+
+def _execution_audit_blockers(execution_audit: Dict[str, Any]) -> List[str]:
+    audit_status = execution_audit.get("status")
+
+    if audit_status != "error":
+        return []
+
+    error_codes = _execution_audit_codes_by_severity(
+        execution_audit,
+        severity="error",
+    )
+
+    if not error_codes:
+        return ["execution_audit:unknown_error"]
+
+    return [
+        f"execution_audit:{code}"
+        for code in error_codes
+    ]
+
 
 def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     """
@@ -109,6 +151,25 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     """
     contract = _get_contract(state)
 
+    execution_audit = _get_execution_audit(state)
+    execution_audit_status = execution_audit.get("status")
+
+    execution_audit_error_codes = _execution_audit_codes_by_severity(
+        execution_audit,
+        severity="error",
+    )
+    execution_audit_warning_codes = _execution_audit_codes_by_severity(
+        execution_audit,
+        severity="warning",
+    )
+    execution_audit_blockers = _execution_audit_blockers(execution_audit)
+
+    execution_audit_evidence = {
+        "execution_audit_status": execution_audit_status,
+        "execution_audit_error_codes": execution_audit_error_codes,
+        "execution_audit_warning_codes": execution_audit_warning_codes,
+    }
+
     has_contract = any([
         contract.required_tools,
         contract.required_artifacts,
@@ -117,6 +178,22 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     ])
 
     if not has_contract:
+        if execution_audit_blockers:
+            return DeliverableGateResult(
+                status="needs_more_work",
+                message=(
+                    "Execution state audit found errors. "
+                    "Do not produce a final answer until backend state is consistent."
+                ),
+                satisfied=[],
+                missing=[],
+                blocked=execution_audit_blockers,
+                evidence={
+                    "task_contract_present": False,
+                    **execution_audit_evidence,
+                },
+            )
+
         return DeliverableGateResult(
             status="ok",
             message="No task_contract declared.",
@@ -125,6 +202,7 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
             blocked=[],
             evidence={
                 "task_contract_present": False,
+                **execution_audit_evidence,
             },
         )
 
@@ -156,6 +234,7 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
         "has_final_answer_text": bool(final_answer_text),
         "satisfied_deliverable_names": sorted(satisfied_deliverable_names),
         "satisfied_criterion_names": sorted(satisfied_criterion_names),
+        **execution_audit_evidence,
     }
 
     satisfied = []
@@ -206,11 +285,15 @@ def evaluate_deliverable_gate_state(state: Any) -> DeliverableGateResult:
     for tool_name in failed_required:
         blocked.append(f"tool_failed:{tool_name}")
 
+    for blocker in execution_audit_blockers:
+        if blocker not in blocked:
+            blocked.append(blocker)
+
     if blocked:
         return DeliverableGateResult(
             status="needs_more_work",
             message=(
-                "Some required analysis tools failed or produced unusable results. "
+                "Required backend evidence is blocked by failed tools or execution-state errors. "
                 "Do not produce a final answer yet."
             ),
             satisfied=satisfied,

@@ -193,3 +193,83 @@ def test_get_explicit_satisfied_deliverables_and_criteria():
 
     assert "mention limitations" in get_satisfied_criterion_names(state)
     assert "contains:p-value" in get_satisfied_criterion_names(state)
+
+def test_deliverable_gate_blocks_when_execution_audit_has_error_without_contract():
+    result = evaluate_deliverable_gate_state({
+        "execution_audit": {
+            "status": "error",
+            "issues": [
+                {
+                    "severity": "error",
+                    "code": "ACTIVE_DATA_VERSION_NOT_REGISTERED",
+                    "message": "active_data_version_id is invalid.",
+                }
+            ],
+        },
+    })
+
+    assert result.status == "needs_more_work"
+    assert "execution_audit:ACTIVE_DATA_VERSION_NOT_REGISTERED" in result.blocked
+    assert result.evidence["execution_audit_status"] == "error"
+
+
+def test_deliverable_gate_blocks_when_execution_audit_has_error_even_if_tools_succeeded():
+    result = evaluate_deliverable_gate_state({
+        "task_contract": {
+            "required_tools": ["get_summary_stats"],
+        },
+        "analysis_runs": [
+            {
+                "tool_name": "get_summary_stats",
+                "status": "ok",
+                "success": True,
+            }
+        ],
+        "execution_audit": {
+            "status": "error",
+            "issues": [
+                {
+                    "severity": "error",
+                    "code": "ANALYSIS_RUN_REFERENCES_UNKNOWN_OBSERVATION",
+                    "message": "analysis_run references missing observation.",
+                }
+            ],
+        },
+    })
+
+    assert result.status == "needs_more_work"
+    assert "tool:get_summary_stats" in result.satisfied
+    assert "execution_audit:ANALYSIS_RUN_REFERENCES_UNKNOWN_OBSERVATION" in result.blocked
+
+
+def test_deliverable_gate_does_not_block_on_execution_audit_warning():
+    result = evaluate_deliverable_gate_state({
+        "task_contract": {
+            "required_tools": ["get_summary_stats"],
+        },
+        "analysis_runs": [
+            {
+                "tool_name": "get_summary_stats",
+                "status": "ok",
+                "success": True,
+            }
+        ],
+        "execution_audit": {
+            "status": "warning",
+            "issues": [
+                {
+                    "severity": "warning",
+                    "code": "SUCCESSFUL_ANALYSIS_RUN_MISSING_DATA_VERSION",
+                    "message": "run missing data_version_id.",
+                }
+            ],
+        },
+    })
+
+    assert result.status == "ok"
+    assert result.blocked == []
+    assert result.evidence["execution_audit_status"] == "warning"
+    assert (
+        "SUCCESSFUL_ANALYSIS_RUN_MISSING_DATA_VERSION"
+        in result.evidence["execution_audit_warning_codes"]
+    )
