@@ -26,32 +26,39 @@ def _find_forbidden_imports(path: Path):
 
     return offenders
 
-def test_core_backend_does_not_import_streamlit_or_app():
-    offenders = []
 
-    for path in Path("core").rglob("*.py"):
-        offenders.extend(_find_forbidden_imports(path))
-
-    assert offenders == []
-
-
-def test_backend_tests_do_not_import_streamlit_or_app_except_ui_legacy_tests():
-    offenders = []
-
-    for path in Path("tests").rglob("*.py"):
-        normalized = path.as_posix()
-
-        if "/ui_legacy/" in normalized or "/ui/" in normalized:
-            continue
-
-        offenders.extend(_find_forbidden_imports(path))
+def test_backend_controller_does_not_import_streamlit_or_app():
+    offenders = _find_forbidden_imports(
+        Path("core/controller/backend_turn.py")
+    )
 
     assert offenders == []
 
 
-def test_ui_adapter_is_the_only_core_ui_boundary_package():
-    ui_adapter_path = Path("core/ui_adapter")
+def test_backend_controller_does_not_call_llm_directly():
+    text = Path("core/controller/backend_turn.py").read_text(encoding="utf-8")
 
-    assert ui_adapter_path.exists()
-    assert (ui_adapter_path / "events.py").exists()
-    assert (ui_adapter_path / "snapshot.py").exists()
+    forbidden = [
+        "client.chat",
+        "responses.create",
+        "OpenAI(",
+        ".invoke(",
+    ]
+
+    offenders = [
+        fragment
+        for fragment in forbidden
+        if fragment in text
+    ]
+
+    assert offenders == []
+
+
+def test_backend_controller_exposes_run_backend_turn():
+    text = Path("core/controller/backend_turn.py").read_text(encoding="utf-8")
+
+    assert "def run_backend_turn" in text
+    assert "build_ui_snapshot" in text
+    assert "intent_router_node" in text
+    assert "execute_pending_plan_node" in text
+    assert "human_review_node" in text

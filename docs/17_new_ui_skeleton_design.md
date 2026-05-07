@@ -264,7 +264,13 @@ Instead, it should call a thin backend controller function such as:
 run_backend_turn(backend_state)
 ```
 
-That controller is future work.
+That controller is implemented as:
+
+```python
+from core.controller.backend_turn import run_backend_turn
+```
+
+The UI should call run_backend_turn(backend_state) after applying a UI event.
 
 For now, the UI skeleton should only depend on:
 
