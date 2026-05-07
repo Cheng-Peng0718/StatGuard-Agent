@@ -7,6 +7,17 @@ from core.analysis_tool_plugins.base import ApplicabilityResult
 from core.dataset_intelligence.schemas import DatasetProfileV2
 from core.planning.schemas import PlanProposal, PlanStep
 
+NO_ROLE_READY_TOOLS = {
+    "get_summary_stats",
+    "missingness_report",
+    "get_correlation_matrix",
+}
+
+AUTO_READY_TOOLS = {
+    "get_summary_stats",
+    "missingness_report",
+    "get_correlation_matrix",
+}
 
 def _as_list(value: Any) -> List[Any]:
     if value is None:
@@ -38,14 +49,54 @@ def _verify_variable_roles(step: PlanStep, profile: DatasetProfileV2, plugin) ->
     """
     role_specs = getattr(plugin, "variable_roles", []) or []
 
+    if step.tool_name in AUTO_READY_TOOLS:
+        step.required_user_choices = [
+            choice
+            for choice in (step.required_user_choices or [])
+            if choice != "analysis variables"
+        ]
+
+        step.warnings = [
+            warning
+            for warning in (step.warnings or [])
+            if "Plugin has no variable role contract" not in warning
+        ]
+
     if not role_specs:
+        if (
+                step.tool_name in NO_ROLE_READY_TOOLS
+                and step.status not in {"blocked", "not_applicable"}
+        ):
+            step.status = "ready"
+            step.execution_ready = True
+
+            step.required_user_choices = [
+                choice
+                for choice in (step.required_user_choices or [])
+                if choice != "analysis variables"
+            ]
+
+            step.warnings = [
+                warning
+                for warning in (step.warnings or [])
+                if "Plugin has no variable role contract" not in warning
+            ]
+
+            step.arguments = step.arguments or {}
+
+            return step
+
         if step.status == "ready":
             step.status = "needs_user_choice"
             step.execution_ready = False
-            step.required_user_choices.append("analysis variables")
+
+            if "analysis variables" not in step.required_user_choices:
+                step.required_user_choices.append("analysis variables")
+
             step.warnings.append(
                 "Plugin has no variable role contract; cannot mark step execution-ready from planning."
             )
+
         return step
 
     all_roles_ready = True

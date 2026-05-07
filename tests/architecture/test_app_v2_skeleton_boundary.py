@@ -127,3 +127,11 @@ def test_app_v2_bootstraps_project_root_before_core_imports():
     assert bootstrap_idx is not None
     assert first_core_import_idx is not None
     assert bootstrap_idx < first_core_import_idx
+
+def test_app_v2_renders_blocked_no_ready_steps_message():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    assert "blocked_no_ready_steps" in text
+    assert "No executable plan step is currently ready" in text
+    assert "required_user_choices" in text
+    assert "candidate_variables" in text

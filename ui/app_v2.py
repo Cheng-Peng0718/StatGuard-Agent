@@ -239,6 +239,14 @@ def render_plan_panel(snapshot: Dict[str, Any]) -> None:
             f"Execution status: `{plan_section.get('plan_execution_status')}`"
         )
 
+    execution_status = plan_section.get("plan_execution_status")
+
+    if execution_status == "blocked_no_ready_steps":
+        st.warning(
+            "No executable plan step is currently ready. "
+            "Some remaining steps need user-selected variables before they can run."
+        )
+
     if not pending_plan:
         st.info("No pending plan.")
         return
@@ -255,6 +263,23 @@ def render_plan_panel(snapshot: Dict[str, Any]) -> None:
             reason = step.get("reason")
             if reason:
                 st.caption(reason)
+
+                required_choices = step.get("required_user_choices") or []
+                if required_choices:
+                    st.warning(
+                        "Needs user choices: "
+                        + ", ".join(required_choices)
+                    )
+
+                candidate_variables = step.get("candidate_variables") or {}
+                if candidate_variables:
+                    with st.expander("Candidate variables", expanded=False):
+                        st.json(candidate_variables)
+
+                arguments = step.get("arguments") or {}
+                if arguments:
+                    with st.expander("Arguments", expanded=False):
+                        st.json(arguments)
 
 
 def render_human_review_panel(snapshot: Dict[str, Any]) -> None:
