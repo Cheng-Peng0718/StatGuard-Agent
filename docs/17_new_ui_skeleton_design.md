@@ -294,3 +294,17 @@ The new UI must not:
 8. Import legacy app.py.
 ```
 
+# Migration plan
+
+Recommended sequence:
+
+```text
+S17A: document new UI skeleton design.
+S17B: create backend controller contract.
+S17C: create ui/app_v2.py skeleton with no business logic. Completed: ui/app_v2.py now renders UISnapshot sections and sends UIEvent objects through the backend controller.
+S17D: render ui_snapshot sections.
+S17E: wire user_message and run_plan events.
+S17F: wire human_review approve/reject events.
+S17G: run manual UI smoke tests.
+S17H: freeze or delete legacy app.py.
+```
