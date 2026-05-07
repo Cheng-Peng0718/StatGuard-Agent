@@ -41,6 +41,7 @@ from core.repair.attempts import (
     can_attempt_repair,
     make_repair_attempt,
 )
+from core.repair.proposal_generator import generate_repair_proposal
 
 def _as_plain_dict(obj):
     if obj is None:
@@ -139,7 +140,49 @@ def _attach_repair_decision(state: GraphState, updates: dict) -> dict:
         print(decision.model_dump())
         print("=" * 40 + "\n")
 
+    updates = _attach_repair_proposal(state, updates)
     return _attach_repair_attempt_if_allowed(state, updates)
+
+def _attach_repair_proposal(state: GraphState, updates: dict) -> dict:
+    """
+    Observe-only repair proposal generation.
+
+    S13G does not apply repairs, retry tools, call LLMs, or change routing.
+    It only records what deterministic repair proposal would be available.
+    """
+    repair_state = dict(state)
+    pre_update_action = repair_state.get("current_action")
+
+    repair_state.update(updates)
+
+    repair_decision = updates.get("repair_decision") or repair_state.get("repair_decision")
+
+    if not isinstance(repair_decision, dict):
+        return updates
+
+    if repair_decision.get("status") == "no_repair_needed":
+        return updates
+
+    # summarize_node may clear current_action in updates.
+    # The proposal still needs the original source action.
+    current_action = repair_state.get("current_action") or pre_update_action
+
+    if current_action is None:
+        return updates
+
+    proposal = generate_repair_proposal(
+        repair_decision=repair_decision,
+        current_action=current_action,
+    )
+
+    updates["repair_proposal"] = proposal
+
+    print("\n" + "=" * 40)
+    print("[REPAIR PROPOSAL]")
+    print(proposal)
+    print("=" * 40 + "\n")
+
+    return updates
 
 def _attach_repair_attempt_if_allowed(state: GraphState, updates: dict) -> dict:
     """
@@ -1129,6 +1172,7 @@ def summarize_node(state: GraphState):
         print(repair_decision.model_dump())
         print("=" * 40 + "\n")
 
+    updates = _attach_repair_proposal(repair_state, updates)
     updates = _attach_repair_attempt_if_allowed(repair_state, updates)
 
     return _attach_execution_audit(state, updates)
