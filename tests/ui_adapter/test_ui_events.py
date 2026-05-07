@@ -139,3 +139,92 @@ def test_normalize_ui_event_fills_missing_metadata_and_event_id():
     assert event["metadata"] == {}
 
     json.dumps(event)
+
+def test_update_plan_step_choices_event_updates_pending_plan_step():
+    state = {
+        "pending_plan": {
+            "plan_id": "plan_1",
+            "steps": [
+                {
+                    "step_id": "s1",
+                    "tool_name": "run_multiple_regression",
+                    "status": "needs_user_choice",
+                    "execution_ready": False,
+                    "execution_status": "not_started",
+                    "variables": {},
+                    "arguments": {},
+                    "required_user_choices": ["target_col", "feature_cols"],
+                }
+            ],
+        }
+    }
+
+    event = {
+        "event_type": "update_plan_step_choices",
+        "payload": {
+            "step_id": "s1",
+            "choices": {
+                "target_col": "GPA",
+                "feature_cols": ["SATM"],
+            },
+        },
+    }
+
+    updates = apply_ui_event_to_state(state, event)
+
+    step = updates["pending_plan"]["steps"][0]
+
+    assert step["status"] == "ready"
+    assert step["execution_ready"] is True
+    assert step["required_user_choices"] == []
+
+    assert step["variables"]["target_col"] == "GPA"
+    assert step["variables"]["feature_cols"] == ["SATM"]
+    assert step["arguments"]["target_col"] == "GPA"
+    assert step["arguments"]["feature_cols"] == ["SATM"]
+
+    assert updates["assistant_response"]["response_type"] == "plan_step_choices_updated"
+
+    json.dumps(updates)
+
+def test_update_plan_step_choices_supports_clean_data_choices():
+    state = {
+        "pending_plan": {
+            "plan_id": "plan_clean",
+            "steps": [
+                {
+                    "step_id": "s_clean",
+                    "tool_name": "clean_data",
+                    "status": "needs_user_choice",
+                    "execution_ready": False,
+                    "execution_status": "not_started",
+                    "variables": {},
+                    "arguments": {},
+                    "required_user_choices": ["action_type", "strategy", "columns"],
+                }
+            ],
+        }
+    }
+
+    event = {
+        "event_type": "update_plan_step_choices",
+        "payload": {
+            "step_id": "s_clean",
+            "choices": {
+                "action_type": "drop",
+                "strategy": "rows",
+                "columns": ["GPA", "SATM"],
+            },
+        },
+    }
+
+    updates = apply_ui_event_to_state(state, event)
+
+    step = updates["pending_plan"]["steps"][0]
+
+    assert step["status"] == "ready"
+    assert step["execution_ready"] is True
+    assert step["required_user_choices"] == []
+    assert step["arguments"]["action_type"] == "drop"
+    assert step["arguments"]["strategy"] == "rows"
+    assert step["arguments"]["columns"] == ["GPA", "SATM"]

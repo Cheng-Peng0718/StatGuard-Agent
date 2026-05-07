@@ -43,6 +43,8 @@ from core.repair.attempts import (
 )
 from core.repair.proposal_generator import generate_repair_proposal
 from core.audit.state_serialization import audit_state_serialization
+from core.dataset_intelligence.schemas import DatasetProfileV2
+from core.planning.dependencies import modeling_blocked_by_pending_cleaning
 
 def _as_plain_dict(obj):
     if obj is None:
@@ -638,6 +640,47 @@ def execute_pending_plan_node(state: GraphState):
         })
 
         return updates
+
+    profile_dict = state.get("dataset_profile_v2")
+
+    if profile_dict:
+        dataset_profile = DatasetProfileV2.model_validate(profile_dict)
+
+        if modeling_blocked_by_pending_cleaning(
+                step=next_step,
+                pending_plan=pending_plan,
+                profile=dataset_profile,
+        ):
+            step_id = next_step.get("step_id")
+            tool_name = next_step.get("tool_name")
+
+            content = (
+                "This modeling step is waiting for data cleaning to complete "
+                "because the current dataset has missing values."
+            )
+
+            updates = make_response_update(
+                response_type="plan_execution_status",
+                content=content,
+                source_node="execute_pending_plan",
+                data_version_id=state.get("active_data_version_id"),
+                plan_id=pending_plan.get("plan_id"),
+                plan_status=pending_plan.get("status"),
+                metadata={
+                    "reason": "modeling_blocked_by_pending_cleaning",
+                    "step_id": step_id,
+                    "tool_name": tool_name,
+                },
+            )
+
+            updates.update({
+                "plan_execution_status": "blocked_pending_data_cleaning",
+                "current_action": None,
+                "current_execution": None,
+                "current_verification": None,
+            })
+
+            return updates
 
     action = readiness.action
 

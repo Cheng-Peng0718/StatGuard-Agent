@@ -135,3 +135,32 @@ def test_app_v2_renders_blocked_no_ready_steps_message():
     assert "No executable plan step is currently ready" in text
     assert "required_user_choices" in text
     assert "candidate_variables" in text
+
+def test_app_v2_renders_plan_choice_controls():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    assert "render_plan_step_choice_controls" in text
+    assert "make_update_plan_step_choices_event" in text
+    assert "required_user_choices" in text
+    assert "Save choices for this step" in text
+    assert "blocked_no_ready_steps" in text
+
+def test_app_v2_choice_controls_not_nested_under_reason_condition():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    assert "render_plan_step_choice_controls" in text
+
+    bad_pattern = (
+        "if reason:\n"
+        "            st.caption(reason)\n"
+        "\n"
+        "            render_plan_step_choice_controls"
+    )
+
+    assert bad_pattern not in text
+
+def test_app_v2_renders_pending_data_cleaning_block():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    assert "blocked_pending_data_cleaning" in text
+    assert "waiting for data cleaning" in text

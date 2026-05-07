@@ -12,6 +12,7 @@ from core.ui_adapter.events import (
     make_cancel_plan_event,
     make_reject_human_review_event,
     make_run_plan_event,
+    make_update_plan_step_choices_event,
     make_user_message_event,
     normalize_ui_event,
 )

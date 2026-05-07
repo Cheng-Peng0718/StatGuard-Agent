@@ -21,6 +21,7 @@ from core.ui_adapter.events import (
     make_reject_human_review_event,
     make_run_plan_event,
     make_user_message_event,
+    make_update_plan_step_choices_event,
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
 
@@ -219,6 +220,131 @@ def render_assistant_response(snapshot: Dict[str, Any]) -> None:
     with st.expander("Response metadata", expanded=False):
         st.json(response)
 
+def _choice_label(choice_name: str) -> str:
+    labels = {
+        "target_col": "outcome / response column",
+        "feature_cols": "predictor columns",
+        "group_col": "group column",
+        "columns": "columns",
+        "analysis variables": "analysis variables",
+        "action_type": "cleaning action",
+        "strategy": "cleaning strategy",
+    }
+
+    return labels.get(choice_name, choice_name)
+
+def _available_columns_for_choice(
+    snapshot: Dict[str, Any],
+    choice_name: str,
+) -> list[str]:
+    data = snapshot.get("data") or {}
+    summary = data.get("dataset_summary") or {}
+    uploaded_info = data.get("uploaded_dataset_info") or {}
+
+    all_columns = uploaded_info.get("columns") or []
+    numeric_columns = summary.get("numeric_columns") or []
+    categorical_columns = summary.get("categorical_columns") or []
+
+    if choice_name in {"target_col", "feature_cols", "columns", "analysis variables"}:
+        return numeric_columns or all_columns
+
+    if choice_name in {"group_col"}:
+        return categorical_columns or all_columns
+
+    return all_columns
+
+def _available_columns_for_choice(
+    snapshot: Dict[str, Any],
+    choice_name: str,
+) -> list[str]:
+    data = snapshot.get("data") or {}
+    summary = data.get("dataset_summary") or {}
+    uploaded_info = data.get("uploaded_dataset_info") or {}
+
+    all_columns = uploaded_info.get("columns") or []
+    numeric_columns = summary.get("numeric_columns") or []
+    categorical_columns = summary.get("categorical_columns") or []
+
+    if choice_name in {"target_col", "feature_cols", "columns", "analysis variables"}:
+        return numeric_columns or all_columns
+
+    if choice_name in {"group_col"}:
+        return categorical_columns or all_columns
+
+    return all_columns
+
+
+def render_plan_step_choice_controls(
+    *,
+    step: Dict[str, Any],
+    snapshot: Dict[str, Any],
+) -> None:
+    required_choices = step.get("required_user_choices") or []
+
+    if not required_choices:
+        return
+
+    st.warning(
+        "Needs user choices: "
+        + ", ".join(required_choices)
+    )
+
+    step_id = step.get("step_id")
+    choices: Dict[str, Any] = {}
+
+    for choice_name in required_choices:
+
+        widget_key = f"{step_id}_{choice_name}"
+
+        if choice_name == "action_type":
+            choices[choice_name] = st.selectbox(
+                "Choose cleaning action",
+                options=["", "drop", "impute"],
+                key=widget_key,
+            )
+            continue
+
+        if choice_name == "strategy":
+            choices[choice_name] = st.selectbox(
+                "Choose cleaning strategy",
+                options=["", "rows", "columns", "mean", "median", "mode"],
+                key=widget_key,
+            )
+            continue
+
+        options = _available_columns_for_choice(snapshot, choice_name)
+
+        if not options:
+            st.info(f"No available columns for `{choice_name}`.")
+            continue
+
+        widget_key = f"{step_id}_{choice_name}"
+
+        if choice_name in {"feature_cols", "columns", "analysis variables"}:
+            choices[choice_name] = st.multiselect(
+                f"Choose {_choice_label(choice_name)}",
+                options=options,
+                key=widget_key,
+            )
+        else:
+            choices[choice_name] = st.selectbox(
+                f"Choose {_choice_label(choice_name)}",
+                options=[""] + options,
+                key=widget_key,
+            )
+
+    if st.button(
+        "Save choices for this step",
+        key=f"save_choices_{step_id}",
+        use_container_width=True,
+    ):
+        submit_ui_event(
+            make_update_plan_step_choices_event(
+                step_id=step_id,
+                choices=choices,
+            )
+        )
+        st.rerun()
 
 def render_plan_panel(snapshot: Dict[str, Any]) -> None:
     st.subheader("Plan")
@@ -247,39 +373,72 @@ def render_plan_panel(snapshot: Dict[str, Any]) -> None:
             "Some remaining steps need user-selected variables before they can run."
         )
 
+    if execution_status == "blocked_pending_data_cleaning":
+        st.warning(
+            "A modeling step is waiting for data cleaning to complete "
+            "because the current dataset has missing values."
+        )
+
     if not pending_plan:
         st.info("No pending plan.")
         return
+
+    execution_status = plan_section.get("plan_execution_status")
+
+    if execution_status == "blocked_no_ready_steps":
+        st.warning(
+            "No executable plan step is currently ready. "
+            "Some remaining steps need user-selected variables before they can run."
+        )
 
     steps = pending_plan.get("steps") or []
 
     for step in steps:
         with st.container(border=True):
-            st.write(f"**{step.get('step_id')} — {step.get('title', step.get('tool_name'))}**")
+            st.write(
+                f"**{step.get('step_id')} — "
+                f"{step.get('title', step.get('tool_name'))}**"
+            )
             st.write(f"Tool: `{step.get('tool_name')}`")
             st.write(f"Status: `{step.get('status')}`")
             st.write(f"Execution: `{step.get('execution_status')}`")
 
-            reason = step.get("reason")
+            st.write(f"Execution ready: `{step.get('execution_ready')}`")
+
+            readiness = step.get("readiness") or step.get("metadata", {}).get("readiness") or {}
+            if readiness:
+                reason = readiness.get("reason")
+                if reason:
+                    st.caption(f"Readiness reason: {reason}")
+
+            reason = (
+                    step.get("reason")
+                    or step.get("purpose")
+                    or step.get("rationale")
+            )
+
             if reason:
                 st.caption(reason)
 
-                required_choices = step.get("required_user_choices") or []
-                if required_choices:
-                    st.warning(
-                        "Needs user choices: "
-                        + ", ".join(required_choices)
-                    )
+            # IMPORTANT:
+            # This must NOT be inside `if reason:`.
+            # Some plan steps have purpose/rationale but no reason field.
+            render_plan_step_choice_controls(
+                step=step,
+                snapshot=snapshot,
+            )
 
-                candidate_variables = step.get("candidate_variables") or {}
-                if candidate_variables:
-                    with st.expander("Candidate variables", expanded=False):
-                        st.json(candidate_variables)
+            candidate_variables = step.get("candidate_variables") or {}
+            if candidate_variables:
+                with st.expander("Candidate variables", expanded=False):
+                    st.json(candidate_variables)
 
-                arguments = step.get("arguments") or {}
-                if arguments:
-                    with st.expander("Arguments", expanded=False):
-                        st.json(arguments)
+            arguments = step.get("arguments") or {}
+            if arguments:
+                with st.expander("Arguments", expanded=False):
+                    st.json(arguments)
+
+
 
 
 def render_human_review_panel(snapshot: Dict[str, Any]) -> None:

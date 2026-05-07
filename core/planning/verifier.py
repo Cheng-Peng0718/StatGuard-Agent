@@ -6,6 +6,7 @@ from core.analysis_tool_plugins import get_plugin
 from core.analysis_tool_plugins.base import ApplicabilityResult
 from core.dataset_intelligence.schemas import DatasetProfileV2
 from core.planning.schemas import PlanProposal, PlanStep
+from core.planning.dependencies import reorder_clean_data_before_modeling
 
 NO_ROLE_READY_TOOLS = {
     "get_summary_stats",
@@ -39,6 +40,94 @@ def _column_semantic_type(profile: DatasetProfileV2, column_name: str) -> str | 
         return None
     return col.semantic_type
 
+def _first_non_empty_mapping_value(step: PlanStep, key: str):
+    arguments = step.arguments or {}
+    variables = step.variables or {}
+
+    value = arguments.get(key)
+
+    if value is None or value == "" or value == []:
+        value = variables.get(key)
+
+    return value
+
+
+def _is_missing_choice(value) -> bool:
+    if value is None:
+        return True
+
+    if isinstance(value, str):
+        return not value.strip()
+
+    if isinstance(value, list):
+        return len(value) == 0
+
+    return False
+
+
+def _verify_clean_data_choices(step: PlanStep, profile: DatasetProfileV2) -> PlanStep:
+    """
+    clean_data is special because it mutates data and needs explicit choices
+    before it can even reach the human-review gate.
+
+    Required choices:
+    - action_type
+    - strategy
+    - columns
+    """
+    required = ["action_type", "strategy", "columns"]
+
+    missing = []
+
+    for key in required:
+        value = _first_non_empty_mapping_value(step, key)
+
+        if _is_missing_choice(value):
+            missing.append(key)
+
+    if missing:
+        step.status = "needs_user_choice"
+        step.execution_ready = False
+        step.required_user_choices = missing
+        return step
+
+    columns = _first_non_empty_mapping_value(step, "columns")
+
+    if isinstance(columns, str):
+        columns = [columns]
+
+    for col_name in columns:
+        if not isinstance(col_name, str):
+            step.status = "blocked"
+            step.execution_ready = False
+            step.warnings.append(
+                "clean_data columns must be string column names."
+            )
+            return step
+
+        if not _column_exists(profile, col_name):
+            step.status = "blocked"
+            step.execution_ready = False
+            step.warnings.append(
+                f"Column '{col_name}' does not exist in the current dataset."
+            )
+            return step
+
+    # Normalize choices into both variables and arguments so downstream graph,
+    # verifier, and plugin execution all see the same contract.
+    step.variables = dict(step.variables or {})
+    step.arguments = dict(step.arguments or {})
+
+    for key in required:
+        value = _first_non_empty_mapping_value(step, key)
+        step.variables[key] = value
+        step.arguments[key] = value
+
+    step.status = "ready"
+    step.execution_ready = True
+    step.required_user_choices = []
+
+    return step
 
 def _verify_variable_roles(step: PlanStep, profile: DatasetProfileV2, plugin) -> PlanStep:
     """
@@ -47,6 +136,10 @@ def _verify_variable_roles(step: PlanStep, profile: DatasetProfileV2, plugin) ->
     This does not contain method-specific rules.
     It only checks the plugin's declared VariableRoleSpec contract.
     """
+
+    if step.tool_name == "clean_data":
+        return _verify_clean_data_choices(step, profile)
+
     role_specs = getattr(plugin, "variable_roles", []) or []
 
     if step.tool_name in AUTO_READY_TOOLS:
@@ -233,6 +326,7 @@ def verify_plan_step(step: PlanStep, profile: DatasetProfileV2) -> PlanStep:
 
 
 def verify_plan(plan: PlanProposal, profile: DatasetProfileV2) -> PlanProposal:
+    plan = reorder_clean_data_before_modeling(plan, profile)
     verified_steps = []
     blocked_steps = list(plan.blocked_or_not_recommended)
 

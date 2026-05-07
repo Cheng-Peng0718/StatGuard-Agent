@@ -25,6 +25,7 @@ class UIEvent(BaseModel):
         "run_plan",
         "cancel_plan",
         "select_plan_step",
+        "update_plan_step_choices",
         "clear_runtime",
     ]
 
@@ -145,6 +146,100 @@ def make_cancel_plan_event(
         metadata=metadata or {},
     ).model_dump()
 
+def make_update_plan_step_choices_event(
+    *,
+    step_id: str,
+    choices: Dict[str, Any],
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    if not step_id:
+        raise ValueError("step_id is required.")
+
+    if not isinstance(choices, dict):
+        raise TypeError("choices must be a dictionary.")
+
+    return UIEvent(
+        event_type="update_plan_step_choices",
+        payload={
+            "step_id": step_id,
+            "choices": choices,
+        },
+        metadata=metadata or {},
+    ).model_dump()
+
+def _is_empty_choice(value: Any) -> bool:
+    if value is None:
+        return True
+
+    if isinstance(value, str):
+        return not value.strip()
+
+    if isinstance(value, list):
+        return len(value) == 0
+
+    return False
+
+
+def _apply_plan_step_choices(
+    *,
+    pending_plan: Dict[str, Any],
+    step_id: str,
+    choices: Dict[str, Any],
+) -> Dict[str, Any]:
+    plan = {
+        **pending_plan,
+        "steps": [
+            dict(step)
+            for step in (pending_plan.get("steps") or [])
+        ],
+    }
+
+    matched = False
+
+    for step in plan["steps"]:
+        if step.get("step_id") != step_id:
+            continue
+
+        matched = True
+
+        variables = dict(step.get("variables") or {})
+        arguments = dict(step.get("arguments") or {})
+
+        for key, value in choices.items():
+            if _is_empty_choice(value):
+                continue
+
+            variables[key] = value
+            arguments[key] = value
+
+        required = list(step.get("required_user_choices") or [])
+        remaining = [
+            choice
+            for choice in required
+            if _is_empty_choice(variables.get(choice))
+        ]
+
+        step["variables"] = variables
+        step["arguments"] = arguments
+        step["required_user_choices"] = remaining
+
+        if not remaining:
+            step["status"] = "ready"
+            step["execution_ready"] = True
+
+            if step.get("execution_status") in {None, "None"}:
+                step["execution_status"] = "not_started"
+        else:
+            step["status"] = "needs_user_choice"
+            step["execution_ready"] = False
+
+        break
+
+    if not matched:
+        raise ValueError(f"No plan step found for step_id={step_id}")
+
+    return plan
+
 
 def apply_ui_event_to_state(state: Any, event: Any) -> Dict[str, Any]:
     """
@@ -211,6 +306,44 @@ def apply_ui_event_to_state(state: Any, event: Any) -> Dict[str, Any]:
         return {
             "selected_plan_step_id": step_id,
             "latest_ui_event": event_dict,
+        }
+
+    if event_type == "update_plan_step_choices":
+        step_id = payload.get("step_id")
+        choices = payload.get("choices") or {}
+
+        if not step_id:
+            raise ValueError("update_plan_step_choices event requires payload.step_id.")
+
+        if not isinstance(choices, dict):
+            raise TypeError("update_plan_step_choices payload.choices must be a dict.")
+
+        state_dict = _as_dict(state)
+        pending_plan = state_dict.get("pending_plan")
+
+        if not pending_plan:
+            raise ValueError("Cannot update plan step choices because no pending_plan exists.")
+
+        updated_plan = _apply_plan_step_choices(
+            pending_plan=pending_plan,
+            step_id=step_id,
+            choices=choices,
+        )
+
+        return {
+            "pending_plan": updated_plan,
+            "latest_ui_event": event_dict,
+            "assistant_response": {
+                "response_type": "plan_step_choices_updated",
+                "content": (
+                    "Plan step choices were updated. "
+                    "You can click Run plan to continue."
+                ),
+                "source_node": "ui_event_adapter",
+                "metadata": {
+                    "step_id": step_id,
+                },
+            },
         }
 
     if event_type == "clear_runtime":

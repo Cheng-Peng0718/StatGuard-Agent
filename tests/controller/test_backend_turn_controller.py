@@ -300,3 +300,45 @@ def test_backend_turn_controller_approval_continues_clean_data_execution(tmp_pat
     assert snapshot["runtime"]["has_current_action"] is False
 
     json.dumps(second_result)
+
+def test_backend_turn_controller_does_not_execute_after_plan_choice_update(tmp_path):
+    state = make_base_state(tmp_path)
+    state["pending_plan"] = {
+        "plan_id": "plan_choice_update",
+        "steps": [
+            {
+                "step_id": "s1",
+                "tool_name": "run_multiple_regression",
+                "status": "needs_user_choice",
+                "execution_ready": False,
+                "execution_status": "not_started",
+                "variables": {},
+                "arguments": {},
+                "required_user_choices": ["target_col", "feature_cols"],
+            }
+        ],
+    }
+
+    updates = apply_ui_event_to_state(
+        state,
+        {
+            "event_type": "update_plan_step_choices",
+            "payload": {
+                "step_id": "s1",
+                "choices": {
+                    "target_col": "GPA",
+                    "feature_cols": ["SATM"],
+                },
+            },
+        },
+    )
+    state = apply_updates(state, updates)
+
+    result = run_backend_turn(state)
+
+    assert result["status"] == "ok"
+    assert result["node_trace"] == []
+    assert result["ui_snapshot"]["plan"]["pending_plan"]["steps"][0]["status"] == "ready"
+    assert result["ui_snapshot"]["runtime"]["has_current_action"] is False
+
+    json.dumps(result)

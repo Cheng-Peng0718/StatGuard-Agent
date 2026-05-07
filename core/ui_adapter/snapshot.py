@@ -216,6 +216,8 @@ def build_ui_snapshot(state: Any) -> Dict[str, Any]:
             "active_data_version_id": safe_state.get("active_data_version_id"),
             "data_versions": _safe_list(safe_state.get("data_versions")),
             "data_audit_log": _safe_list(safe_state.get("data_audit_log")),
+            "uploaded_dataset_info": safe_state.get("uploaded_dataset_info"),
+            "dataset_summary": safe_state.get("dataset_summary"),
         },
 
         "human_review": _build_human_review_snapshot(raw_state),

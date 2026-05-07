@@ -66,8 +66,37 @@ def _get_field(value: Any, field_name: str, default=None):
 
 
 def _apply_updates(state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Apply node updates in the backend controller.
+
+    Important:
+    LangGraph uses reducers for some GraphState fields, for example:
+
+        observations: Annotated[list, operator.add]
+
+    App V2 / backend controller does not run through LangGraph's reducer
+    machinery, so we must emulate reducer semantics for delta-style fields.
+
+    summarize_node returns observations as a delta:
+        {"observations": [new_observation]}
+
+    But analysis_runs is already returned as a full registry:
+        existing_analysis_runs + [new_analysis_run]
+
+    Therefore:
+    - observations should be appended
+    - analysis_runs should be replaced by the returned full list
+    """
     merged = dict(state)
-    merged.update(updates or {})
+
+    for key, value in (updates or {}).items():
+        if key == "observations" and isinstance(value, list):
+            existing = list(merged.get("observations") or [])
+            merged["observations"] = existing + value
+            continue
+
+        merged[key] = value
+
     return merged
 
 
@@ -258,6 +287,17 @@ def run_backend_turn(state: Any) -> Dict[str, Any]:
     node_trace: List[str] = []
 
     try:
+        latest_event = current_state.get("latest_ui_event") or {}
+        latest_event_type = latest_event.get("event_type")
+
+        if latest_event_type == "update_plan_step_choices":
+            return _finish(
+                state=current_state,
+                node_trace=[],
+                status="ok",
+                message="Plan step choices were updated.",
+            ).model_dump()
+
         # 1. Human-review continuation path.
         if current_state.get("human_review_decision") in {"approved", "rejected"}:
             current_state, status, message = _handle_human_review_decision(
