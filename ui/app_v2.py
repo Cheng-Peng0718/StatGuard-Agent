@@ -27,6 +27,34 @@ from core.ui_adapter.snapshot import build_ui_snapshot
 
 APP_TITLE = "Analysis Agent V2"
 
+def _status_text(value: Any) -> str:
+    if value is None:
+        return "none"
+
+    return str(value)
+
+
+def _status_icon(status: Any) -> str:
+    status_text = _status_text(status)
+
+    if status_text in {"ok", "ready", "completed", "allowed"}:
+        return "✅"
+
+    if status_text in {"needs_review", "needs_user_choice", "blocked_no_ready_steps", "blocked_pending_data_cleaning"}:
+        return "⚠️"
+
+    if status_text in {"failed", "error", "blocked", "rejected"}:
+        return "❌"
+
+    if status_text in {"not_started", "none", "None"}:
+        return "⏳"
+
+    return "ℹ️"
+
+
+def render_status_line(label: str, value: Any) -> None:
+    st.write(f"{_status_icon(value)} **{label}:** `{_status_text(value)}`")
+
 def render_dataset_upload_panel() -> None:
     st.subheader("Dataset Upload")
 
@@ -163,6 +191,62 @@ def render_header() -> None:
         "UIEvent and UISnapshot adapters."
     )
 
+def render_system_status(snapshot: Dict[str, Any]) -> None:
+    st.subheader("System Status")
+
+    plan = snapshot.get("plan") or {}
+    runtime = snapshot.get("runtime") or {}
+    data = snapshot.get("data") or {}
+    audits = snapshot.get("audits") or {}
+
+    execution_audit = audits.get("execution_audit") or {}
+    serialization_audit = audits.get("state_serialization_audit") or {}
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        render_status_line(
+            "Active data",
+            data.get("active_data_version_id"),
+        )
+
+    with col2:
+        render_status_line(
+            "Plan",
+            plan.get("plan_status"),
+        )
+
+    with col3:
+        render_status_line(
+            "Execution",
+            plan.get("plan_execution_status"),
+        )
+
+    with col4:
+        render_status_line(
+            "Audit",
+            execution_audit.get("status"),
+        )
+
+    if execution_audit.get("status") not in {None, "ok"}:
+        st.error("Execution audit has issues. Open the Audit panel for details.")
+
+    if serialization_audit.get("status") not in {None, "ok"}:
+        st.error("State serialization audit has issues. Open the Audit panel for details.")
+
+    runtime_flags = []
+
+    if runtime.get("has_current_action"):
+        runtime_flags.append("current_action active")
+
+    if runtime.get("has_current_execution"):
+        runtime_flags.append("current_execution active")
+
+    if runtime.get("has_current_verification"):
+        runtime_flags.append("current_verification active")
+
+    if runtime_flags:
+        st.caption("Runtime: " + ", ".join(runtime_flags))
 
 def render_last_error() -> None:
     if st.session_state.last_error:
@@ -399,9 +483,23 @@ def render_plan_panel(snapshot: Dict[str, Any]) -> None:
                 f"**{step.get('step_id')} — "
                 f"{step.get('title', step.get('tool_name'))}**"
             )
-            st.write(f"Tool: `{step.get('tool_name')}`")
-            st.write(f"Status: `{step.get('status')}`")
-            st.write(f"Execution: `{step.get('execution_status')}`")
+            tool_name = step.get("tool_name")
+            status = step.get("status")
+            execution_status = step.get("execution_status")
+            execution_ready = step.get("execution_ready")
+
+            st.write(f"**Tool:** `{tool_name}`")
+
+            col_a, col_b, col_c = st.columns(3)
+
+            with col_a:
+                render_status_line("Status", status)
+
+            with col_b:
+                render_status_line("Execution", execution_status)
+
+            with col_c:
+                render_status_line("Ready", execution_ready)
 
             st.write(f"Execution ready: `{step.get('execution_ready')}`")
 
@@ -492,18 +590,35 @@ def render_analysis_panel(snapshot: Dict[str, Any]) -> None:
         return
 
     for idx, run in enumerate(runs, start=1):
+        status = run.get("status")
+        success = run.get("success")
+        tool_name = run.get("tool_name")
+
         with st.container(border=True):
-            st.write(f"**Run {idx}: {run.get('tool_name')}**")
-            st.write(f"Status: `{run.get('status')}`")
-            st.write(f"Success: `{run.get('success')}`")
+            st.write(f"**Run {idx}: {tool_name}**")
+
+            col_a, col_b, col_c = st.columns(3)
+
+            with col_a:
+                render_status_line("Status", status)
+
+            with col_b:
+                render_status_line("Success", success)
+
+            with col_c:
+                render_status_line("Data version", run.get("data_version_id"))
 
             summary = run.get("summary") or run.get("message")
             if summary:
                 st.write(summary)
 
+            if success is False:
+                error_code = run.get("error_code")
+                if error_code:
+                    st.error(f"Error code: `{error_code}`")
+
             with st.expander("Run details", expanded=False):
                 st.json(run)
-
 
 def render_data_versions_panel(snapshot: Dict[str, Any]) -> None:
     st.subheader("Data Versions")
@@ -554,6 +669,7 @@ def main() -> None:
     left, right = st.columns([2, 1])
 
     with left:
+        render_system_status(snapshot)
         render_chat_panel(snapshot)
         render_assistant_response(snapshot)
         render_plan_panel(snapshot)
@@ -563,6 +679,9 @@ def main() -> None:
     with right:
         render_dataset_upload_panel()
         render_data_versions_panel(snapshot)
+
+        st.divider()
+
         render_repair_panel(snapshot)
         render_audit_panel(snapshot)
         render_snapshot_debug(snapshot)

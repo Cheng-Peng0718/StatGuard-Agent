@@ -188,3 +188,39 @@ def test_app_v2_smoke_flow_uses_controller_boundary():
     ]
 
     assert offenders == []
+
+def test_app_v2_has_polished_status_and_debug_layout():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    required = [
+        "render_system_status",
+        "render_status_line",
+        "_status_icon",
+        "Execution audit has issues",
+        "State serialization audit has issues",
+        "Run details",
+        "Raw UI snapshot",
+    ]
+
+    for item in required:
+        assert item in text
+
+
+def test_app_v2_polish_still_does_not_call_graph_nodes_directly():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    forbidden = [
+        "verify_node(",
+        "execute_node(",
+        "summarize_node(",
+        "execute_pending_plan_node(",
+        "plan_only_node(",
+    ]
+
+    offenders = [
+        item
+        for item in forbidden
+        if item in text
+    ]
+
+    assert offenders == []
