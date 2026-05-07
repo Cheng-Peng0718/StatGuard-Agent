@@ -302,9 +302,37 @@ Recommended sequence:
 S17A: document new UI skeleton design.
 S17B: create backend controller contract.
 S17C: create ui/app_v2.py skeleton with no business logic. Completed: ui/app_v2.py now renders UISnapshot sections and sends UIEvent objects through the backend controller.
-S17D: render ui_snapshot sections.
+S17D: add dataset upload boundary through prepare_uploaded_dataset_state. Completed.
 S17E: wire user_message and run_plan events.
 S17F: wire human_review approve/reject events.
 S17G: run manual UI smoke tests.
 S17H: freeze or delete legacy app.py.
 ```
+## Dataset upload boundary
+
+Dataset upload must go through:
+
+```python
+from core.ui_adapter.dataset_upload import prepare_uploaded_dataset_state
+```
+
+The UI may read the uploaded file into a DataFrame, but it must not manually construct:
+
+```text
+dataset_profile
+data_versions
+active_data_version_id
+data_audit_log
+```
+
+Instead:
+
+```python
+updates = prepare_uploaded_dataset_state(
+    df=df,
+    workspace_dir=workspace_dir,
+    filename=uploaded_file.name,
+)
+backend_state.update(updates)
+```
+

@@ -1,3 +1,7 @@
+from core.ui_adapter.dataset_upload import (
+    build_legacy_dataset_profile_from_df,
+    prepare_uploaded_dataset_state,
+)
 from core.ui_adapter.events import (
     UIEvent,
     apply_ui_event_to_state,

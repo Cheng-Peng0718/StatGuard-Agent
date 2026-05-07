@@ -16,6 +16,7 @@ def test_app_v2_uses_ui_adapters_and_backend_controller():
         "make_run_plan_event",
         "make_approve_human_review_event",
         "make_reject_human_review_event",
+        "prepare_uploaded_dataset_state",
     ]
 
     for item in required:
@@ -84,3 +85,26 @@ def test_app_v2_declares_expected_session_state_keys():
 
     for key in expected:
         assert key in text
+
+def test_app_v2_upload_uses_dataset_upload_adapter():
+    text = Path("ui/app_v2.py").read_text(encoding="utf-8")
+
+    assert "prepare_uploaded_dataset_state" in text
+    assert "pd.read_csv" in text
+
+    forbidden_direct_state_fragments = [
+        'backend_state["data_versions"]',
+        'backend_state["active_data_version_id"]',
+        'backend_state["dataset_profile"]',
+        "backend_state['data_versions']",
+        "backend_state['active_data_version_id']",
+        "backend_state['dataset_profile']",
+    ]
+
+    offenders = [
+        fragment
+        for fragment in forbidden_direct_state_fragments
+        if fragment in text
+    ]
+
+    assert offenders == []

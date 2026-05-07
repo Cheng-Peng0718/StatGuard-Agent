@@ -14,9 +14,56 @@ from core.ui_adapter.events import (
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
 
+import pandas as pd
+
+from core.ui_adapter.dataset_upload import prepare_uploaded_dataset_state
 
 APP_TITLE = "Analysis Agent V2"
 
+def render_dataset_upload_panel() -> None:
+    st.subheader("Dataset Upload")
+
+    uploaded_file = st.file_uploader(
+        "Upload CSV dataset",
+        type=["csv"],
+    )
+
+    if uploaded_file is None:
+        info = st.session_state.get("uploaded_dataset_info")
+
+        if info:
+            st.success(
+                f"Loaded `{info.get('filename')}` "
+                f"({info.get('n_rows')} rows, {info.get('n_cols')} columns)."
+            )
+        else:
+            st.info("No dataset uploaded yet.")
+
+        return
+
+    if st.button("Load dataset", use_container_width=True):
+        try:
+            df = pd.read_csv(uploaded_file)
+
+            workspace_dir = "workspaces/ui_app_v2"
+
+            updates = prepare_uploaded_dataset_state(
+                df=df,
+                workspace_dir=workspace_dir,
+                filename=uploaded_file.name,
+            )
+
+            st.session_state.backend_state.update(updates)
+            st.session_state.uploaded_dataset_info = updates.get(
+                "uploaded_dataset_info"
+            )
+
+            refresh_snapshot()
+            st.rerun()
+
+        except Exception as exc:
+            st.session_state.last_error = str(exc)
+            refresh_snapshot()
 
 def make_initial_backend_state() -> Dict[str, Any]:
     """
@@ -324,6 +371,7 @@ def main() -> None:
         render_analysis_panel(snapshot)
 
     with right:
+        render_dataset_upload_panel()
         render_data_versions_panel(snapshot)
         render_repair_panel(snapshot)
         render_audit_panel(snapshot)
