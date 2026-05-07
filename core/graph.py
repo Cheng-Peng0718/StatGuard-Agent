@@ -34,6 +34,7 @@ from core.planning.execution_queue import (
 from core.deliverables.gate import evaluate_deliverable_gate_state
 from core.deliverables.evidence import extract_final_answer_content_from_state
 from core.audit.execution_state import audit_execution_state
+from core.repair.decision import evaluate_repair_decision
 
 def _as_plain_dict(obj):
     if obj is None:
@@ -108,6 +109,28 @@ def _attach_execution_audit(state: GraphState, updates: dict) -> dict:
         print("\n" + "=" * 40)
         print("[EXECUTION AUDIT]")
         print(audit_result.model_dump())
+        print("=" * 40 + "\n")
+
+    return updates
+
+def _attach_repair_decision(state: GraphState, updates: dict) -> dict:
+    """
+    Attach observe-only repair decision to graph updates.
+
+    S13B does not retry, reroute, or mutate actions.
+    It only records whether the current verification/execution failure
+    appears repairable.
+    """
+    repair_state = dict(state)
+    repair_state.update(updates)
+
+    decision = evaluate_repair_decision(repair_state)
+    updates["repair_decision"] = decision.model_dump()
+
+    if decision.status != "no_repair_needed":
+        print("\n" + "=" * 40)
+        print("[REPAIR DECISION]")
+        print(decision.model_dump())
         print("=" * 40 + "\n")
 
     return updates
@@ -653,10 +676,12 @@ def verify_node(state: GraphState):
 
         return updates
 
-    return {
+    updates = {
         "current_verification": verify_result,
+        "human_review_required": False,
     }
 
+    return _attach_repair_decision(state, updates)
 
 def human_review_node(state: GraphState):
     """
@@ -1006,6 +1031,30 @@ def summarize_node(state: GraphState):
             f"[PLAN EXECUTION] step {current_plan_step_id} "
             f"marked as {'completed' if success else 'failed'}"
         )
+
+    # S13B: observe-only repair decision.
+    # Use pre-clear runtime state so failed current_execution/current_action
+    # are still visible to the evaluator.
+    repair_state = dict(state)
+
+    if isinstance(raw_result, dict):
+        repair_state["current_execution"] = raw_result
+    else:
+        repair_state["current_execution"] = {
+            "status": status,
+            "success": success,
+            "error_code": error_code,
+            "message": message,
+        }
+
+    repair_decision = evaluate_repair_decision(repair_state)
+    updates["repair_decision"] = repair_decision.model_dump()
+
+    if repair_decision.status != "no_repair_needed":
+        print("\n" + "=" * 40)
+        print("[REPAIR DECISION]")
+        print(repair_decision.model_dump())
+        print("=" * 40 + "\n")
 
     return _attach_execution_audit(state, updates)
 
