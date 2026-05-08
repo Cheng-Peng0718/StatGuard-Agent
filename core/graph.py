@@ -241,9 +241,12 @@ def verify_node(state: GraphState):
             "observations": [obs.model_dump()],
         }
 
-        # Phase 4 safety:
-        # If a pending-plan step fails verification, mark that step failed and stop.
-        # Do not loop back into build_context with the same "run the plan" request.
+        # Phase 4E:
+        # Verification rejection is also a repair-decision input.
+        # Attach repair metadata before clearing current_action, because
+        # repair classification needs the source action/tool.
+        clear_after_repair = {}
+
         current_plan_step_id = state.get("current_plan_step_id")
         pending_plan = state.get("pending_plan")
 
@@ -267,9 +270,6 @@ def verify_node(state: GraphState):
             updates.update({
                 "pending_plan": updated_plan,
                 "plan_status": updated_plan.get("status"),
-                "current_plan_step_id": None,
-                "current_action": None,
-                "current_execution": None,
                 "plan_execution_status": "step_verification_failed",
                 "assistant_response": make_assistant_response(
                     response_type="error",
@@ -285,6 +285,15 @@ def verify_node(state: GraphState):
                     },
                 ),
             })
+
+            clear_after_repair = {
+                "current_plan_step_id": None,
+                "current_action": None,
+                "current_execution": None,
+            }
+
+        updates = attach_repair_decision(state, updates)
+        updates.update(clear_after_repair)
 
         return updates
 
