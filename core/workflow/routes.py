@@ -1,5 +1,6 @@
 from __future__ import annotations
 from core.action_access import get_action_type
+from core.verification_access import get_verification_status
 
 
 def route_after_intent(state: dict):
@@ -45,3 +46,47 @@ def route_after_supervisor(state: dict):
         return "end"
 
     return "verify"
+
+def route_after_verify(state: dict):
+    """
+    After verification:
+    - allowed: execute the tool
+    - needs_review: interrupt before human_review and wait for user approval
+    - rejected_*: do not execute; go back to build_context so Supervisor can rethink/respond
+    """
+
+    # If a pending-plan action fails verification, do not loop back and continue
+    # the same "run the plan" turn.
+    if (
+        state.get("action_origin") == "pending_plan"
+        and state.get("current_verification") is not None
+    ):
+        verification = state.get("current_verification")
+        status = get_verification_status(verification)
+
+        if status in {"rejected_recoverable", "rejected_terminal"}:
+            return "end"
+
+    if state.get("plan_execution_status") == "step_verification_failed":
+        return "end"
+
+    vr = state.get("current_verification")
+
+    if vr is None:
+        print("[ROUTE AFTER VERIFY] no verification result -> build_context")
+        return "build_context"
+
+    status = get_verification_status(vr)
+
+    print(f"[ROUTE AFTER VERIFY] status = {status}")
+
+    if status == "allowed":
+        return "execute"
+
+    if status == "needs_review":
+        return "human_review"
+
+    if status in {"rejected_recoverable", "rejected_terminal"}:
+        return "build_context"
+
+    return "build_context"

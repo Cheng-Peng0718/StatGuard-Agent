@@ -2,6 +2,7 @@ from core.workflow.routes import (
     route_after_execute_pending_plan,
     route_after_intent,
     route_after_supervisor,
+    route_after_verify,
 )
 
 
@@ -94,3 +95,60 @@ def test_route_after_supervisor_routes_missing_action_to_verify_before_max_steps
         "current_step": 1,
         "max_steps": 12,
     }) == "verify"
+
+def test_route_after_verify_routes_allowed_to_execute():
+    assert route_after_verify({
+        "current_verification": {
+            "status": "allowed",
+            "feedback": "ok",
+            "details": {},
+        }
+    }) == "execute"
+
+
+def test_route_after_verify_routes_needs_review_to_human_review():
+    assert route_after_verify({
+        "current_verification": {
+            "status": "needs_review",
+            "feedback": "requires approval",
+            "details": {},
+        }
+    }) == "human_review"
+
+
+def test_route_after_verify_routes_rejected_to_build_context():
+    assert route_after_verify({
+        "current_verification": {
+            "status": "rejected_recoverable",
+            "feedback": "missing arguments",
+            "details": {},
+        }
+    }) == "build_context"
+
+
+def test_route_after_verify_routes_missing_verification_to_build_context():
+    assert route_after_verify({
+        "current_verification": None,
+    }) == "build_context"
+
+
+def test_route_after_verify_ends_for_rejected_pending_plan_action():
+    assert route_after_verify({
+        "action_origin": "pending_plan",
+        "current_verification": {
+            "status": "rejected_recoverable",
+            "feedback": "invalid planned action",
+            "details": {},
+        },
+    }) == "end"
+
+
+def test_route_after_verify_ends_for_step_verification_failed_status():
+    assert route_after_verify({
+        "plan_execution_status": "step_verification_failed",
+        "current_verification": {
+            "status": "rejected_recoverable",
+            "feedback": "failed",
+            "details": {},
+        },
+    }) == "end"

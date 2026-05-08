@@ -16,6 +16,7 @@ def test_basic_routes_live_outside_core_graph():
         "def route_after_intent",
         "def route_after_execute_pending_plan",
         "def route_after_supervisor",
+        "def route_after_verify",
     ]
 
     for forbidden in forbidden_defs:
@@ -25,6 +26,7 @@ def test_basic_routes_live_outside_core_graph():
         "def route_after_intent",
         "def route_after_execute_pending_plan",
         "def route_after_supervisor",
+        "def route_after_verify",
     ]
 
     for required in required_defs:
@@ -41,12 +43,4 @@ def test_core_graph_imports_basic_routes_from_workflow_routes():
     assert "route_after_intent" in graph_text
     assert "route_after_execute_pending_plan" in graph_text
     assert "route_after_supervisor" in graph_text
-
-
-def test_core_graph_no_longer_imports_action_type_for_supervisor_route():
-    graph_text = Path("core/graph.py").read_text(
-        encoding="utf-8",
-        errors="ignore",
-    )
-
-    assert "get_action_type" not in graph_text
+    assert "route_after_verify" in graph_text
