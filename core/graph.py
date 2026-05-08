@@ -60,7 +60,10 @@ from core.workflow.nodes.interaction import (
 
 from core.workflow.nodes.planning import plan_only_node
 
-from core.workflow.routes import route_after_intent
+from core.workflow.routes import (
+    route_after_intent,
+    route_after_execute_pending_plan,
+)
 
 from core.workflow.nodes.plan_execution import execute_pending_plan_node
 
@@ -152,14 +155,6 @@ def build_context_node(state: GraphState):
         "dataset_summary": dataset_summary.model_dump(),
         "capability_map": capability_map.model_dump(),
     }
-
-def route_after_execute_pending_plan(state: GraphState):
-    action = state.get("current_action")
-
-    if action is not None:
-        return "verify"
-
-    return "end"
 
 
 def supervisor_node(state: GraphState):

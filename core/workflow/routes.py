@@ -17,3 +17,11 @@ def route_after_intent(state: dict):
 
     # Direct tool requests and unknown requests go to the unified supervisor path.
     return "supervisor"
+
+def route_after_execute_pending_plan(state: dict):
+    action = state.get("current_action")
+
+    if action is not None:
+        return "verify"
+
+    return "end"
