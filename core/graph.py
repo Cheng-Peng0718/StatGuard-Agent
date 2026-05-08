@@ -7,12 +7,9 @@ import pandas as pd
 from core.state import GraphState
 from core.schema import Observation
 from core.context_builder import build_context, generate_profile
-from core.analysis_runs import build_analysis_run_from_observation
-from core.data_versions import (
-    get_active_data_path,
-    extract_data_version_update,
-    validate_data_version_update,
-)
+
+from core.data_versions import get_active_data_path
+
 from core.dataset_intelligence.profiler import profile_dataframe, summarize_profile
 from core.dataset_intelligence.capability_map import build_capability_map
 
@@ -36,14 +33,8 @@ from core.verification_access import (
     get_verification_status,
     set_verification_fields,
 )
-from core.execution_codec import normalize_execution_view
 
-from core.workflow.audit_runtime import attach_execution_audit
-
-from core.workflow.repair_runtime import (
-    attach_repair_decision,
-    attach_repair_after_summarize,
-)
+from core.workflow.repair_runtime import attach_repair_decision
 
 from core.workflow.runtime_utils import get_action_hash
 
@@ -76,6 +67,8 @@ from core.workflow.nodes.finalization import (
 from core.workflow.verification_feedback import attach_verification_blocked_response
 
 from core.workflow.nodes.execution import execute_node
+
+from core.workflow.nodes.summarization import summarize_node
 
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
@@ -544,168 +537,6 @@ def human_review_node(state: GraphState):
     )
 
     return {"observations": [obs.model_dump()]}
-
-
-def summarize_node(state: GraphState):
-    current_action = state.get("current_action")
-    tool_name = get_action_tool_name(current_action, "unknown_tool")
-    arguments = get_action_arguments(current_action)
-
-    raw_result = state.get("current_execution", "No execution result")
-
-    execution_view = normalize_execution_view(
-        raw_result,
-        fallback_action_id=get_action_id(current_action),
-        fallback_tool_name=tool_name,
-    )
-
-    execution_id = execution_view.get("execution_id")
-    status = execution_view.get("status")
-    success = bool(execution_view.get("success"))
-    error_code = execution_view.get("error_code")
-    message = execution_view.get("message")
-    artifacts = execution_view.get("artifacts") or []
-    payload = execution_view.get("payload") or {}
-    raw_result = execution_view
-
-    summary = (
-        f"Tool {tool_name} finished with status={status}, success={success}. "
-        f"message={message or 'No message'}"
-    )
-
-    if error_code:
-        summary += f" error_code={error_code}."
-
-    refined_observation = {
-        "observation_id": f"obs_{uuid.uuid4().hex[:8]}",
-        "source_action_id": get_action_id(current_action),
-        "tool_name": tool_name,
-        "arguments": arguments,
-
-        # Phase 2: provenance
-        "data_version_id": state.get("active_data_version_id"),
-
-        "status": status,
-        "success": success,
-        "error_code": error_code,
-        "message": message,
-        "artifacts": artifacts,
-        "summary": summary,
-        "structured_data": {
-            "status": status,
-            "success": success,
-            "error_code": error_code,
-            "message": message,
-            "artifacts": artifacts,
-            "payload": payload,
-            # Phase 2: provenance
-            "data_version_id": state.get("active_data_version_id"),
-        },
-        "raw_data": raw_result,
-    }
-
-    print(f"[Summarize]: archived result for {tool_name}.")
-
-    # Base graph-state updates for every executed action.
-    # IMPORTANT:
-    # Define updates BEFORE applying data_version_update.
-    updates = {
-        "observations": [refined_observation],
-
-        "current_action": None,
-        "current_execution": None,
-        "current_verification": None,
-        "human_review_required": False,
-        "pending_action": None,
-
-        "current_step": state.get("current_step", 0) + 1,
-    }
-
-    # Extract data_version_update from the new plugin execution protocol.
-    # Canonical path:
-    # ToolExecutionResult.payload["data_version_update"]
-    data_version_update = extract_data_version_update(raw_result)
-    validated_version_update = validate_data_version_update(data_version_update)
-
-    if validated_version_update is not None:
-        new_version = validated_version_update["new_version"]
-        new_active_id = validated_version_update["active_data_version_id"]
-        audit_event = validated_version_update.get("audit_event")
-
-        existing_versions = state.get("data_versions", []) or []
-        existing_audit_log = state.get("data_audit_log", []) or []
-
-        updates["data_versions"] = existing_versions + [new_version]
-        updates["active_data_version_id"] = new_active_id
-
-        if audit_event:
-            updates["data_audit_log"] = existing_audit_log + [audit_event]
-
-        # Mutating tools should make the observation point to the new active version.
-        refined_observation["data_version_id"] = new_active_id
-
-        structured_data = refined_observation.get("structured_data")
-        if isinstance(structured_data, dict):
-            structured_data["data_version_id"] = new_active_id
-
-        # Also keep payload provenance aligned.
-        if isinstance(payload, dict):
-            payload["active_data_version_id"] = new_active_id
-            payload["data_version_id"] = new_active_id
-
-        print(f"[DATA VERSION] active_data_version_id -> {new_active_id}")
-
-    # Phase 3: append every real tool execution to Analysis Results registry.
-    # Put this AFTER data_version_update so mutating tools record the new data version.
-    #
-    # S12C:
-    # AnalysisRun must exist for both successful and failed tool executions.
-    # Failed runs are required evidence for DeliverableGate and future repair logic.
-    if tool_name not in {"unknown_tool"}:
-        analysis_run = build_analysis_run_from_observation(
-            observation=refined_observation,
-        )
-
-        updates["analysis_runs"] = [analysis_run]
-
-
-    # Phase 4: if this execution came from a pending plan step,
-    # mark that PlanStep as completed or failed.
-    current_plan_step_id = state.get("current_plan_step_id")
-    pending_plan = state.get("pending_plan")
-
-    if current_plan_step_id and pending_plan:
-        updated_plan = mark_plan_step_after_execution(
-            pending_plan,
-            step_id=current_plan_step_id,
-            success=success,
-            execution_id=execution_id,
-            message=message,
-        )
-
-        updates["pending_plan"] = updated_plan
-        updates["plan_status"] = updated_plan.get("status")
-        updates["current_plan_step_id"] = None
-
-        # S4: after a pending-plan step is summarized,
-        # clear the action origin. Routing will still see the previous state,
-        # but subsequent state should not keep stale origin.
-        updates["action_origin"] = None
-
-        print(
-            f"[PLAN EXECUTION] step {current_plan_step_id} "
-            f"marked as {'completed' if success else 'failed'}"
-        )
-
-    updates = attach_repair_after_summarize(
-        state=state,
-        updates=updates,
-        current_action=current_action,
-        raw_result=raw_result,
-        tool_name=tool_name,
-    )
-
-    return attach_execution_audit(state, updates)
 
 # --- Compile graph ---
 workflow = StateGraph(GraphState)
