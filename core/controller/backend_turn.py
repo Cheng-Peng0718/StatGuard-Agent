@@ -16,7 +16,7 @@ from core.graph import (
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
 
-from core.schema import ActionProposal
+from core.action_codec import action_from_state
 
 class BackendTurnResult(BaseModel):
     """
@@ -132,35 +132,13 @@ def _finish(
 
 def _action_to_graph_object(action: Any):
     """
-    Rehydrate dict current_action into the canonical ActionProposal contract.
+    Rehydrate state/checkpoint action payload into the canonical runtime
+    ActionProposal contract.
 
-    BackendTurnResult.model_dump() and UI round-trips may turn ActionProposal
-    into a plain dict. Legacy graph nodes still use attribute access, so during
-    the migration period we restore the formal Pydantic contract rather than
-    using an untyped SimpleNamespace.
+    The state boundary should remain JSON-safe, while legacy graph nodes can
+    still receive a formal ActionProposal during the migration period.
     """
-    if action is None:
-        return None
-
-    if isinstance(action, ActionProposal):
-        return action
-
-    if not isinstance(action, dict):
-        return action
-
-    payload = dict(action)
-
-    if not payload.get("reasoning_summary"):
-        payload["reasoning_summary"] = (
-            payload.get("summary")
-            or payload.get("message")
-            or "No reasoning summary provided."
-        )
-
-    if not payload.get("arguments"):
-        payload["arguments"] = {}
-
-    return ActionProposal.model_validate(payload)
+    return action_from_state(action)
 
 
 def _ensure_graph_action_object(state: Dict[str, Any]) -> Dict[str, Any]:
