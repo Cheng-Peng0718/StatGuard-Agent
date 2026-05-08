@@ -3,15 +3,12 @@ from verifiers.validators import verify
 import uuid
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-import numpy as np
 import pandas as pd
 from core.state import GraphState
 from core.schema import Observation
 from core.context_builder import build_context, generate_profile
 from agents.supervisor import call_supervisor
 from core.analysis_tool_plugins.execution import execute_analysis_tool
-import hashlib
-import json
 from core.analysis_runs import build_analysis_run_from_observation
 from core.data_versions import (
     get_active_data_path,
@@ -63,6 +60,8 @@ from core.workflow.repair_runtime import (
     attach_repair_decision,
     attach_repair_after_summarize,
 )
+
+from core.workflow.runtime_utils import sanitize_results, get_action_hash
 
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
@@ -1268,36 +1267,6 @@ def route_after_summarize(state: GraphState):
 
     # Non-recoverable failures should stop and let final answer/report explain blocker.
     return "end"
-
-def sanitize_results(obj):
-    """
-    Recursively convert numpy scalars/arrays to native Python for serialization.
-    """
-    if isinstance(obj, dict):
-        return {k: sanitize_results(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [sanitize_results(v) for v in obj]
-    elif isinstance(obj, (np.float64, np.float32, np.float16)):
-        return float(obj)
-    elif isinstance(obj, (np.int64, np.int32, np.int16, np.int8)):
-        return int(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
-    # Pass through primitives
-    elif isinstance(obj, (str, int, float, bool, type(None))):
-        return obj
-    else:
-        return str(obj)
-
-def get_action_hash(tool_name: str, arguments: dict):
-    """Stable MD5 fingerprint from tool name + canonical JSON arguments."""
-    if not arguments:
-        arguments = {}
-    # sort_keys keeps fingerprint stable when key order changes
-    arg_str = json.dumps(arguments, sort_keys=True, ensure_ascii=False)
-    return hashlib.md5(f"{tool_name}_{arg_str}".encode('utf-8')).hexdigest()
 
 def deliverable_gate_node(state: GraphState):
     result = evaluate_deliverable_gate_state(state)
