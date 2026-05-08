@@ -5,6 +5,7 @@ from core.workflow.routes import (
     route_after_verify,
     route_after_review,
     route_after_summarize,
+    route_after_deliverable_gate,
 )
 
 def test_route_after_intent_routes_advisory():
@@ -290,3 +291,56 @@ def test_route_after_summarize_ends_without_observations():
         "max_steps": 12,
         "observations": [],
     }) == "end"
+
+def test_route_after_deliverable_gate_routes_ok_to_final_response():
+    assert route_after_deliverable_gate({
+        "deliverable_check": {
+            "status": "ok",
+        }
+    }) == "final_response"
+
+
+def test_route_after_deliverable_gate_routes_needs_more_work_to_build_context():
+    assert route_after_deliverable_gate({
+        "deliverable_check": {
+            "status": "needs_more_work",
+        }
+    }) == "build_context"
+
+
+def test_route_after_deliverable_gate_routes_missing_to_build_context():
+    assert route_after_deliverable_gate({
+        "deliverable_check": {
+            "status": "missing",
+        }
+    }) == "build_context"
+
+
+def test_route_after_deliverable_gate_routes_blocked_to_build_context():
+    assert route_after_deliverable_gate({
+        "deliverable_check": {
+            "status": "blocked",
+        }
+    }) == "build_context"
+
+
+def test_route_after_deliverable_gate_routes_unknown_to_end():
+    assert route_after_deliverable_gate({
+        "deliverable_check": {
+            "status": "unknown",
+        }
+    }) == "end"
+
+
+def test_route_after_deliverable_gate_routes_missing_check_to_end():
+    assert route_after_deliverable_gate({}) == "end"
+
+
+class DummyDeliverableCheck:
+    status = "ok"
+
+
+def test_route_after_deliverable_gate_supports_object_status():
+    assert route_after_deliverable_gate({
+        "deliverable_check": DummyDeliverableCheck(),
+    }) == "final_response"

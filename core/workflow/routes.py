@@ -148,3 +148,25 @@ def route_after_summarize(state: dict):
 
     # Non-recoverable failures should stop and let final answer/report explain blocker.
     return "end"
+
+def route_after_deliverable_gate(state: dict):
+    """
+    If deliverables are satisfied, allow final_answer to end.
+    If deliverables are missing, go back to build_context so Supervisor can continue.
+    """
+    deliverable_check = state.get("deliverable_check") or {}
+
+    if isinstance(deliverable_check, dict):
+        status = deliverable_check.get("status")
+    else:
+        status = getattr(deliverable_check, "status", None)
+
+    print(f"[ROUTE AFTER DELIVERABLE GATE] status = {status}")
+
+    if status == "ok":
+        return "final_response"
+
+    if status in {"needs_more_work", "missing", "blocked"}:
+        return "build_context"
+
+    return "end"

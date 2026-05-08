@@ -64,6 +64,7 @@ from core.workflow.routes import (
     route_after_verify,
     route_after_review,
     route_after_summarize,
+    route_after_deliverable_gate,
 )
 
 from core.workflow.nodes.plan_execution import execute_pending_plan_node
@@ -763,29 +764,6 @@ def deliverable_gate_node(state: GraphState):
     return {
         "deliverable_check": deliverable_check,
     }
-
-def route_after_deliverable_gate(state: GraphState):
-    """
-    If deliverables are satisfied, allow final_answer to end.
-    If deliverables are missing, go back to build_context so Supervisor can continue.
-    """
-    deliverable_check = state.get("deliverable_check") or {}
-
-    if isinstance(deliverable_check, dict):
-        status = deliverable_check.get("status")
-    else:
-        status = getattr(deliverable_check, "status", None)
-
-    print(f"[ROUTE AFTER DELIVERABLE GATE] status = {status}")
-
-    if status == "ok":
-        return "final_response"
-
-    if status in {"needs_more_work", "missing", "blocked"}:
-        return "build_context"
-
-    return "end"
-
 
 # --- Compile graph ---
 workflow = StateGraph(GraphState)

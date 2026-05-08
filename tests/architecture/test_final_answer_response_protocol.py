@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from core.graph import final_response_node
+from core.workflow.routes import route_after_deliverable_gate
 
 
 def test_final_response_node_wraps_final_answer_in_assistant_response():
@@ -35,14 +36,15 @@ def test_deliverable_gate_routes_to_final_response():
 
 def test_graph_has_final_response_node_and_no_direct_final_answer_edge():
     graph_text = Path("core/graph.py").read_text(encoding="utf-8")
+    routes_text = Path("core/workflow/routes.py").read_text(encoding="utf-8")
 
     assert 'workflow.add_node("final_response"' in graph_text
     assert 'workflow.add_edge("final_response", END)' in graph_text
 
     # Deliverable gate success should route to final_response, not directly to END.
-    start = graph_text.index("def route_after_deliverable_gate")
-    rest = graph_text[start + 1:]
-    next_def_offset = rest.find("\ndef ")
-    body = graph_text[start:] if next_def_offset == -1 else graph_text[start:start + 1 + next_def_offset]
-
-    assert 'return "final_response"' in body
+    assert "def route_after_deliverable_gate" in routes_text
+    assert route_after_deliverable_gate({
+        "deliverable_check": {
+            "status": "ok",
+        }
+    }) == "final_response"
