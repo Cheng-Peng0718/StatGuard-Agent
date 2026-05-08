@@ -7,7 +7,6 @@ import pandas as pd
 from core.state import GraphState
 from core.schema import Observation
 from core.context_builder import build_context, generate_profile
-from core.analysis_tool_plugins.execution import execute_analysis_tool
 from core.analysis_runs import build_analysis_run_from_observation
 from core.data_versions import (
     get_active_data_path,
@@ -37,7 +36,7 @@ from core.verification_access import (
     get_verification_status,
     set_verification_fields,
 )
-from core.execution_codec import normalize_execution_view, execution_to_state_dict
+from core.execution_codec import normalize_execution_view
 
 from core.workflow.audit_runtime import attach_execution_audit
 
@@ -46,7 +45,7 @@ from core.workflow.repair_runtime import (
     attach_repair_after_summarize,
 )
 
-from core.workflow.runtime_utils import sanitize_results, get_action_hash
+from core.workflow.runtime_utils import get_action_hash
 
 from core.workflow.nodes.interaction import (
     intent_router_node,
@@ -74,9 +73,9 @@ from core.workflow.nodes.finalization import (
     final_response_node,
 )
 
-from core.workflow.execution_fingerprints import has_duplicate_executed_action
-
 from core.workflow.verification_feedback import attach_verification_blocked_response
+
+from core.workflow.nodes.execution import execute_node
 
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
@@ -546,100 +545,6 @@ def human_review_node(state: GraphState):
 
     return {"observations": [obs.model_dump()]}
 
-
-def execute_node(state: GraphState):
-    action = state.get("current_action")
-    tool_name = get_action_tool_name(action)
-    arguments = get_action_arguments(action)
-
-    if not action or not tool_name:
-        message = "Error: No valid action provided."
-
-        return {
-            "current_execution": execution_to_state_dict(
-                {
-                    "status": "blocked",
-                    "success": False,
-                    "error_code": "NO_VALID_ACTION",
-                    "message": message,
-                    "artifacts": [],
-                    "payload": {},
-                },
-                fallback_action_id=get_action_id(action),
-                fallback_tool_name=tool_name or "unknown_tool",
-            )
-        }
-
-    if has_duplicate_executed_action(
-        state=state,
-        tool_name=tool_name,
-        arguments=arguments,
-    ):
-        current_hash = get_action_hash(tool_name, arguments)
-
-        error_msg = (
-            f"[System intervention]: Execution refused. You are calling '{tool_name}' "
-            f"with parameters identical to a previous executed attempt.\n"
-            f"To retry, change arguments or explicitly choose a different strategy."
-        )
-
-        print(
-            f"[Fingerprint gate]: blocked duplicate executed action "
-            f"{tool_name} (fp: {current_hash[:6]})"
-        )
-
-        return {
-            "current_execution": execution_to_state_dict(
-                {
-                    "status": "blocked",
-                    "success": False,
-                    "error_code": "DUPLICATE_EXECUTION_ATTEMPT",
-                    "message": error_msg,
-                    "artifacts": [],
-                    "payload": {
-                        "tool_name": tool_name,
-                        "arguments": arguments,
-                        "action_hash": current_hash,
-                    },
-                },
-                fallback_action_id=get_action_id(action),
-                fallback_tool_name=tool_name,
-            )
-        }
-
-    print(f"[Execute]: {tool_name}")
-
-    context_pkg = build_context(
-        step=state.get("current_step", 1),
-        max_steps=state.get("max_steps", 20),
-        user_request=state.get("user_request", "Not provided"),
-        profile=state.get("dataset_profile"),
-        observations=state.get("observations", []),
-        workspace_dir=state.get("workspace_dir", "./"),
-        deliverable_check=state.get("deliverable_check"),
-        data_versions=state.get("data_versions", []),
-        active_data_version_id=state.get("active_data_version_id"),
-        data_audit_log=state.get("data_audit_log", []),
-    )
-
-    exec_result = execute_analysis_tool(action, context_pkg)
-
-    if hasattr(exec_result, "model_dump"):
-        raw_payload = exec_result.model_dump()
-    elif hasattr(exec_result, "dict"):
-        raw_payload = exec_result.dict()
-    else:
-        raw_payload = exec_result
-
-    safe_result = sanitize_results(raw_payload)
-
-    return {
-        "current_execution": execution_to_state_dict(
-            safe_result,
-            fallback_action_id=get_action_id(action),
-            fallback_tool_name=tool_name,
-        )
-    }
 
 def summarize_node(state: GraphState):
     current_action = state.get("current_action")
