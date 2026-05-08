@@ -16,7 +16,7 @@ from core.graph import (
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
 
-from core.action_codec import action_from_state
+from core.action_codec import action_from_state, action_to_state_dict
 
 class BackendTurnResult(BaseModel):
     """
@@ -53,6 +53,7 @@ def _as_dict(value: Any) -> Dict[str, Any]:
 
     return {}
 
+_ACTION_STATE_FIELDS = ("current_action", "pending_action")
 
 def _get_field(value: Any, field_name: str, default=None):
     if value is None:
@@ -116,6 +117,8 @@ def _finish(
     status: str = "ok",
     message: str | None = None,
 ) -> BackendTurnResult:
+    state = _normalize_state_actions_for_storage(state)
+
     ui_snapshot = build_ui_snapshot(state)
 
     # Store the latest snapshot for UI layers that want to keep it in state.
@@ -142,13 +145,32 @@ def _action_to_graph_object(action: Any):
 
 
 def _ensure_graph_action_object(state: Dict[str, Any]) -> Dict[str, Any]:
-    action = state.get("current_action")
+    """
+    Rehydrate JSON-safe action payloads into ActionProposal objects for
+    legacy graph-node runtime execution.
+    """
+    state = dict(state)
 
-    if isinstance(action, dict):
-        state = dict(state)
-        state["current_action"] = _action_to_graph_object(action)
+    for field_name in _ACTION_STATE_FIELDS:
+        action = state.get(field_name)
+
+        if isinstance(action, dict):
+            state[field_name] = _action_to_graph_object(action)
 
     return state
+
+def _normalize_state_actions_for_storage(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert runtime action objects back into JSON-safe dict payloads before
+    returning state to UI/checkpoint boundaries.
+    """
+    normalized = dict(state)
+
+    for field_name in _ACTION_STATE_FIELDS:
+        if field_name in normalized:
+            normalized[field_name] = action_to_state_dict(normalized.get(field_name))
+
+    return normalized
 
 
 def _run_verify_execute_summarize(
@@ -211,6 +233,7 @@ def _handle_human_review_decision(
     Rejection:
       human_review_node only; no execution.
     """
+    state = _ensure_graph_action_object(state)
     decision = state.get("human_review_decision")
 
     if decision not in {"approved", "rejected"}:
