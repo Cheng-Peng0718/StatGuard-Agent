@@ -4,6 +4,7 @@ import json
 from typing import Any, Dict
 
 from core.audit.state_serialization import make_checkpoint_safe_state
+from core.execution_codec import normalize_execution_view
 
 
 UI_SNAPSHOT_SCHEMA_VERSION = "ui_snapshot_v1"
@@ -102,23 +103,17 @@ def _build_verification_snapshot(verification: Any) -> Dict[str, Any] | None:
 
 
 def _build_execution_snapshot(execution: Any) -> Dict[str, Any] | None:
-    if execution is None:
+    execution_view = normalize_execution_view(execution)
+
+    if execution_view is None:
         return None
 
-    execution_dict = _as_dict(execution)
-
-    if not execution_dict:
-        return {
-            "status": "unknown",
-            "message": str(execution),
-        }
-
     return {
-        "execution_id": execution_dict.get("execution_id"),
-        "status": execution_dict.get("status"),
-        "success": execution_dict.get("success"),
-        "error_code": execution_dict.get("error_code"),
-        "message": execution_dict.get("message"),
+        "execution_id": execution_view.get("execution_id"),
+        "status": execution_view.get("status"),
+        "success": execution_view.get("success"),
+        "error_code": execution_view.get("error_code"),
+        "message": execution_view.get("message"),
     }
 
 

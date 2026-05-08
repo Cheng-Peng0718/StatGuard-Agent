@@ -20,6 +20,7 @@ from core.action_codec import action_from_state, action_to_state_dict
 
 from core.verification_access import get_verification_status
 from core.verification_codec import verification_to_state_dict
+from core.execution_codec import execution_to_state_dict
 
 class BackendTurnResult(BaseModel):
     """
@@ -58,6 +59,7 @@ def _as_dict(value: Any) -> Dict[str, Any]:
 
 _ACTION_STATE_FIELDS = ("current_action", "pending_action")
 _VERIFICATION_STATE_FIELDS = ("current_verification",)
+_EXECUTION_STATE_FIELDS = ("current_execution",)
 
 def _get_field(value: Any, field_name: str, default=None):
     if value is None:
@@ -106,6 +108,20 @@ def _verification_status(state: Dict[str, Any]) -> str | None:
     verification = state.get("current_verification")
     return get_verification_status(verification)
 
+def _normalize_state_executions_for_storage(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert runtime execution objects back into JSON-safe dict payloads before
+    returning state to UI/checkpoint boundaries.
+    """
+    normalized = dict(state)
+
+    for field_name in _EXECUTION_STATE_FIELDS:
+        if field_name in normalized:
+            normalized[field_name] = execution_to_state_dict(
+                normalized.get(field_name)
+            )
+
+    return normalized
 
 def _has_current_action(state: Dict[str, Any]) -> bool:
     action = state.get("current_action")
@@ -121,6 +137,7 @@ def _finish(
 ) -> BackendTurnResult:
     state = _normalize_state_actions_for_storage(state)
     state = _normalize_state_verifications_for_storage(state)
+    state = _normalize_state_executions_for_storage(state)
 
     ui_snapshot = build_ui_snapshot(state)
 

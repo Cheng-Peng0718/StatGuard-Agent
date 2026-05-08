@@ -62,6 +62,7 @@ from core.verification_access import (
     get_verification_status,
     set_verification_fields,
 )
+from core.execution_codec import normalize_execution_view, execution_to_state_dict
 
 def _as_plain_dict(obj):
     if obj is None:
@@ -1150,7 +1151,13 @@ def execute_node(state: GraphState):
 
     safe_result = sanitize_results(raw_payload)
 
-    return {"current_execution": safe_result}
+    return {
+        "current_execution": execution_to_state_dict(
+            safe_result,
+            fallback_action_id=get_action_id(action),
+            fallback_tool_name=tool_name,
+        )
+    }
 
 def summarize_node(state: GraphState):
     current_action = state.get("current_action")
@@ -1159,22 +1166,20 @@ def summarize_node(state: GraphState):
 
     raw_result = state.get("current_execution", "No execution result")
 
-    if isinstance(raw_result, dict):
-        execution_id = raw_result.get("execution_id")
-        status = raw_result.get("status", "ok" if raw_result.get("success", True) else "failed")
-        success = bool(raw_result.get("success", status in ["ok", "warning"]))
-        error_code = raw_result.get("error_code")
-        message = raw_result.get("message")
-        artifacts = raw_result.get("artifacts", []) or []
-        payload = raw_result.get("payload", {})
-    else:
-        execution_id = None
-        status = "failed"
-        success = False
-        error_code = "NON_STRUCTURED_EXECUTION_RESULT"
-        message = str(raw_result)
-        artifacts = []
-        payload = {"result": raw_result}
+    execution_view = normalize_execution_view(
+        raw_result,
+        fallback_action_id=get_action_id(current_action),
+        fallback_tool_name=tool_name,
+    )
+
+    execution_id = execution_view.get("execution_id")
+    status = execution_view.get("status")
+    success = bool(execution_view.get("success"))
+    error_code = execution_view.get("error_code")
+    message = execution_view.get("message")
+    artifacts = execution_view.get("artifacts") or []
+    payload = execution_view.get("payload") or {}
+    raw_result = execution_view
 
     summary = (
         f"Tool {tool_name} finished with status={status}, success={success}. "
@@ -1310,15 +1315,11 @@ def summarize_node(state: GraphState):
     # are still visible to the evaluator.
     repair_state = dict(state)
 
-    if isinstance(raw_result, dict):
-        repair_state["current_execution"] = raw_result
-    else:
-        repair_state["current_execution"] = {
-            "status": status,
-            "success": success,
-            "error_code": error_code,
-            "message": message,
-        }
+    repair_state["current_execution"] = execution_to_state_dict(
+        raw_result,
+        fallback_action_id=get_action_id(current_action),
+        fallback_tool_name=tool_name,
+    )
 
     repair_decision = evaluate_repair_decision(repair_state)
     updates["repair_decision"] = repair_decision.model_dump()
