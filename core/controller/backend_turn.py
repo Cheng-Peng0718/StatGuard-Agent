@@ -18,6 +18,9 @@ from core.ui_adapter.snapshot import build_ui_snapshot
 
 from core.action_codec import action_from_state, action_to_state_dict
 
+from core.verification_access import get_verification_status
+from core.verification_codec import verification_to_state_dict
+
 class BackendTurnResult(BaseModel):
     """
     Result of one backend-controller turn.
@@ -54,6 +57,7 @@ def _as_dict(value: Any) -> Dict[str, Any]:
     return {}
 
 _ACTION_STATE_FIELDS = ("current_action", "pending_action")
+_VERIFICATION_STATE_FIELDS = ("current_verification",)
 
 def _get_field(value: Any, field_name: str, default=None):
     if value is None:
@@ -102,7 +106,7 @@ def _apply_updates(state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, 
 
 def _verification_status(state: Dict[str, Any]) -> str | None:
     verification = state.get("current_verification")
-    return _get_field(verification, "status")
+    return get_verification_status(verification)
 
 
 def _has_current_action(state: Dict[str, Any]) -> bool:
@@ -118,6 +122,7 @@ def _finish(
     message: str | None = None,
 ) -> BackendTurnResult:
     state = _normalize_state_actions_for_storage(state)
+    state = _normalize_state_verifications_for_storage(state)
 
     ui_snapshot = build_ui_snapshot(state)
 
@@ -169,6 +174,21 @@ def _normalize_state_actions_for_storage(state: Dict[str, Any]) -> Dict[str, Any
     for field_name in _ACTION_STATE_FIELDS:
         if field_name in normalized:
             normalized[field_name] = action_to_state_dict(normalized.get(field_name))
+
+    return normalized
+
+def _normalize_state_verifications_for_storage(state: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert runtime verification objects back into JSON-safe dict payloads before
+    returning state to UI/checkpoint boundaries.
+    """
+    normalized = dict(state)
+
+    for field_name in _VERIFICATION_STATE_FIELDS:
+        if field_name in normalized:
+            normalized[field_name] = verification_to_state_dict(
+                normalized.get(field_name)
+            )
 
     return normalized
 

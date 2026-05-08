@@ -55,6 +55,14 @@ from core.action_access import (
     has_action_tool_name,
 )
 
+from core.verification_access import (
+    get_verification_details,
+    get_verification_error_code,
+    get_verification_feedback,
+    get_verification_status,
+    set_verification_fields,
+)
+
 def _as_plain_dict(obj):
     if obj is None:
         return {}
@@ -791,43 +799,54 @@ def verify_node(state: GraphState):
 
     status, feedback, verify_result = verify(action, state["dataset_profile"])
 
-    action_hash = get_action_hash(
-        getattr(action, "tool_name", None),
-        getattr(action, "arguments", {}) or {},
+    tool_name = get_action_tool_name(action)
+    arguments = get_action_arguments(action)
+    action_id = get_action_id(action)
+
+    action_hash = get_action_hash(tool_name, arguments)
+
+    verification_details = get_verification_details(verify_result)
+    verification_details["action_hash"] = action_hash
+    verify_result = set_verification_fields(
+        verify_result,
+        details=verification_details,
     )
 
-    verify_result.details["action_hash"] = action_hash
+    verify_status = get_verification_status(verify_result)
+    verify_feedback = get_verification_feedback(verify_result)
+    verify_error_code = get_verification_error_code(verify_result)
+    verify_details = get_verification_details(verify_result)
 
     print("\n" + "=" * 40)
     print("[VERIFY NODE DEBUG]")
-    print(f"tool_name = {getattr(action, 'tool_name', None)}")
-    print(f"verify_result.status = {verify_result.status}")
-    print(f"verify_result.error_code = {verify_result.error_code}")
-    print(f"verify_result.feedback = {verify_result.feedback}")
-    print(f"verify_result.details = {verify_result.details}")
+    print(f"tool_name = {tool_name}")
+    print(f"verify_result.status = {verify_status}")
+    print(f"verify_result.error_code = {verify_error_code}")
+    print(f"verify_result.feedback = {verify_feedback}")
+    print(f"verify_result.details = {verify_details}")
     print("=" * 40 + "\n")
 
-    if verify_result.status in ["rejected_recoverable", "rejected_terminal"]:
+    if verify_status in ["rejected_recoverable", "rejected_terminal"]:
         obs = Observation(
             observation_id=f"obs_{uuid.uuid4().hex[:8]}",
-            source_action_id=action.action_id,
-            tool_name=getattr(action, "tool_name", None),
+            source_action_id=action_id,
+            tool_name=tool_name,
             arguments=getattr(action, "arguments", {}) or {},
             status="rejected",
             success=False,
-            error_code=verify_result.error_code or "VERIFICATION_FAILED",
-            message=verify_result.feedback,
+            error_code=verify_error_code or "VERIFICATION_FAILED",
+            message=verify_feedback,
             artifacts=[],
             summary=(
-                f"Validation failed for {getattr(action, 'tool_name', None)}: "
-                f"{verify_result.feedback}"
+                f"Validation failed for {tool_name}: "
+                f"{verify_feedback}"
             ),
             structured_data={
                 "status": "rejected",
                 "success": False,
-                "error_code": verify_result.error_code or "VERIFICATION_FAILED",
-                "message": verify_result.feedback,
-                "details": verify_result.details,
+                "error_code": verify_error_code or "VERIFICATION_FAILED",
+                "message": verify_feedback,
+                "details": verify_details,
             },
             raw_data={
                 "verification": (
@@ -835,7 +854,7 @@ def verify_node(state: GraphState):
                     if hasattr(verify_result, "model_dump")
                     else verify_result
                 ),
-                "recoverable": verify_result.status == "rejected_recoverable",
+                "recoverable": verify_status == "rejected_recoverable",
             },
         )
 
@@ -856,14 +875,14 @@ def verify_node(state: GraphState):
                 step_id=current_plan_step_id,
                 success=False,
                 execution_id=None,
-                message=verify_result.feedback,
+                message=verify_feedback,
             )
 
             content = (
                 "I tried to execute the next ready step in the pending plan, "
                 "but it failed validation before execution.\n\n"
-                f"Tool: {getattr(action, 'tool_name', None)}\n"
-                f"Reason: {verify_result.feedback}\n\n"
+                f"Tool: {tool_name}\n"
+                f"Reason: {verify_feedback}\n\n"
                 "I marked this plan step as failed and stopped execution to avoid a retry loop."
             )
 
@@ -882,8 +901,8 @@ def verify_node(state: GraphState):
                     plan_id=updated_plan.get("plan_id"),
                     plan_status=updated_plan.get("status"),
                     metadata={
-                        "error_code": verify_result.error_code,
-                        "tool_name": getattr(action, "tool_name", None),
+                        "error_code": verify_error_code,
+                        "tool_name": tool_name,
                         "step_id": current_plan_step_id,
                     },
                 ),
@@ -929,17 +948,12 @@ def human_review_node(state: GraphState):
         )
         return {"observations": [obs.model_dump()]}
 
-    tool_name = getattr(action, "tool_name", None)
-    arguments = getattr(action, "arguments", {}) or {}
+    tool_name = get_action_tool_name(action)
+    arguments = get_action_arguments(action)
 
-    if isinstance(vr, dict):
-        vr_details = vr.get("details", {}) or {}
-        vr_status = vr.get("status")
-        feedback = vr.get("feedback")
-    else:
-        vr_details = getattr(vr, "details", {}) or {}
-        vr_status = getattr(vr, "status", None)
-        feedback = getattr(vr, "feedback", None)
+    vr_details = get_verification_details(vr)
+    vr_status = get_verification_status(vr)
+    feedback = get_verification_feedback(vr)
 
     canonical_arguments = vr_details.get("canonical_arguments") or arguments
 
@@ -973,12 +987,11 @@ def human_review_node(state: GraphState):
             )
 
         else:
-            approved_vr = vr
-            try:
-                approved_vr.status = "allowed"
-                approved_vr.feedback = approved_feedback
-            except Exception:
-                pass
+            approved_vr = set_verification_fields(
+                vr,
+                status="allowed",
+                feedback=approved_feedback,
+            )
 
         return {
             "current_verification": approved_vr,
@@ -1411,7 +1424,7 @@ def route_after_verify(state: GraphState):
             and state.get("current_verification") is not None
     ):
         verification = state.get("current_verification")
-        status = getattr(verification, "status", None)
+        status = get_verification_status(verification)
 
         if status in {"rejected_recoverable", "rejected_terminal"}:
             return "end"
@@ -1425,10 +1438,7 @@ def route_after_verify(state: GraphState):
         print("[ROUTE AFTER VERIFY] no verification result -> build_context")
         return "build_context"
 
-    if isinstance(vr, dict):
-        status = vr.get("status")
-    else:
-        status = getattr(vr, "status", None)
+    status = get_verification_status(vr)
 
     print(f"[ROUTE AFTER VERIFY] status = {status}")
 
@@ -1456,10 +1466,7 @@ def route_after_review(state: GraphState):
         print("[ROUTE AFTER REVIEW] no current_verification -> build_context")
         return "build_context"
 
-    if isinstance(vr, dict):
-        status = vr.get("status")
-    else:
-        status = getattr(vr, "status", None)
+    status = get_verification_status(vr)
 
     print(f"[ROUTE AFTER REVIEW] status = {status}")
 
