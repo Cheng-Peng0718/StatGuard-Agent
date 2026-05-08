@@ -391,7 +391,7 @@ def test_backend_turn_exposes_assistant_response_for_verification_rejection(monk
         fake_execute_pending_plan_node,
     )
     monkeypatch.setattr(
-        "core.graph.verify",
+        "core.workflow.nodes.verification.verify",
         fake_verify,
     )
 

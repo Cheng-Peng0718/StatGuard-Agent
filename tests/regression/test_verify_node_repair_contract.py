@@ -1,4 +1,4 @@
-from core.graph import verify_node
+from core.workflow.nodes.verification import verify_node
 from core.schema import ActionProposal
 
 
@@ -29,7 +29,7 @@ def test_verify_node_attaches_repair_state_for_recoverable_verification_failure(
             },
         )
 
-    monkeypatch.setattr("core.graph.verify", fake_verify)
+    monkeypatch.setattr("core.workflow.nodes.verification.verify", fake_verify)
 
     updates = verify_node({
         "current_action": action,
@@ -81,7 +81,7 @@ def test_verify_node_attaches_terminal_repair_state_for_terminal_verification_fa
             },
         )
 
-    monkeypatch.setattr("core.graph.verify", fake_verify)
+    monkeypatch.setattr("core.workflow.nodes.verification.verify", fake_verify)
 
     updates = verify_node({
         "current_action": action,
