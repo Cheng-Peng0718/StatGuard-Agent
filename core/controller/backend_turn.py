@@ -73,23 +73,8 @@ def _get_field(value: Any, field_name: str, default=None):
 
 def _apply_updates(state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Apply node updates in the backend controller.
-
-    Important:
-    LangGraph uses reducers for some GraphState fields, for example:
-
-        observations: Annotated[list, operator.add]
-
-    App V2 / backend controller does not run through LangGraph's reducer
-    machinery, so we must emulate reducer semantics for delta-style fields.
-
-    summarize_node returns observations and analysis_runs as deltas:
-        {"observations": [new_observation]}
-        {"analysis_runs": [new_analysis_run]}
-
-    Therefore:
-    - observations should be appended
-    - analysis_runs should be appended
+    summarize_node returns observations and analysis_runs as deltas.
+    Therefore, both observations and analysis_runs should be appended.
     """
     merged = dict(state)
 

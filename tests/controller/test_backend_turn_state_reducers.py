@@ -29,7 +29,7 @@ def test_backend_turn_apply_updates_appends_observation_deltas():
     ] == ["obs_old", "obs_new"]
 
 
-def test_backend_turn_apply_updates_replaces_analysis_runs_registry():
+def test_backend_turn_apply_updates_appends_analysis_runs_delta():
     old_run = {
         "analysis_run_id": "run_old",
         "observation_id": "obs_old",
@@ -46,9 +46,8 @@ def test_backend_turn_apply_updates_replaces_analysis_runs_registry():
         "analysis_runs": [old_run],
     }
 
-    # summarize_node already returns the full analysis_runs registry.
     updates = {
-        "analysis_runs": [old_run, new_run],
+        "analysis_runs": [new_run],
     }
 
     result = _apply_updates(state, updates)

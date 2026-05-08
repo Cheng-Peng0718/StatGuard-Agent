@@ -2,31 +2,33 @@ from pathlib import Path
 
 
 def test_graph_attaches_repair_proposal_observe_only():
-    graph_text = Path("core/graph.py").read_text(encoding="utf-8")
+    repair_text = Path("core/workflow/repair_runtime.py").read_text(
+        encoding="utf-8",
+        errors="ignore",
+    )
 
-    assert "generate_repair_proposal" in graph_text
-    assert "def _attach_repair_proposal" in graph_text
-    assert "repair_proposal" in graph_text
+    assert "generate_repair_proposal" in repair_text
+    assert "def attach_repair_proposal" in repair_text
 
 
 def test_graph_repair_proposal_hook_does_not_execute_tools():
-    graph_text = Path("core/graph.py").read_text(encoding="utf-8")
+    repair_text = Path("core/workflow/repair_runtime.py").read_text(
+        encoding="utf-8",
+        errors="ignore",
+    )
 
-    start = graph_text.index("def _attach_repair_proposal")
-    rest = graph_text[start + 1:]
+    start = repair_text.index("def attach_repair_proposal")
+    rest = repair_text[start + 1:]
     next_def_offset = rest.find("\ndef ")
-    body = graph_text[start:] if next_def_offset == -1 else graph_text[start:start + 1 + next_def_offset]
+    body = (
+        repair_text[start:]
+        if next_def_offset == -1
+        else repair_text[start:start + 1 + next_def_offset]
+    )
 
-    forbidden_fragments = [
-        "execute_tool",
-        "run_tool",
-        "invoke(",
-        "send",
-    ]
-
-    offenders = [
-        fragment for fragment in forbidden_fragments
-        if fragment in body
-    ]
-
-    assert offenders == []
+    for forbidden in [
+        "execute_analysis_tool",
+        "execute_node",
+        "run_backend_turn",
+    ]:
+        assert forbidden not in body

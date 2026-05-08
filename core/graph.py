@@ -115,6 +115,7 @@ workflow.add_conditional_edges(
         "execute": "execute",
         "human_review": "human_review",
         "build_context": "build_context",
+        "end": END,
     },
 )
 

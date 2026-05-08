@@ -2,14 +2,14 @@ from pathlib import Path
 
 
 def test_legacy_planner_not_registered_in_active_graph():
-    graph_text = Path("core/graph.py").read_text(encoding="utf-8")
+    graph_text = Path("core/workflow/routes.py").read_text(encoding="utf-8")
 
     assert 'workflow.add_node("planner"' not in graph_text
     assert 'workflow.add_edge("planner", "supervisor")' not in graph_text
 
 
 def test_intent_router_does_not_call_router_gate():
-    graph_text = Path("core/graph.py").read_text(encoding="utf-8")
+    graph_text = Path("core/workflow/routes.py").read_text(encoding="utf-8")
 
     start = graph_text.index("def route_after_intent")
     rest = graph_text[start + 1:]
@@ -21,7 +21,7 @@ def test_intent_router_does_not_call_router_gate():
 
 
 def test_legacy_planner_functions_removed_from_graph():
-    graph_text = Path("core/graph.py").read_text(encoding="utf-8")
+    graph_text = Path("core/workflow/routes.py").read_text(encoding="utf-8")
 
     forbidden_defs = [
         "def router_gate",
