@@ -67,6 +67,8 @@ from core.workflow.nodes.interaction import (
 
 from core.workflow.nodes.planning import plan_only_node
 
+from core.workflow.routes import route_after_intent
+
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
     Load the active dataset for Dataset Intelligence.
@@ -155,23 +157,6 @@ def build_context_node(state: GraphState):
         "dataset_summary": dataset_summary.model_dump(),
         "capability_map": capability_map.model_dump(),
     }
-
-def route_after_intent(state: GraphState):
-    intent = state.get("interaction_intent")
-
-    print(f"[ROUTE AFTER INTENT] intent = {intent}")
-
-    if intent == "advisory":
-        return "advisory_answer"
-
-    if intent == "plan_only":
-        return "plan_only"
-
-    if intent == "execute_plan":
-        return "execute_pending_plan"
-
-    # Direct tool requests and unknown requests go to the unified supervisor path.
-    return "supervisor"
 
 def execute_pending_plan_node(state: GraphState):
     print("\n" + "=" * 40)
