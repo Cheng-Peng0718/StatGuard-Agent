@@ -5,7 +5,8 @@ from typing import Any, Dict
 
 from core.audit.state_serialization import make_checkpoint_safe_state
 from core.execution_codec import normalize_execution_view
-
+from core.action_codec import normalize_action_payload
+from core.verification_codec import verification_to_state_dict
 
 UI_SNAPSHOT_SCHEMA_VERSION = "ui_snapshot_v1"
 
@@ -47,25 +48,10 @@ def _safe_list(value: Any) -> list:
 
 
 def _build_action_snapshot(action: Any) -> Dict[str, Any] | None:
-    """
-    Convert current_action into a UI-safe action summary.
-
-    This intentionally supports dict, Pydantic models, and simple objects.
-    UI should not need the full internal object.
-    """
-    if action is None:
-        return None
-
-    action_dict = _as_dict(action)
+    action_dict = normalize_action_payload(action)
 
     if not action_dict:
-        action_dict = {
-            "action_id": _get_field(action, "action_id"),
-            "action_type": _get_field(action, "action_type"),
-            "tool_name": _get_field(action, "tool_name"),
-            "arguments": _get_field(action, "arguments", {}) or {},
-            "reasoning_summary": _get_field(action, "reasoning_summary"),
-        }
+        return None
 
     return {
         "action_id": action_dict.get("action_id"),
@@ -81,18 +67,10 @@ def _build_action_snapshot(action: Any) -> Dict[str, Any] | None:
 
 
 def _build_verification_snapshot(verification: Any) -> Dict[str, Any] | None:
-    if verification is None:
-        return None
-
-    verification_dict = _as_dict(verification)
+    verification_dict = verification_to_state_dict(verification)
 
     if not verification_dict:
-        verification_dict = {
-            "status": _get_field(verification, "status"),
-            "feedback": _get_field(verification, "feedback"),
-            "error_code": _get_field(verification, "error_code"),
-            "details": _get_field(verification, "details", {}) or {},
-        }
+        return None
 
     return {
         "status": verification_dict.get("status"),
@@ -100,7 +78,6 @@ def _build_verification_snapshot(verification: Any) -> Dict[str, Any] | None:
         "error_code": verification_dict.get("error_code"),
         "details": verification_dict.get("details") or {},
     }
-
 
 def _build_execution_snapshot(execution: Any) -> Dict[str, Any] | None:
     execution_view = normalize_execution_view(execution)
