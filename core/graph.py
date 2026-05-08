@@ -33,14 +33,6 @@ from core.planning.execution_queue import (
 )
 from core.deliverables.gate import evaluate_deliverable_gate_state
 from core.deliverables.evidence import extract_final_answer_content_from_state
-from core.repair.decision import evaluate_repair_decision
-
-from core.repair.attempts import (
-    append_repair_attempt,
-    can_attempt_repair,
-    make_repair_attempt,
-)
-from core.repair.proposal_generator import generate_repair_proposal
 from core.dataset_intelligence.schemas import DatasetProfileV2
 from core.planning.dependencies import modeling_blocked_by_pending_cleaning
 
@@ -67,6 +59,11 @@ from core.execution_codec import normalize_execution_view, execution_to_state_di
 
 from core.workflow.audit_runtime import attach_execution_audit
 
+from core.workflow.repair_runtime import (
+    attach_repair_decision,
+    attach_repair_after_summarize,
+)
+
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
     Load the active dataset for Dataset Intelligence.
@@ -87,137 +84,6 @@ def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
         return pd.read_excel(path)
 
     raise ValueError(f"Unsupported active data file type for profiling: {path}")
-
-def _attach_repair_decision(state: GraphState, updates: dict) -> dict:
-    """
-    Attach observe-only repair decision to graph updates.
-
-    S13B does not retry, reroute, or mutate actions.
-    It only records whether the current verification/execution failure
-    appears repairable.
-    """
-    repair_state = dict(state)
-    repair_state.update(updates)
-
-    decision = evaluate_repair_decision(repair_state)
-    updates["repair_decision"] = decision.model_dump()
-
-    if decision.status != "no_repair_needed":
-        print("\n" + "=" * 40)
-        print("[REPAIR DECISION]")
-        print(decision.model_dump())
-        print("=" * 40 + "\n")
-
-    updates = _attach_repair_proposal(state, updates)
-    return _attach_repair_attempt_if_allowed(state, updates)
-
-def _attach_repair_proposal(state: GraphState, updates: dict) -> dict:
-    """
-    Observe-only repair proposal generation.
-
-    S13G does not apply repairs, retry tools, call LLMs, or change routing.
-    It only records what deterministic repair proposal would be available.
-    """
-    repair_state = dict(state)
-    pre_update_action = repair_state.get("current_action")
-
-    repair_state.update(updates)
-
-    repair_decision = updates.get("repair_decision") or repair_state.get("repair_decision")
-
-    if not isinstance(repair_decision, dict):
-        return updates
-
-    if repair_decision.get("status") == "no_repair_needed":
-        return updates
-
-    # summarize_node may clear current_action in updates.
-    # The proposal still needs the original source action.
-    current_action = repair_state.get("current_action") or pre_update_action
-
-    if current_action is None:
-        return updates
-
-    proposal = generate_repair_proposal(
-        repair_decision=repair_decision,
-        current_action=current_action,
-    )
-
-    updates["repair_proposal"] = proposal
-
-    print("\n" + "=" * 40)
-    print("[REPAIR PROPOSAL]")
-    print(proposal)
-    print("=" * 40 + "\n")
-
-    return updates
-
-def _attach_repair_attempt_if_allowed(state: GraphState, updates: dict) -> dict:
-    """
-    Observe-only repair attempt logging.
-
-    S13D does not apply repairs, retry tools, call LLMs, or change routing.
-    It only records a proposed repair attempt when the current repair_decision
-    says the failure is repairable / needs_user and the tool policy allows
-    another attempt.
-    """
-    repair_state = dict(state)
-    pre_update_action = repair_state.get("current_action")
-
-    repair_state.update(updates)
-
-    repair_decision = updates.get("repair_decision") or repair_state.get("repair_decision")
-
-    # S13D:
-    # summarize_node clears current_action in updates after archiving the execution.
-    # Repair attempts still need the original source action for traceability.
-    current_action = repair_state.get("current_action") or pre_update_action
-
-    if current_action is not None:
-        repair_state["current_action"] = current_action
-
-    repair_attempts = repair_state.get("repair_attempts", []) or []
-
-    if not can_attempt_repair(
-        repair_decision=repair_decision,
-        repair_attempts=repair_attempts,
-        current_action=current_action,
-    ):
-        return updates
-
-    decision_status = repair_decision.get("status") if isinstance(repair_decision, dict) else None
-
-    if decision_status == "needs_user":
-        repair_type = "ask_user"
-        message = "Repair requires user-provided choices or missing roles."
-    else:
-        repair_type = "argument_repair"
-        message = "A backend repair attempt is possible, but S13D only records the proposal."
-
-    attempt = make_repair_attempt(
-        repair_decision=repair_decision,
-        current_action=current_action,
-        repair_type=repair_type,
-        proposed_arguments={},
-        proposed_tool_name=None,
-        message=message,
-        metadata={
-            "observe_only": True,
-            "stage": "S13D",
-        },
-    )
-
-    updates["repair_attempts"] = append_repair_attempt(
-        repair_attempts,
-        attempt,
-    )
-
-    print("\n" + "=" * 40)
-    print("[REPAIR ATTEMPT PROPOSED]")
-    print(attempt)
-    print("=" * 40 + "\n")
-
-    return updates
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):
@@ -817,7 +683,7 @@ def verify_node(state: GraphState):
         "human_review_required": False,
     }
 
-    return _attach_repair_decision(state, updates)
+    return attach_repair_decision(state, updates)
 
 def human_review_node(state: GraphState):
     """
@@ -1215,28 +1081,13 @@ def summarize_node(state: GraphState):
             f"marked as {'completed' if success else 'failed'}"
         )
 
-    # S13B: observe-only repair decision.
-    # Use pre-clear runtime state so failed current_execution/current_action
-    # are still visible to the evaluator.
-    repair_state = dict(state)
-
-    repair_state["current_execution"] = execution_to_state_dict(
-        raw_result,
-        fallback_action_id=get_action_id(current_action),
-        fallback_tool_name=tool_name,
+    updates = attach_repair_after_summarize(
+        state=state,
+        updates=updates,
+        current_action=current_action,
+        raw_result=raw_result,
+        tool_name=tool_name,
     )
-
-    repair_decision = evaluate_repair_decision(repair_state)
-    updates["repair_decision"] = repair_decision.model_dump()
-
-    if repair_decision.status != "no_repair_needed":
-        print("\n" + "=" * 40)
-        print("[REPAIR DECISION]")
-        print(repair_decision.model_dump())
-        print("=" * 40 + "\n")
-
-    updates = _attach_repair_proposal(repair_state, updates)
-    updates = _attach_repair_attempt_if_allowed(repair_state, updates)
 
     return attach_execution_audit(state, updates)
 
