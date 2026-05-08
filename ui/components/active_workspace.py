@@ -262,8 +262,13 @@ def render_active_workspace(
             key="app_v3_dataset_upload",
         )
 
-        if uploaded_file is not None:
-            if st.button("Load dataset", use_container_width=True):
-                df = pd.read_csv(uploaded_file)
-                on_dataset_upload(df, uploaded_file.name)
-                st.rerun()
+        load_clicked = st.button(
+            "Load dataset",
+            use_container_width=True,
+            disabled=uploaded_file is None,
+        )
+
+        if load_clicked:
+            df = pd.read_csv(uploaded_file)
+            on_dataset_upload(df, uploaded_file.name)
+            st.rerun()

@@ -17,3 +17,4 @@ from core.ui_adapter.events import (
     normalize_ui_event,
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
+from core.ui_adapter.report_export import build_report_package_from_state

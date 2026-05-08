@@ -118,3 +118,66 @@ def test_app_v3_action_bar_prioritizes_human_review_message():
     assert "Human review is required" in text
     assert "Approve" in text
     assert "Reject" in text
+
+def test_app_v3_dataset_upload_button_is_always_rendered():
+    text = Path("ui/components/active_workspace.py").read_text(encoding="utf-8")
+
+    assert "Load dataset" in text
+    assert "disabled=uploaded_file is None" in text
+    assert "on_dataset_upload(df, uploaded_file.name)" in text
+
+def test_app_v3_renders_report_panel_without_legacy_app():
+    text = Path("ui/app_v3.py").read_text(encoding="utf-8")
+
+    assert "render_report_panel" in text
+    assert "from ui.components.report_panel import render_report_panel" in text
+    assert "app.py" not in text
+
+
+def test_app_v3_report_panel_uses_report_export_adapter():
+    text = Path("ui/components/report_panel.py").read_text(encoding="utf-8")
+
+    assert "build_report_package_from_state" in text
+    assert "st.download_button" in text
+    assert "Download Markdown" in text
+    assert "Download HTML" in text
+
+    forbidden = [
+        "build_markdown_report(",
+        "build_html_report_from_state(",
+        "from core.graph",
+        "execute_node",
+        "verify_node",
+        "summarize_node",
+    ]
+
+    offenders = [
+        item
+        for item in forbidden
+        if item in text
+    ]
+
+    assert offenders == []
+
+def test_app_v3_action_bar_is_inside_workspace_not_below_right_sidebar():
+    text = Path("ui/app_v3.py").read_text(encoding="utf-8")
+    main_text = text.split("def main()", 1)[1]
+
+    assert "workspace, right = st.columns" in main_text
+    assert "with workspace:" in main_text
+    assert "with right:" in main_text
+    assert "render_action_bar(" in main_text
+
+    assert (
+        main_text.index("with workspace:")
+        < main_text.index("render_action_bar(")
+        < main_text.index("with right:")
+    )
+
+
+def test_app_v3_action_bar_is_sticky():
+    text = Path("ui/styles/app_v3.css").read_text(encoding="utf-8")
+
+    assert ".app-v3-action-bar" in text
+    assert "position: sticky" in text
+    assert "bottom: 0" in text

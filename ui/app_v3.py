@@ -30,6 +30,7 @@ from ui.components.chat_panel import render_chat_panel
 from ui.components.debug_panel import render_debug_panel
 from ui.components.plan_timeline import render_plan_timeline
 from ui.components.system_status import render_system_status
+from ui.components.report_panel import render_report_panel
 
 
 APP_TITLE = "Analysis Agent V3"
@@ -223,32 +224,36 @@ def main() -> None:
 
     render_system_status(snapshot)
 
-    left, center, right = st.columns([1.15, 2.1, 1.05])
+    workspace, right = st.columns([3.25, 1.05])
 
-    with left:
-        render_chat_panel(
-            snapshot=snapshot,
-            chat_history=st.session_state.chat_history_v3,
-            on_user_message=on_user_message,
-        )
+    with workspace:
+        left, center = st.columns([1.15, 2.1])
 
-    with center:
-        render_active_workspace(
+        with left:
+            render_chat_panel(
+                snapshot=snapshot,
+                chat_history=st.session_state.chat_history_v3,
+                on_user_message=on_user_message,
+            )
+
+        with center:
+            render_active_workspace(
+                snapshot=snapshot,
+                on_dataset_upload=on_dataset_upload,
+                on_save_choices=on_save_choices,
+            )
+
+        render_action_bar(
             snapshot=snapshot,
-            on_dataset_upload=on_dataset_upload,
-            on_save_choices=on_save_choices,
+            on_run_plan=on_run_plan,
+            on_approve=on_approve,
+            on_reject=on_reject,
         )
 
     with right:
         render_plan_timeline(snapshot)
+        render_report_panel(st.session_state.backend_state_v3)
         render_debug_panel(snapshot)
-
-    render_action_bar(
-        snapshot=snapshot,
-        on_run_plan=on_run_plan,
-        on_approve=on_approve,
-        on_reject=on_reject,
-    )
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ def test_app_v3_skeleton_compiles():
         "ui/components/active_workspace.py",
         "ui/components/action_bar.py",
         "ui/components/debug_panel.py",
+        "ui/components/report_panel.py",
     ]
 
     for target in targets:
