@@ -33,7 +33,6 @@ from core.planning.execution_queue import (
 )
 from core.deliverables.gate import evaluate_deliverable_gate_state
 from core.deliverables.evidence import extract_final_answer_content_from_state
-from core.audit.execution_state import audit_execution_state
 from core.repair.decision import evaluate_repair_decision
 
 from core.repair.attempts import (
@@ -42,7 +41,6 @@ from core.repair.attempts import (
     make_repair_attempt,
 )
 from core.repair.proposal_generator import generate_repair_proposal
-from core.audit.state_serialization import audit_state_serialization
 from core.dataset_intelligence.schemas import DatasetProfileV2
 from core.planning.dependencies import modeling_blocked_by_pending_cleaning
 
@@ -67,18 +65,7 @@ from core.verification_access import (
 )
 from core.execution_codec import normalize_execution_view, execution_to_state_dict
 
-def _as_plain_dict(obj):
-    if obj is None:
-        return {}
-
-    if isinstance(obj, dict):
-        return obj
-
-    if hasattr(obj, "model_dump"):
-        return obj.model_dump()
-
-    return {}
-
+from core.workflow.audit_runtime import attach_execution_audit
 
 def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
     """
@@ -100,95 +87,6 @@ def _load_dataframe_for_dataset_intelligence(path: str) -> pd.DataFrame:
         return pd.read_excel(path)
 
     raise ValueError(f"Unsupported active data file type for profiling: {path}")
-
-def _merge_state_for_audit(state: GraphState, updates: dict) -> dict:
-    """
-    Build a best-effort post-node state snapshot for backend audit.
-
-    This does not mutate graph state. It only gives audit_execution_state()
-    a view of what state will look like after this node's updates.
-    """
-    merged = dict(state)
-
-    for key, value in updates.items():
-        if key in {"observations", "analysis_runs", "data_versions", "data_audit_log"}:
-            old_value = merged.get(key, []) or []
-            new_value = value or []
-
-            if isinstance(old_value, list) and isinstance(new_value, list):
-                merged[key] = old_value + new_value
-            else:
-                merged[key] = value
-        else:
-            merged[key] = value
-
-    return merged
-
-def _compact_state_serialization_audit(audit_result) -> dict:
-    """
-    Store only compact serialization-audit metadata in GraphState.
-
-    Do NOT store audit_result.safe_state inside GraphState, because that would
-    duplicate the entire state and can create huge nested state snapshots.
-    """
-    return {
-        "status": audit_result.status,
-        "n_issues": len(audit_result.issues),
-        "issues": [
-            issue.model_dump()
-            if hasattr(issue, "model_dump")
-            else dict(issue)
-            for issue in audit_result.issues
-        ],
-    }
-
-
-def _attach_state_serialization_audit(state: GraphState, updates: dict) -> dict:
-    """
-    Observe-only serialization audit.
-
-    This does not mutate business state, does not block routing, and does not
-    persist the full safe_state. It only records whether the post-update state
-    contains objects that may be unsafe for checkpoint/UI serialization.
-    """
-    audit_state = dict(state)
-    audit_state.update(updates)
-
-    # Avoid recursively auditing/storing older audit snapshots.
-    audit_state.pop("state_serialization_audit", None)
-
-    audit_result = audit_state_serialization(audit_state)
-    updates["state_serialization_audit"] = _compact_state_serialization_audit(
-        audit_result
-    )
-
-    if audit_result.status != "ok":
-        print("\n" + "=" * 40)
-        print("[STATE SERIALIZATION AUDIT]")
-        print(updates["state_serialization_audit"])
-        print("=" * 40 + "\n")
-
-    return updates
-
-
-def _attach_execution_audit(state: GraphState, updates: dict) -> dict:
-    """
-    Run backend execution-state audit after a node update.
-
-    S11B is observe-only: audit findings are recorded but do not alter routing.
-    """
-    audit_state = _merge_state_for_audit(state, updates)
-    audit_result = audit_execution_state(audit_state)
-
-    updates["execution_audit"] = audit_result.model_dump()
-
-    if audit_result.status != "ok":
-        print("\n" + "=" * 40)
-        print("[EXECUTION AUDIT]")
-        print(audit_result.model_dump())
-        print("=" * 40 + "\n")
-
-    return _attach_state_serialization_audit(state, updates)
 
 def _attach_repair_decision(state: GraphState, updates: dict) -> dict:
     """
@@ -1340,7 +1238,7 @@ def summarize_node(state: GraphState):
     updates = _attach_repair_proposal(repair_state, updates)
     updates = _attach_repair_attempt_if_allowed(repair_state, updates)
 
-    return _attach_execution_audit(state, updates)
+    return attach_execution_audit(state, updates)
 
 
 def final_response_node(state: GraphState):

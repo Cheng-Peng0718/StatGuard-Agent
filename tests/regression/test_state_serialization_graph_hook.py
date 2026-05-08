@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from core.graph import _attach_state_serialization_audit
+from core.workflow.audit_runtime import attach_state_serialization_audit
 
 
 class DummyModel(BaseModel):
@@ -21,7 +21,7 @@ def test_attach_state_serialization_audit_records_compact_warning():
         )
     }
 
-    result = _attach_state_serialization_audit(state, updates)
+    result = attach_state_serialization_audit(state, updates)
 
     assert "state_serialization_audit" in result
 
@@ -51,7 +51,7 @@ def test_attach_state_serialization_audit_ok_for_plain_updates():
         }
     }
 
-    result = _attach_state_serialization_audit(state, updates)
+    result = attach_state_serialization_audit(state, updates)
 
     assert result["state_serialization_audit"]["status"] == "ok"
     assert result["state_serialization_audit"]["n_issues"] == 0
