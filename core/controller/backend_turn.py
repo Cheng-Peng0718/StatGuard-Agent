@@ -4,8 +4,6 @@ from typing import Any, Dict, List, Literal
 
 from pydantic import BaseModel, Field
 
-from types import SimpleNamespace
-
 from core.graph import (
     advisory_answer_node,
     execute_node,
@@ -18,6 +16,7 @@ from core.graph import (
 )
 from core.ui_adapter.snapshot import build_ui_snapshot
 
+from core.schema import ActionProposal
 
 class BackendTurnResult(BaseModel):
     """
@@ -133,31 +132,35 @@ def _finish(
 
 def _action_to_graph_object(action: Any):
     """
-    Rehydrate dict current_action into an object-like action for legacy graph nodes.
+    Rehydrate dict current_action into the canonical ActionProposal contract.
 
     BackendTurnResult.model_dump() and UI round-trips may turn ActionProposal
-    into a plain dict. Some graph nodes still expect attribute access such as
-    action.tool_name / action.arguments.
+    into a plain dict. Legacy graph nodes still use attribute access, so during
+    the migration period we restore the formal Pydantic contract rather than
+    using an untyped SimpleNamespace.
     """
     if action is None:
         return None
 
+    if isinstance(action, ActionProposal):
+        return action
+
     if not isinstance(action, dict):
         return action
 
-    return SimpleNamespace(
-        action_id=action.get("action_id"),
-        action_type=action.get("action_type"),
-        tool_name=action.get("tool_name"),
-        arguments=action.get("arguments") or {},
-        reasoning_summary=(
-            action.get("reasoning_summary")
-            or action.get("summary")
-            or action.get("message")
-        ),
-        task_contract=action.get("task_contract"),
-        contract_update=action.get("contract_update"),
-    )
+    payload = dict(action)
+
+    if not payload.get("reasoning_summary"):
+        payload["reasoning_summary"] = (
+            payload.get("summary")
+            or payload.get("message")
+            or "No reasoning summary provided."
+        )
+
+    if not payload.get("arguments"):
+        payload["arguments"] = {}
+
+    return ActionProposal.model_validate(payload)
 
 
 def _ensure_graph_action_object(state: Dict[str, Any]) -> Dict[str, Any]:
