@@ -62,6 +62,7 @@ from core.workflow.routes import (
     route_after_execute_pending_plan,
     route_after_supervisor,
     route_after_verify,
+    route_after_review,
 )
 
 from core.workflow.nodes.plan_execution import execute_pending_plan_node
@@ -748,28 +749,6 @@ def final_response_node(state: GraphState):
     return updates
 
 # --- Routing ---
-def route_after_review(state: GraphState):
-    """
-    After human_review:
-    - if user approved, execute the original pending action
-    - otherwise go back to build_context and let Supervisor rethink/respond
-    """
-    vr = state.get("current_verification")
-
-    if vr is None:
-        print("[ROUTE AFTER REVIEW] no current_verification -> build_context")
-        return "build_context"
-
-    status = get_verification_status(vr)
-
-    print(f"[ROUTE AFTER REVIEW] status = {status}")
-
-    if status == "allowed":
-        return "execute"
-
-    return "build_context"
-
-
 def route_after_summarize(state: GraphState):
     # S4: a single "run the plan" turn executes at most one PlanStep.
     # If the action came from pending_plan, stop after summarize.

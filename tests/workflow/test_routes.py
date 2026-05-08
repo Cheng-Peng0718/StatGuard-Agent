@@ -3,6 +3,7 @@ from core.workflow.routes import (
     route_after_intent,
     route_after_supervisor,
     route_after_verify,
+    route_after_review,
 )
 
 
@@ -152,3 +153,38 @@ def test_route_after_verify_ends_for_step_verification_failed_status():
             "details": {},
         },
     }) == "end"
+
+def test_route_after_review_routes_allowed_to_execute():
+    assert route_after_review({
+        "current_verification": {
+            "status": "allowed",
+            "feedback": "approved",
+            "details": {},
+        }
+    }) == "execute"
+
+
+def test_route_after_review_routes_missing_verification_to_build_context():
+    assert route_after_review({
+        "current_verification": None,
+    }) == "build_context"
+
+
+def test_route_after_review_routes_rejected_to_build_context():
+    assert route_after_review({
+        "current_verification": {
+            "status": "rejected_recoverable",
+            "feedback": "not approved",
+            "details": {},
+        }
+    }) == "build_context"
+
+
+def test_route_after_review_routes_needs_review_to_build_context():
+    assert route_after_review({
+        "current_verification": {
+            "status": "needs_review",
+            "feedback": "still waiting",
+            "details": {},
+        }
+    }) == "build_context"
