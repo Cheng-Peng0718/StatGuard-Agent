@@ -7,6 +7,7 @@ from core.workflow.runtime_utils import get_action_hash
 
 NON_EXECUTION_ERROR_CODES = {
     "HUMAN_CONFIRMATION_REQUIRED",
+    "HUMAN_REVIEW_REJECTED",
     "VERIFICATION_FAILED",
     "MISSING_REVIEW_STATE",
     "UNHANDLED_HUMAN_REVIEW_STATUS",

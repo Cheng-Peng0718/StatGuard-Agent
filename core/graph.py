@@ -341,6 +341,50 @@ def human_review_node(state: GraphState):
 
     human_review_decision = state.get("human_review_decision")
 
+    if vr_status == "needs_review" and human_review_decision == "rejected":
+        reason = (
+            state.get("human_review_rejection_reason")
+            or "User rejected the human-review action."
+        )
+
+        obs = Observation(
+            observation_id=f"obs_{uuid.uuid4().hex[:8]}",
+            source_action_id=action_id,
+            tool_name=tool_name,
+            arguments=canonical_arguments,
+            status="rejected",
+            success=False,
+            error_code="HUMAN_REVIEW_REJECTED",
+            message=reason,
+            artifacts=[],
+            summary=(
+                f"Human review rejected action {tool_name}. "
+                f"Reason: {reason}"
+            ),
+            structured_data={
+                "status": "rejected",
+                "success": False,
+                "error_code": "HUMAN_REVIEW_REJECTED",
+                "message": reason,
+                "pending_action": action_payload or {},
+            },
+            raw_data={
+                "verification": verification_payload or {},
+                "pending_action": action_payload or {},
+                "human_review_decision": "rejected",
+            },
+        )
+
+        return {
+            "human_review_required": False,
+            "pending_action": None,
+            "human_review_decision": None,
+            "human_review_rejection_reason": None,
+            "current_action": None,
+            "current_verification": None,
+            "observations": [obs.model_dump()],
+        }
+
     # Case -1: backend/user explicitly approved a needs_review action.
     # This is the approval bridge for mutating tools such as clean_data.
     # Do NOT create a rejection observation here, because execute_node's
@@ -392,38 +436,14 @@ def human_review_node(state: GraphState):
         return {}
 
     # Case 1: high-risk tool needs user confirmation
+    # Case 1: high-risk tool needs user confirmation.
+    # Waiting for confirmation is runtime review state, not an execution/rejection observation.
     if vr_status == "needs_review":
-        obs = Observation(
-            observation_id=f"obs_{uuid.uuid4().hex[:8]}",
-            source_action_id=action_id,
-            tool_name=tool_name,
-            arguments=arguments,
-            status="rejected",
-            success=False,
-            error_code="HUMAN_CONFIRMATION_REQUIRED",
-            message=feedback or f"Tool {tool_name} requires human confirmation.",
-            artifacts=[],
-            summary=(
-                f"Tool {tool_name} requires human confirmation and was not executed. "
-                f"Arguments: {canonical_arguments}. Feedback: {feedback}"
-            ),
-            structured_data={
-                "status": "needs_review",
-                "success": False,
-                "error_code": "HUMAN_CONFIRMATION_REQUIRED",
-                "message": feedback,
-                "pending_action": action_payload or {},
-            },
-            raw_data={
-                "verification": verification_payload or {},
-                "pending_action": action_payload or {},
-            },
-        )
-
         return {
             "human_review_required": True,
             "pending_action": action_payload,
-            "observations": [obs.model_dump()],
+            "current_action": action,
+            "current_verification": vr,
         }
 
     # Case 2: rejected by verifier
