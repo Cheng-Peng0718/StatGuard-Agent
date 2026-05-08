@@ -341,6 +341,43 @@ def human_review_node(state: GraphState):
 
     human_review_decision = state.get("human_review_decision")
 
+    submitted_action_hash = state.get("human_review_action_hash")
+    expected_action_hash = vr_details.get("action_hash")
+
+    if (
+        human_review_decision in {"approved", "rejected"}
+        and submitted_action_hash
+        and expected_action_hash
+        and submitted_action_hash != expected_action_hash
+    ):
+        content = (
+            "The human-review decision did not match the current pending action. "
+            "This can happen if the UI was stale or the action changed before approval. "
+            "No tool was executed. Please review the current action again."
+        )
+
+        return {
+            "human_review_required": True,
+            "pending_action": action_payload,
+            "current_action": action,
+            "current_verification": vr,
+            "human_review_decision": None,
+            "human_review_rejection_reason": None,
+            "assistant_response": make_assistant_response(
+                response_type="error",
+                content=content,
+                source_node="human_review",
+                data_version_id=state.get("active_data_version_id"),
+                metadata={
+                    "error_code": "HUMAN_REVIEW_ACTION_HASH_MISMATCH",
+                    "submitted_action_hash": submitted_action_hash,
+                    "expected_action_hash": expected_action_hash,
+                    "tool_name": tool_name,
+                    "action_id": action_id,
+                },
+            ),
+        }
+
     if vr_status == "needs_review" and human_review_decision == "rejected":
         reason = (
             state.get("human_review_rejection_reason")

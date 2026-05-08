@@ -94,3 +94,27 @@ def test_reject_human_review_ui_event_records_rejection_path():
             assert verification.get("status") != "allowed"
         else:
             assert getattr(verification, "status", None) != "allowed"
+
+def test_approve_human_review_with_wrong_action_hash_is_blocked():
+    state = make_review_state()
+
+    event = make_approve_human_review_event(
+        action_hash="wrong_hash",
+    )
+
+    updates = apply_ui_event_to_state(state, event)
+    state = apply_updates(state, updates)
+
+    review_updates = human_review_node(state)
+
+    assert review_updates["human_review_required"] is True
+    assert review_updates["pending_action"] is not None
+    assert review_updates["current_action"] is not None
+    assert review_updates["current_verification"] is not None
+    assert review_updates["human_review_decision"] is None
+
+    assert review_updates["assistant_response"]["response_type"] == "error"
+    assert (
+        review_updates["assistant_response"]["metadata"]["error_code"]
+        == "HUMAN_REVIEW_ACTION_HASH_MISMATCH"
+    )
