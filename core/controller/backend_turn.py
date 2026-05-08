@@ -81,22 +81,20 @@ def _apply_updates(state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, 
     App V2 / backend controller does not run through LangGraph's reducer
     machinery, so we must emulate reducer semantics for delta-style fields.
 
-    summarize_node returns observations as a delta:
+    summarize_node returns observations and analysis_runs as deltas:
         {"observations": [new_observation]}
-
-    But analysis_runs is already returned as a full registry:
-        existing_analysis_runs + [new_analysis_run]
+        {"analysis_runs": [new_analysis_run]}
 
     Therefore:
     - observations should be appended
-    - analysis_runs should be replaced by the returned full list
+    - analysis_runs should be appended
     """
     merged = dict(state)
 
     for key, value in (updates or {}).items():
-        if key == "observations" and isinstance(value, list):
-            existing = list(merged.get("observations") or [])
-            merged["observations"] = existing + value
+        if key in {"observations", "analysis_runs"} and isinstance(value, list):
+            existing = list(merged.get(key) or [])
+            merged[key] = existing + value
             continue
 
         merged[key] = value

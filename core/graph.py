@@ -1274,8 +1274,7 @@ def summarize_node(state: GraphState):
             observation=refined_observation,
         )
 
-        existing_runs = state.get("analysis_runs", []) or []
-        updates["analysis_runs"] = existing_runs + [analysis_run]
+        updates["analysis_runs"] = [analysis_run]
 
 
     # Phase 4: if this execution came from a pending plan step,

@@ -24,7 +24,7 @@ class GraphState(TypedDict):
     data_versions: Optional[List[Dict[str, Any]]]
     active_data_version_id: Optional[str]
     data_audit_log: Optional[List[Dict[str, Any]]]
-    analysis_runs: Optional[List[Dict[str, Any]]]
+    analysis_runs: Annotated[list, operator.add]
     action_origin: str
 
     interaction_intent: str
