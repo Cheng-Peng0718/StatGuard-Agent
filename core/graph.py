@@ -46,6 +46,15 @@ from core.audit.state_serialization import audit_state_serialization
 from core.dataset_intelligence.schemas import DatasetProfileV2
 from core.planning.dependencies import modeling_blocked_by_pending_cleaning
 
+from core.action_access import (
+    get_action_arguments,
+    get_action_id,
+    get_action_reasoning_summary,
+    get_action_tool_name,
+    get_action_type,
+    has_action_tool_name,
+)
+
 def _as_plain_dict(obj):
     if obj is None:
         return {}
@@ -694,8 +703,8 @@ def execute_pending_plan_node(state: GraphState):
     print("[EXECUTE PENDING PLAN]")
     print(f"plan_id = {pending_plan.get('plan_id')}")
     print(f"step_id = {next_step.get('step_id')}")
-    print(f"tool_name = {action.tool_name}")
-    print(f"arguments = {action.arguments}")
+    print(f"tool_name = {get_action_tool_name(action)}")
+    print(f"arguments = {get_action_arguments(action)}")
     print(f"readiness_status = {readiness.status}")
     print("=" * 40 + "\n")
 
@@ -745,8 +754,8 @@ def supervisor_node(state: GraphState):
     updates = {"current_action": action}
 
     print("\n" + "=" * 40)
-    print(f"[Supervisor decision]: action_type = {action.action_type}")
-    print(f"[Reasoning summary]: {action.reasoning_summary}")
+    print(f"[Supervisor decision]: action_type = {get_action_type(action)}")
+    print(f"[Reasoning summary]: {get_action_reasoning_summary(action)}")
     print("=" * 40 + "\n")
 
     contract = getattr(action, "task_contract", None)
@@ -1076,12 +1085,14 @@ def human_review_node(state: GraphState):
 
 def execute_node(state: GraphState):
     action = state.get("current_action")
+    tool_name = get_action_tool_name(action)
+    arguments = get_action_arguments(action)
 
-    if not action or not hasattr(action, "tool_name"):
+    if not action or not tool_name:
         return {"current_execution": "Error: No valid action provided."}
 
     # 1. Current action fingerprint
-    current_hash = get_action_hash(action.tool_name, action.arguments)
+    current_hash = get_action_hash(tool_name, arguments)
 
     # 2. Fingerprints from prior observations
     executed_hashes = []
@@ -1094,14 +1105,14 @@ def execute_node(state: GraphState):
     # 3. Fingerprint gate: block identical parameters
     if current_hash in executed_hashes:
         error_msg = (
-            f"[System intervention]: 🚫 Execution refused. You are calling '{action.tool_name}' "
+            f"[System intervention]: 🚫 Execution refused. You are calling '{tool_name}' "
             f"with parameters identical to a previous attempt.\n"
             f"To retry, change arguments (e.g. add .dropna() in chart code or change cleaning strategy)."
         )
-        print(f"[Fingerprint gate]: blocked duplicate {action.tool_name} (fp: {current_hash[:6]})")
+        print(f"[Fingerprint gate]: blocked duplicate {tool_name} (fp: {current_hash[:6]})")
         return {"current_execution": error_msg}
 
-    print(f"[Execute]: {action.tool_name}")
+    print(f"[Execute]: {tool_name}")
     context_pkg = build_context(
         step=state.get("current_step", 1),
         max_steps=state.get("max_steps", 20),
@@ -1130,11 +1141,8 @@ def execute_node(state: GraphState):
 
 def summarize_node(state: GraphState):
     current_action = state.get("current_action")
-    tool_name = current_action.tool_name if current_action else "unknown_tool"
-
-    arguments = {}
-    if current_action and hasattr(current_action, "arguments"):
-        arguments = current_action.arguments
+    tool_name = get_action_tool_name(current_action, "unknown_tool")
+    arguments = get_action_arguments(current_action)
 
     raw_result = state.get("current_execution", "No execution result")
 
@@ -1165,7 +1173,7 @@ def summarize_node(state: GraphState):
 
     refined_observation = {
         "observation_id": f"obs_{uuid.uuid4().hex[:8]}",
-        "source_action_id": getattr(current_action, "action_id", "unknown"),
+        "source_action_id": get_action_id(current_action),
         "tool_name": tool_name,
         "arguments": arguments,
 
@@ -1378,7 +1386,7 @@ def route_after_supervisor(state: GraphState):
     """
     action = state.get("current_action")
 
-    if action and hasattr(action, "action_type") and action.action_type in ["final_answer", "ask_user"]:
+    if action and get_action_type(action) in ["final_answer", "ask_user"]:
         print("[ROUTE AFTER SUPERVISOR] final_answer -> deliverable_gate")
         return "deliverable_gate"
 
