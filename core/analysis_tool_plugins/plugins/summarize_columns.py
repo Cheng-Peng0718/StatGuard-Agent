@@ -21,6 +21,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_LOW_RISK_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -409,6 +410,25 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ],
 
     planning_policy=EDA_READY_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+            "eda",
+        ],
+        planning_tags=[
+            "overview",
+            "column_summary",
+            "eda",
+        ],
+        default_plan_purpose="Summarize column-level distributions and types.",
+        expected_deliverables=[
+            "column_summary",
+        ],
+        plan_order=40,
+    ),
 
     # Column summary does not mutate data.
     mutates_data=False,

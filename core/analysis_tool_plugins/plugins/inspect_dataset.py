@@ -18,6 +18,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_LOW_RISK_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 
 MISSING_TOKENS = {
@@ -257,6 +258,25 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     variable_roles=[],
 
     planning_policy=EDA_READY_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+            "eda",
+        ],
+        planning_tags=[
+            "overview",
+            "schema",
+            "eda",
+        ],
+        default_plan_purpose="Inspect dataset shape, columns, and basic schema.",
+        expected_deliverables=[
+            "dataset_overview",
+        ],
+        plan_order=10,
+    ),
 
     # Dataset inspection does not mutate data.
     mutates_data=False,

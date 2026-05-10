@@ -245,3 +245,89 @@ def test_correlation_and_visualization_manifests_use_local_planning_metadata():
         assert manifest.expected_deliverables == values["expected_deliverables"]
         assert manifest.plan_order == values["plan_order"]
         assert manifest.supported_goal_types
+
+def test_overview_plugins_declare_local_planning_metadata():
+    expected = {
+        "inspect_dataset": {
+            "supported_goal_types": [
+                "dataset_overview",
+                "analysis_recommendation",
+                "analysis_planning",
+                "eda",
+            ],
+            "expected_deliverables": ["dataset_overview"],
+            "plan_order": 10,
+        },
+        "missingness_report": {
+            "supported_goal_types": [
+                "dataset_overview",
+                "analysis_recommendation",
+                "analysis_planning",
+                "eda",
+            ],
+            "expected_deliverables": ["missingness_assessment"],
+            "plan_order": 20,
+        },
+        "get_summary_stats": {
+            "supported_goal_types": [
+                "dataset_overview",
+                "analysis_recommendation",
+                "analysis_planning",
+                "eda",
+            ],
+            "expected_deliverables": ["descriptive_statistics"],
+            "plan_order": 30,
+        },
+        "summarize_columns": {
+            "supported_goal_types": [
+                "dataset_overview",
+                "analysis_recommendation",
+                "analysis_planning",
+                "eda",
+            ],
+            "expected_deliverables": ["column_summary"],
+            "plan_order": 40,
+        },
+    }
+
+    for tool_name, values in expected.items():
+        plugin = get_plugin(tool_name)
+
+        assert plugin is not None
+        assert plugin.planning_metadata.supported_goal_types == values["supported_goal_types"]
+        assert plugin.planning_metadata.expected_deliverables == values["expected_deliverables"]
+        assert plugin.planning_metadata.plan_order == values["plan_order"]
+
+
+def test_overview_plugin_manifests_use_local_planning_metadata():
+    expected = {
+        "inspect_dataset": {
+            "expected_deliverables": ["dataset_overview"],
+            "plan_order": 10,
+        },
+        "missingness_report": {
+            "expected_deliverables": ["missingness_assessment"],
+            "plan_order": 20,
+        },
+        "get_summary_stats": {
+            "expected_deliverables": ["descriptive_statistics"],
+            "plan_order": 30,
+        },
+        "summarize_columns": {
+            "expected_deliverables": ["column_summary"],
+            "plan_order": 40,
+        },
+    }
+
+    for tool_name, values in expected.items():
+        plugin = get_plugin(tool_name)
+        manifest = build_tool_manifest(plugin)
+
+        assert manifest.expected_deliverables == values["expected_deliverables"]
+        assert manifest.plan_order == values["plan_order"]
+        assert manifest.supported_goal_types == [
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+            "eda",
+        ]

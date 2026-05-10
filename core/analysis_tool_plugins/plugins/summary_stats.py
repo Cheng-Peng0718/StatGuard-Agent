@@ -17,7 +17,7 @@ from core.analysis_tool_plugins.policies import (
 )
 
 from core.analysis_tool_plugins.registry import register_plugin
-
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -167,6 +167,27 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     variable_roles=[],
 
     planning_policy=EDA_READY_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+            "eda",
+        ],
+        planning_tags=[
+            "overview",
+            "descriptive_statistics",
+            "numeric_summary",
+            "eda",
+        ],
+        default_plan_purpose="Summarize numeric variables with descriptive statistics.",
+        expected_deliverables=[
+            "descriptive_statistics",
+        ],
+        plan_order=30,
+    ),
+
     mutates_data=False,
     versioning_policy=NON_MUTATING_VERSIONING,
     repair_policy=DEFAULT_LOW_RISK_REPAIR,
