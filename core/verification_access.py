@@ -46,8 +46,7 @@ def set_verification_fields(verification: Any, **fields: Any) -> Any:
     """
     Return verification with updated fields.
 
-    Supports both dict verification payloads and Pydantic/object verification
-    instances during the migration period.
+    Supports both dict verification payloads and VerificationResult-style objects.
     """
     if verification is None:
         return None

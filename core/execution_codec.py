@@ -26,8 +26,9 @@ def execution_to_state_dict(
     """
     Convert execution runtime object/dict/string into JSON-safe state payload.
 
-    ToolExecutionResult is the canonical runtime result, but legacy paths may
-    still produce dicts or strings. This codec keeps state/UI boundaries stable.
+    ToolExecutionResult is the canonical runtime result. This codec also accepts
+    dicts or non-structured values so state, repair, and reporting boundaries stay
+    stable.
     """
     if execution is None:
         return None

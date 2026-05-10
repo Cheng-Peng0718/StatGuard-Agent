@@ -15,9 +15,8 @@ def verification_to_state_dict(verification: Any) -> dict | None:
     """
     Convert verification runtime object/dict into JSON-safe state payload.
 
-    This intentionally does not depend on one concrete VerificationResult class
-    yet, because verification objects are still produced through the legacy
-    verify path during migration.
+    This intentionally accepts both VerificationResult-style objects and plain
+    dict payloads so workflow and human-review state remain JSON-safe.
     """
     if verification is None:
         return None
