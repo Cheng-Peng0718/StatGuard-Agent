@@ -25,6 +25,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_ANALYSIS_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -375,6 +376,37 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ],
 
     planning_policy=NEEDS_USER_VARIABLES_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "association_analysis",
+            "visualization",
+        ],
+        planning_tags=[
+            "association",
+            "visualization",
+            "scatterplot",
+        ],
+        default_plan_purpose="Visualize the selected variables.",
+        expected_deliverables=[
+            "scatterplot",
+        ],
+        task_argument_bindings=[
+            {
+                "task_field": "predictor_variables",
+                "index": 0,
+                "argument": "x_column",
+                "required_choice": "x_column",
+            },
+            {
+                "task_field": "predictor_variables",
+                "index": 1,
+                "argument": "y_column",
+                "required_choice": "y_column",
+            },
+        ],
+        plan_order=10,
+    ),
 
     # Scatterplot does not mutate the active dataset.
     mutates_data=False,

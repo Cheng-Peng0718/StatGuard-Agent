@@ -19,6 +19,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_LOW_RISK_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -328,6 +329,29 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ],
 
     planning_policy=ASSOCIATION_SCREENING_READY_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+            "association_analysis",
+            "eda",
+        ],
+        planning_tags=[
+            "association",
+            "correlation",
+            "screening",
+            "eda",
+        ],
+        default_plan_purpose=(
+            "Screen numeric associations only when enough numeric variables exist."
+        ),
+        expected_deliverables=[
+            "correlation_screening",
+        ],
+        plan_order=50,
+    ),
 
     # Correlation matrix does not mutate data.
     mutates_data=False,

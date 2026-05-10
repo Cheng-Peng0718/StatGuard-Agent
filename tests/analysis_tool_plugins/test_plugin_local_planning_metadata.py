@@ -149,3 +149,99 @@ def test_migrated_plugin_manifests_use_local_planning_metadata():
         assert manifest.expected_deliverables == values["expected_deliverables"]
         assert manifest.plan_order == values["plan_order"]
         assert manifest.supported_goal_types
+
+def test_correlation_matrix_declares_local_planning_metadata():
+    plugin = get_plugin("get_correlation_matrix")
+
+    assert plugin is not None
+    assert plugin.planning_metadata.supported_goal_types == [
+        "dataset_overview",
+        "analysis_recommendation",
+        "analysis_planning",
+        "association_analysis",
+        "eda",
+    ]
+    assert plugin.planning_metadata.expected_deliverables == [
+        "correlation_screening",
+    ]
+    assert plugin.planning_metadata.plan_order == 50
+
+
+def test_correlation_test_declares_local_planning_metadata():
+    plugin = get_plugin("run_correlation_test")
+
+    assert plugin is not None
+    assert plugin.planning_metadata.supported_goal_types == [
+        "association_analysis",
+    ]
+    assert plugin.planning_metadata.expected_deliverables == [
+        "association_test",
+    ]
+    assert plugin.planning_metadata.task_argument_bindings == [
+        {
+            "task_field": "predictor_variables",
+            "index": 0,
+            "argument": "x_col",
+            "required_choice": "x_col",
+        },
+        {
+            "task_field": "predictor_variables",
+            "index": 1,
+            "argument": "y_col",
+            "required_choice": "y_col",
+        },
+    ]
+    assert plugin.planning_metadata.plan_order == 10
+
+
+def test_scatterplot_declares_local_planning_metadata():
+    plugin = get_plugin("generate_scatterplot")
+
+    assert plugin is not None
+    assert plugin.planning_metadata.supported_goal_types == [
+        "association_analysis",
+        "visualization",
+    ]
+    assert plugin.planning_metadata.expected_deliverables == [
+        "scatterplot",
+    ]
+    assert plugin.planning_metadata.task_argument_bindings == [
+        {
+            "task_field": "predictor_variables",
+            "index": 0,
+            "argument": "x_column",
+            "required_choice": "x_column",
+        },
+        {
+            "task_field": "predictor_variables",
+            "index": 1,
+            "argument": "y_column",
+            "required_choice": "y_column",
+        },
+    ]
+    assert plugin.planning_metadata.plan_order == 10
+
+
+def test_correlation_and_visualization_manifests_use_local_planning_metadata():
+    expected = {
+        "get_correlation_matrix": {
+            "expected_deliverables": ["correlation_screening"],
+            "plan_order": 50,
+        },
+        "run_correlation_test": {
+            "expected_deliverables": ["association_test"],
+            "plan_order": 10,
+        },
+        "generate_scatterplot": {
+            "expected_deliverables": ["scatterplot"],
+            "plan_order": 10,
+        },
+    }
+
+    for tool_name, values in expected.items():
+        plugin = get_plugin(tool_name)
+        manifest = build_tool_manifest(plugin)
+
+        assert manifest.expected_deliverables == values["expected_deliverables"]
+        assert manifest.plan_order == values["plan_order"]
+        assert manifest.supported_goal_types
