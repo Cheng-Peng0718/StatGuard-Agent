@@ -1,7 +1,7 @@
 import pandas as pd
 
 from core.analysis_tool_plugins import PLUGIN_REGISTRY, ensure_plugins_loaded
-from core.analysis_tool_plugins.manifest import build_tool_manifests
+from core.analysis_tool_plugins.manifest import ToolManifest, build_tool_manifests
 from core.analysis_tool_plugins.planning_metadata import TOOL_PLANNING_METADATA
 from core.data.context_refresh import refresh_dataset_context_from_df
 from core.deliverables.gate import evaluate_deliverable_gate_state
@@ -150,6 +150,93 @@ def test_known_tool_expected_deliverables_match_manifest_metadata():
     for tool_name, expected_deliverables in expected_by_tool.items():
         assert manifests[tool_name].expected_deliverables == expected_deliverables
 
+
+def test_manifest_exposes_task_argument_bindings_for_planner():
+    manifests = _manifests()
+
+    expected_regression_bindings = [
+        {
+            "task_field": "target_variables",
+            "index": 0,
+            "argument": "target_col",
+            "required_choice": "target_col",
+        },
+        {
+            "task_field": "predictor_variables",
+            "argument": "feature_cols",
+            "required_choice": "feature_cols",
+        },
+    ]
+
+    assert (
+        manifests["run_multiple_regression"].task_argument_bindings
+        == expected_regression_bindings
+    )
+    assert (
+        manifests["regression_diagnostics"].task_argument_bindings
+        == expected_regression_bindings
+    )
+    assert (
+        manifests["generate_residual_histogram"].task_argument_bindings
+        == expected_regression_bindings
+    )
+
+    assert manifests["clean_data"].task_argument_bindings == [
+        {
+            "task_field": "target_variables",
+            "argument": "columns",
+            "required_choice": "columns",
+        }
+    ]
+    assert manifests["clean_data"].required_planning_choices == [
+        "action_type",
+        "strategy",
+    ]
+
+
+def test_planner_can_build_arguments_from_manifest_task_bindings(monkeypatch):
+    manifest = ToolManifest(
+        tool_name="fake_manifest_tool",
+        display_name="Fake Manifest Tool",
+        task_argument_bindings=[
+            {
+                "task_field": "target_variables",
+                "index": 0,
+                "argument": "target_col",
+                "required_choice": "target_col",
+            },
+            {
+                "task_field": "predictor_variables",
+                "argument": "feature_cols",
+                "required_choice": "feature_cols",
+            },
+        ],
+    )
+
+    monkeypatch.setattr(
+        planner,
+        "_manifest_for_tool",
+        lambda tool_name: (
+            manifest
+            if tool_name == "fake_manifest_tool"
+            else None
+        ),
+    )
+
+    arguments = planner._step_arguments_for_task(
+        "fake_manifest_tool",
+        TaskSpec(
+            goal_type="fake_goal",
+            user_goal="Test manifest bindings.",
+            target_variables=["GPA"],
+            predictor_variables=["SATM", "ACT"],
+        ),
+    )
+
+    assert arguments == {
+        "target_col": "GPA",
+        "feature_cols": ["SATM", "ACT"],
+    }
 
 def test_current_planner_does_not_populate_manifest_expected_deliverables():
     profile, capability_map = _context(pd.DataFrame({

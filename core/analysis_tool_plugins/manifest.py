@@ -29,6 +29,8 @@ class ToolManifest(BaseModel):
     expected_deliverables: List[str] = Field(default_factory=list)
     default_plan_purpose: str = ""
     argument_template: Dict[str, Any] = Field(default_factory=dict)
+    task_argument_bindings: List[Dict[str, Any]] = Field(default_factory=list)
+    required_planning_choices: List[str] = Field(default_factory=list)
     not_recommended_for_goal_types: List[str] = Field(default_factory=list)
     plan_order: int = 100
 
@@ -90,6 +92,15 @@ def build_tool_manifest(plugin: AnalysisToolPlugin) -> ToolManifest:
             planning_metadata.get("expected_deliverables", [])
         ),
         default_plan_purpose=planning_metadata.get("default_plan_purpose", ""),
+        argument_template=_manifest_value(
+            planning_metadata.get("argument_template", {})
+        ),
+        task_argument_bindings=_manifest_value(
+            planning_metadata.get("task_argument_bindings", [])
+        ),
+        required_planning_choices=_manifest_value(
+            planning_metadata.get("required_planning_choices", [])
+        ),
         plan_order=planning_metadata.get("plan_order", 100),
         has_applicability_checker=plugin.applicability_checker is not None,
     )

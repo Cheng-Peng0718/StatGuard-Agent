@@ -169,6 +169,12 @@ def _numeric_column_count(profile: DatasetProfileV2) -> int:
 
 
 def _step_variables_for_task(tool_name: str, task_spec: TaskSpec) -> Dict[str, object]:
+
+    manifest_variables = _manifest_bound_arguments_for_task(tool_name, task_spec)
+
+    if manifest_variables:
+        return manifest_variables
+
     if tool_name == "run_multiple_regression":
         variables = {}
         if task_spec.target_variables:
@@ -220,31 +226,35 @@ def _required_choices_for_task(
     missing = []
     tool_name = capability.tool_name
 
-    if tool_name == "run_multiple_regression":
-        if not task_spec.target_variables:
-            missing.append("target_col")
-        if not task_spec.predictor_variables:
-            missing.append("feature_cols")
+    if _tool_has_manifest_planning_bindings(tool_name):
+        missing.extend(
+            _required_choices_from_manifest(tool_name, task_spec)
+        )
+    else:
+        if tool_name == "run_multiple_regression":
+            if not task_spec.target_variables:
+                missing.append("target_col")
+            if not task_spec.predictor_variables:
+                missing.append("feature_cols")
 
-    if tool_name in {"regression_diagnostics", "generate_residual_histogram"}:
-        if not task_spec.target_variables:
-            missing.append("target_col")
-        if not task_spec.predictor_variables:
-            missing.append("feature_cols")
+        if tool_name in {"regression_diagnostics", "generate_residual_histogram"}:
+            if not task_spec.target_variables:
+                missing.append("target_col")
+            if not task_spec.predictor_variables:
+                missing.append("feature_cols")
 
-    if tool_name == "clean_data":
-        for choice in ("action_type", "strategy"):
-            if choice not in missing:
-                missing.append(choice)
-        if not task_spec.target_variables:
-            missing.append("columns")
+        if tool_name == "clean_data":
+            for choice in ("action_type", "strategy"):
+                if choice not in missing:
+                    missing.append(choice)
+            if not task_spec.target_variables:
+                missing.append("columns")
 
     for choice in capability.required_user_choices:
         if choice not in missing:
             missing.append(choice)
 
     return missing
-
 
 def _purpose_for_tool(tool_name: str, goal_type: str) -> str:
     purposes = {
@@ -274,6 +284,108 @@ def _manifest_for_tool(tool_name: str):
         return build_tool_manifest(plugin)
     except Exception:
         return None
+
+def _binding_value_from_task_spec(
+    task_spec: TaskSpec,
+    binding: Dict[str, object],
+) -> Optional[object]:
+    task_field = binding.get("task_field")
+
+    if not isinstance(task_field, str) or not task_field:
+        return None
+
+    value = getattr(task_spec, task_field, None)
+
+    if value is None:
+        return None
+
+    if "index" in binding:
+        index = binding.get("index")
+
+        if not isinstance(index, int):
+            return None
+
+        if not isinstance(value, list):
+            return None
+
+        if index < 0 or index >= len(value):
+            return None
+
+        return value[index]
+
+    if value == "" or value == []:
+        return None
+
+    return value
+
+
+def _manifest_bound_arguments_for_task(
+    tool_name: str,
+    task_spec: TaskSpec,
+) -> Dict[str, object]:
+    manifest = _manifest_for_tool(tool_name)
+
+    if manifest is None or not manifest.task_argument_bindings:
+        return {}
+
+    arguments = {}
+
+    for binding in manifest.task_argument_bindings:
+        argument = binding.get("argument")
+
+        if not isinstance(argument, str) or not argument:
+            continue
+
+        value = _binding_value_from_task_spec(task_spec, binding)
+
+        if value is None or value == "" or value == []:
+            continue
+
+        arguments[argument] = value
+
+    return arguments
+
+
+def _tool_has_manifest_planning_bindings(tool_name: str) -> bool:
+    manifest = _manifest_for_tool(tool_name)
+
+    if manifest is None:
+        return False
+
+    return bool(
+        manifest.task_argument_bindings
+        or manifest.required_planning_choices
+    )
+
+
+def _required_choices_from_manifest(
+    tool_name: str,
+    task_spec: TaskSpec,
+) -> List[str]:
+    manifest = _manifest_for_tool(tool_name)
+
+    if manifest is None:
+        return []
+
+    missing = []
+
+    for choice in manifest.required_planning_choices:
+        if isinstance(choice, str) and choice not in missing:
+            missing.append(choice)
+
+    for binding in manifest.task_argument_bindings:
+        required_choice = binding.get("required_choice")
+
+        if not isinstance(required_choice, str) or not required_choice:
+            continue
+
+        value = _binding_value_from_task_spec(task_spec, binding)
+
+        if value is None or value == "" or value == []:
+            if required_choice not in missing:
+                missing.append(required_choice)
+
+    return missing
 
 def _plan_purpose_for_tool(tool_name: str, goal_type: str) -> str:
     manifest = _manifest_for_tool(tool_name)

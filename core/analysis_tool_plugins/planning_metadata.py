@@ -1,5 +1,28 @@
 from __future__ import annotations
 
+REGRESSION_TASK_ARGUMENT_BINDINGS = [
+    {
+        "task_field": "target_variables",
+        "index": 0,
+        "argument": "target_col",
+        "required_choice": "target_col",
+    },
+    {
+        "task_field": "predictor_variables",
+        "argument": "feature_cols",
+        "required_choice": "feature_cols",
+    },
+]
+
+
+CLEAN_DATA_TASK_ARGUMENT_BINDINGS = [
+    {
+        "task_field": "target_variables",
+        "argument": "columns",
+        "required_choice": "columns",
+    },
+]
+
 
 TOOL_PLANNING_METADATA = {
     "inspect_dataset": {
@@ -43,6 +66,7 @@ TOOL_PLANNING_METADATA = {
         "planning_tags": ["regression", "modeling", "inferential"],
         "default_plan_purpose": "Fit the requested regression model.",
         "expected_deliverables": ["regression_model"],
+        "task_argument_bindings": REGRESSION_TASK_ARGUMENT_BINDINGS,
         "plan_order": 10,
     },
     "regression_diagnostics": {
@@ -51,6 +75,7 @@ TOOL_PLANNING_METADATA = {
         "planning_tags": ["regression", "diagnostics", "model_checking"],
         "default_plan_purpose": "Check model diagnostics after the regression fit.",
         "expected_deliverables": ["regression_diagnostics"],
+        "task_argument_bindings": REGRESSION_TASK_ARGUMENT_BINDINGS,
         "plan_order": 20,
     },
     "generate_residual_histogram": {
@@ -59,6 +84,7 @@ TOOL_PLANNING_METADATA = {
         "planning_tags": ["regression", "diagnostics", "visualization", "residuals"],
         "default_plan_purpose": "Generate residual distribution evidence after fitting the model.",
         "expected_deliverables": ["residual_distribution"],
+        "task_argument_bindings": REGRESSION_TASK_ARGUMENT_BINDINGS,
         "plan_order": 30,
     },
     "run_correlation_test": {
@@ -81,6 +107,11 @@ TOOL_PLANNING_METADATA = {
         "planning_tags": ["data_cleaning", "mutation", "requires_confirmation"],
         "default_plan_purpose": "Prepare a data modification proposal that requires user confirmation.",
         "expected_deliverables": ["cleaned_dataset_version"],
+        "task_argument_bindings": CLEAN_DATA_TASK_ARGUMENT_BINDINGS,
+        "required_planning_choices": [
+          "action_type",
+          "strategy",
+        ],
         "plan_order": 10,
     },
     "run_anova": {
