@@ -23,6 +23,7 @@ from core.analysis_tool_plugins.policies import (
     DEFAULT_ANALYSIS_REPAIR,
     needs_user_choices,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -379,6 +380,29 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         "group_col",
         "group1_val",
         "group2_val",
+    ),
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "group_comparison",
+        ],
+        not_recommended_for_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+        ],
+        planning_tags=[
+            "group_comparison",
+            "t_test",
+            "inferential",
+        ],
+        default_plan_purpose=(
+            "Compare a numeric outcome between two independent groups."
+        ),
+        expected_deliverables=[
+            "group_comparison_test",
+        ],
+        plan_order=10,
     ),
 
     # Independent t-test does not mutate data.

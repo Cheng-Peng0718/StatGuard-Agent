@@ -24,6 +24,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_ANALYSIS_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -427,6 +428,30 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ],
 
     planning_policy=NEEDS_USER_VARIABLES_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "categorical_association",
+            "association_analysis",
+        ],
+        not_recommended_for_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+        ],
+        planning_tags=[
+            "categorical_association",
+            "chi_square",
+            "inferential",
+        ],
+        default_plan_purpose=(
+            "Test association between categorical variables."
+        ),
+        expected_deliverables=[
+            "categorical_association_test",
+        ],
+        plan_order=10,
+    ),
 
     # Chi-square does not mutate data.
     mutates_data=False,

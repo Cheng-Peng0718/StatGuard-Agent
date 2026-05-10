@@ -24,6 +24,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_ANALYSIS_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -394,6 +395,29 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     # Planning policy.
     # ANOVA requires user-selected variables, so it is NOT ready by default.
     planning_policy=NEEDS_USER_VARIABLES_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "group_comparison",
+        ],
+        not_recommended_for_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+        ],
+        planning_tags=[
+            "group_comparison",
+            "anova",
+            "inferential",
+        ],
+        default_plan_purpose=(
+            "Compare numeric outcomes across groups with one-way ANOVA."
+        ),
+        expected_deliverables=[
+            "group_comparison_test",
+        ],
+        plan_order=10,
+    ),
 
     # ANOVA does not mutate data.
     mutates_data=False,

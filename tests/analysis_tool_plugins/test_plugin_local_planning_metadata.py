@@ -331,3 +331,62 @@ def test_overview_plugin_manifests_use_local_planning_metadata():
             "analysis_planning",
             "eda",
         ]
+
+def test_inferential_plugins_declare_local_planning_metadata():
+    expected = {
+        "run_anova": {
+            "supported_goal_types": [
+                "group_comparison",
+            ],
+            "expected_deliverables": ["group_comparison_test"],
+            "plan_order": 10,
+        },
+        "run_chi_square": {
+            "supported_goal_types": [
+                "categorical_association",
+                "association_analysis",
+            ],
+            "expected_deliverables": ["categorical_association_test"],
+            "plan_order": 10,
+        },
+        "run_independent_t_test": {
+            "supported_goal_types": [
+                "group_comparison",
+            ],
+            "expected_deliverables": ["group_comparison_test"],
+            "plan_order": 10,
+        },
+    }
+
+    for tool_name, values in expected.items():
+        plugin = get_plugin(tool_name)
+
+        assert plugin is not None
+        assert plugin.planning_metadata.supported_goal_types == values["supported_goal_types"]
+        assert plugin.planning_metadata.expected_deliverables == values["expected_deliverables"]
+        assert plugin.planning_metadata.plan_order == values["plan_order"]
+
+
+def test_inferential_plugin_manifests_use_local_planning_metadata():
+    expected = {
+        "run_anova": {
+            "expected_deliverables": ["group_comparison_test"],
+            "plan_order": 10,
+        },
+        "run_chi_square": {
+            "expected_deliverables": ["categorical_association_test"],
+            "plan_order": 10,
+        },
+        "run_independent_t_test": {
+            "expected_deliverables": ["group_comparison_test"],
+            "plan_order": 10,
+        },
+    }
+
+    for tool_name, values in expected.items():
+        plugin = get_plugin(tool_name)
+        manifest = build_tool_manifest(plugin)
+
+        assert manifest.expected_deliverables == values["expected_deliverables"]
+        assert manifest.plan_order == values["plan_order"]
+        assert manifest.supported_goal_types
