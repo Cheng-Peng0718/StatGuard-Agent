@@ -10,7 +10,7 @@ from core.context_builder import build_context
 from core.execution_codec import execution_to_state_dict
 from core.workflow.execution_fingerprints import has_duplicate_executed_action
 from core.workflow.runtime_utils import sanitize_results, get_action_hash
-
+from core.workflow.profile_access import get_context_profile
 
 def execute_node(state: dict):
     action = state.get("current_action")
@@ -78,7 +78,7 @@ def execute_node(state: dict):
         step=state.get("current_step", 1),
         max_steps=state.get("max_steps", 20),
         user_request=state.get("user_request", "Not provided"),
-        profile=state.get("dataset_profile"),
+        profile=get_context_profile(state),
         observations=state.get("observations", []),
         workspace_dir=state.get("workspace_dir", "./"),
         deliverable_check=state.get("deliverable_check"),

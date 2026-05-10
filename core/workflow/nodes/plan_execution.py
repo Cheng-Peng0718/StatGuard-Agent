@@ -5,14 +5,16 @@ from core.action_access import (
     get_action_id,
     get_action_tool_name,
 )
-from core.dataset_intelligence.schemas import DatasetProfileV2
 from core.planning.dependencies import modeling_blocked_by_pending_cleaning
 from core.planning.execution_queue import (
     find_next_executable_step,
     mark_plan_step_started,
 )
 from core.responses import make_response_update
-
+from core.workflow.profile_access import (
+    get_context_profile,
+    get_dataset_profile_v2,
+)
 
 def execute_pending_plan_node(state: dict):
     print("\n" + "=" * 40)
@@ -50,7 +52,7 @@ def execute_pending_plan_node(state: dict):
 
     next_step, readiness = find_next_executable_step(
         pending_plan,
-        profile=state.get("dataset_profile"),
+        profile=get_context_profile(state),
     )
 
     if next_step is None or readiness is None or not readiness.executable:
@@ -95,10 +97,9 @@ def execute_pending_plan_node(state: dict):
 
         return updates
 
-    profile_dict = state.get("dataset_profile_v2")
+    dataset_profile = get_dataset_profile_v2(state)
 
-    if profile_dict:
-        dataset_profile = DatasetProfileV2.model_validate(profile_dict)
+    if dataset_profile is not None:
 
         if modeling_blocked_by_pending_cleaning(
             step=next_step,

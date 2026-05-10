@@ -7,7 +7,7 @@ from core.action_access import (
 )
 from core.context_builder import build_context
 from core.services.task_contracts import task_contract_to_state_dict
-
+from core.workflow.profile_access import get_context_profile
 
 def call_supervisor(context_pkg):
     from agents.supervisor import call_supervisor as real_call_supervisor
@@ -17,7 +17,7 @@ def call_supervisor(context_pkg):
 
 def supervisor_node(state: dict):
     current_workspace = state.get("workspace_dir", "./")
-    current_profile = state.get("dataset_profile")
+    current_profile = get_context_profile(state)
 
     context_pkg = build_context(
         step=state.get("current_step", 1),
