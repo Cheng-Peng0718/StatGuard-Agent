@@ -3,7 +3,7 @@ from __future__ import annotations
 from core.dataset_intelligence.schemas import CapabilityMap, DatasetProfileV2
 from core.planning.renderer import render_plan_for_user
 from core.responses import make_response_update
-from core.services.intelligent_planner import create_plan_from_state
+from core.services.llm_planner import create_llm_plan_from_state
 
 
 def plan_only_node(state: dict):
@@ -38,7 +38,7 @@ def plan_only_node(state: dict):
 
     dataset_profile = DatasetProfileV2.model_validate(profile_dict)
     CapabilityMap.model_validate(capability_map_dict)
-    verified_plan = create_plan_from_state(state)
+    verified_plan = create_llm_plan_from_state(state)
     rendered = render_plan_for_user(verified_plan)
 
     print("\n" + "=" * 40)
