@@ -2,16 +2,29 @@ from core.workflow.nodes.interaction import (
     advisory_answer_node,
     intent_router_node,
 )
+from core.domain.intent import IntentDecision
 
 
-def test_intent_router_node_classifies_advisory_request():
+def test_intent_router_node_classifies_advisory_request(monkeypatch):
+    def fake_decide_llm_interaction_intent(user_request, *, state=None):
+        assert user_request == "I want to do analysis to this dataset, what can I do?"
+        return IntentDecision(
+            intent="advisory",
+            confidence=0.9,
+            reason="The user is asking for general analysis guidance.",
+        )
+
+    monkeypatch.setattr(
+        "core.workflow.nodes.interaction.decide_llm_interaction_intent",
+        fake_decide_llm_interaction_intent,
+    )
+
     updates = intent_router_node({
         "user_request": "I want to do analysis to this dataset, what can I do?"
     })
 
     assert updates["interaction_intent"] == "advisory"
     assert updates["intent_decision"]["intent"] == "advisory"
-    assert updates["task_spec"]["goal_type"] == "dataset_overview"
 
 
 def test_advisory_answer_node_returns_advisory_response_without_action():

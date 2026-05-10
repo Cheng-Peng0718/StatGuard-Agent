@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from core.responses import make_response_update
-from core.services.interaction_router import (
-    decide_interaction_intent,
+from core.services.llm_interaction_parser import (
+    decide_llm_interaction_intent,
     legacy_interaction_intent_from_decision,
 )
 
-
 def intent_router_node(state: dict):
     user_request = state.get("user_request", "")
-    decision = decide_interaction_intent(user_request, state=state)
+    decision = decide_llm_interaction_intent(user_request, state=state)
     legacy_intent = legacy_interaction_intent_from_decision(decision)
 
     print("\n" + "=" * 40)
