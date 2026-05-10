@@ -13,12 +13,11 @@ _PLUGINS_LOADING = False
 
 class LazyPluginRegistry(dict):
     """
-    Backward-compatible lazy plugin registry.
+    Lazy plugin registry.
 
     Importing core.analysis_tool_plugins should not import concrete plugin
-    modules. Accessing the registry through public read operations discovers
-    plugins on demand. This lets older code that reads PLUGIN_REGISTRY.items()
-    keep working while removing import-time side effects.
+    modules. Public read operations discover plugins on demand, keeping plugin
+    registration centralized while avoiding import-time side effects.
     """
 
     def _ensure_loaded(self) -> None:
@@ -118,9 +117,10 @@ def has_plugin(tool_name: str) -> bool:
 
 def get_tool_specs_for_llm() -> List[Dict[str, Any]]:
     """
-    Tool listing for Supervisor prompt.
+    Tool listing for LLM-facing prompts.
 
-    This replaces tools.registry.get_tool_specs_for_llm().
+    This returns the registered analysis tool contracts in a compact format
+    suitable for supervisor or planner prompts.
     """
     ensure_plugins_loaded()
     specs = []

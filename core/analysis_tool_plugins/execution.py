@@ -41,9 +41,7 @@ def execute_analysis_tool(action: ActionProposal, context_pkg) -> ToolExecutionR
     """
     Unified execution entrypoint.
 
-    New architecture:
-    - Only core.analysis_tool_plugins is authoritative.
-    - No fallback to tools.registry.
+    Only core.analysis_tool_plugins is authoritative for tool execution.
     """
     execution_id = f"exec_{uuid.uuid4().hex[:8]}"
     tool_name = action.tool_name
