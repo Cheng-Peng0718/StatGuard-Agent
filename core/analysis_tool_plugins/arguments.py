@@ -47,6 +47,3 @@ class ArgumentSchema:
             "conditional_allowed_values": self.conditional_allowed_values,
             "value_aliases": self.value_aliases,
         }
-
-    def to_legacy_schema_dict(self) -> Dict[str, Any]:
-        return self.to_contract_dict()
