@@ -147,3 +147,29 @@ def test_backend_contract_smoke_tests_use_public_app_backend_api():
 
     for phrase in forbidden:
         assert phrase not in text
+
+def test_backend_turn_does_not_reappear():
+    forbidden_paths = [
+        Path("core/controller/backend_turn.py"),
+        Path("core/backend_turn.py"),
+        Path("backend_turn.py"),
+    ]
+
+    for path in forbidden_paths:
+        assert not path.exists()
+
+
+def test_app_backend_names_do_not_hide_backend_turn_reimplementation():
+    app_backend_dir = Path("core/app_backend")
+
+    for path in app_backend_dir.glob("*.py"):
+        text = path.read_text(encoding="utf-8")
+
+        forbidden = [
+            "backend_turn",
+            "run_backend_turn",
+            "controller.backend_turn",
+        ]
+
+        for phrase in forbidden:
+            assert phrase not in text
