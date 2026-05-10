@@ -5,12 +5,12 @@ from core.analysis_tool_plugins.base import AnalysisToolPlugin
 from core.analysis_tool_plugins.result_builder import build_analysis_run_for_plugin
 
 
-def _generic_unified_fallback_plugin(tool_name: str) -> AnalysisToolPlugin:
+def _generic_placeholder_plugin(tool_name: str) -> AnalysisToolPlugin:
     """
-    Generic fallback for unknown tools.
+    Generic placeholder for unknown tools.
 
-    This prevents the report pipeline from crashing if a tool has no
-    registered unified plugin. It should be rare after migration.
+    This prevents the report pipeline from crashing if an observation
+    references a tool that is not currently registered.
     """
     return AnalysisToolPlugin(
         tool_name=tool_name,
@@ -57,22 +57,21 @@ def build_analysis_run_from_observation(
     Convert one tool Observation into a standardized AnalysisRun.
 
     Supported inputs:
-    1. New contract:
-       build_analysis_run_from_observation(observation=obs)
+    1. Observation object or dict:
+        build_analysis_run_from_observation(observation=obs)
 
-    2. Existing graph compatibility:
-       build_analysis_run_from_observation(
-           tool_name=...,
-           action_id=...,
-           arguments=...,
-           ...
-       )
+    2. Explicit fields:
+        build_analysis_run_from_observation(
+            tool_name=...,
+            action_id=...,
+            arguments=...,
+            ...
+        )
 
-    Final architecture:
-    - Unified AnalysisToolPlugin remains the primary renderer/extractor path.
-    - This function is the single normalization boundary from Observation to AnalysisRun.
-    - Unknown tools use a generic unified fallback.
-    - No dependency on the legacy analysis plugin package.
+    Architecture:
+    - AnalysisToolPlugin is the primary renderer/extractor path.
+    - This function is the normalization boundary from Observation to AnalysisRun.
+    - Unknown tools use a generic placeholder plugin so reporting remains robust.
     """
     obs = _as_dict(observation)
 
@@ -140,7 +139,7 @@ def build_analysis_run_from_observation(
     plugin = get_unified_plugin(tool_name)
 
     if plugin is None:
-        plugin = _generic_unified_fallback_plugin(tool_name)
+        plugin = _generic_placeholder_plugin(tool_name)
 
     try:
         run = build_analysis_run_for_plugin(

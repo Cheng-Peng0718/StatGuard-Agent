@@ -78,7 +78,7 @@ def test_analysis_runs_prefers_unified_plugin():
     assert metric_block["rows"][0]["value"] == "1.23"
 
 
-def test_analysis_runs_legacy_fallback_still_works():
+def test_analysis_runs_unknown_tool_placeholder_still_works():
     run = build_analysis_run_from_observation(
         tool_name="get_summary_stats",
         action_id="act_test",
