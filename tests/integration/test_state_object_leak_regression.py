@@ -2,6 +2,8 @@ import json
 
 import pandas as pd
 
+from core.data.context_refresh import refresh_dataset_context_from_df
+
 from core.audit.state_serialization import audit_state_serialization
 
 from core.workflow.nodes.execution import execute_node
@@ -16,6 +18,17 @@ from core.workflow.nodes.plan_execution import execute_pending_plan_node
 
 from core.workflow.nodes.finalization import deliverable_gate_node
 
+def make_dataset_profile_v2():
+    refreshed = refresh_dataset_context_from_df(
+        pd.DataFrame({
+            "GPA": [3.0, 3.5, 4.0],
+            "SATM": [600, 650, 700],
+        }),
+        dataset_name="test_data",
+        data_version_id="raw_v1",
+    )
+
+    return refreshed.dataset_profile_v2.model_dump()
 
 def get_field(value, field_name, default=None):
     if value is None:
@@ -145,6 +158,7 @@ def make_success_state(tmp_path):
         "max_steps": 5,
 
         "dataset_profile": make_state_dataset_profile(),
+        "dataset_profile_v2": make_dataset_profile_v2(),
 
         "observations": [],
         "analysis_runs": [],
@@ -276,6 +290,7 @@ def make_failure_state():
                 },
             ],
         },
+        "dataset_profile_v2": make_dataset_profile_v2(),
 
         "observations": [],
         "analysis_runs": [],

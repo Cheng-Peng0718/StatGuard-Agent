@@ -22,7 +22,7 @@ from core.verification_access import (
 from core.workflow.repair_runtime import attach_repair_decision
 from core.workflow.runtime_utils import get_action_hash
 from core.workflow.verification_feedback import attach_verification_blocked_response
-from core.workflow.profile_access import require_context_profile
+from core.workflow.profile_access import require_dataset_profile_v2
 
 def verify_node(state: dict):
     """
@@ -39,7 +39,7 @@ def verify_node(state: dict):
     """
     action = state["current_action"]
 
-    status, feedback, verify_result = verify(action, require_context_profile(state))
+    status, feedback, verify_result = verify(action, require_dataset_profile_v2(state))
 
     tool_name = get_action_tool_name(action)
     arguments = get_action_arguments(action)

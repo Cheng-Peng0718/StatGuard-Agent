@@ -11,10 +11,7 @@ from core.planning.execution_queue import (
     mark_plan_step_started,
 )
 from core.responses import make_response_update
-from core.workflow.profile_access import (
-    get_context_profile,
-    get_dataset_profile_v2,
-)
+from core.workflow.profile_access import get_dataset_profile_v2
 
 def execute_pending_plan_node(state: dict):
     print("\n" + "=" * 40)
@@ -50,9 +47,11 @@ def execute_pending_plan_node(state: dict):
 
         return updates
 
+    dataset_profile = get_dataset_profile_v2(state)
+
     next_step, readiness = find_next_executable_step(
         pending_plan,
-        profile=get_context_profile(state),
+        profile=dataset_profile,
     )
 
     if next_step is None or readiness is None or not readiness.executable:
@@ -96,8 +95,6 @@ def execute_pending_plan_node(state: dict):
         })
 
         return updates
-
-    dataset_profile = get_dataset_profile_v2(state)
 
     if dataset_profile is not None:
 

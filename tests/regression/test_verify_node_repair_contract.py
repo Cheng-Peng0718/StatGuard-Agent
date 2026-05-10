@@ -1,6 +1,21 @@
+import pandas as pd
+
+from core.data.context_refresh import refresh_dataset_context_from_df
+
 from core.workflow.nodes.verification import verify_node
 from core.schema import ActionProposal
 
+def make_dataset_profile_v2():
+    refreshed = refresh_dataset_context_from_df(
+        pd.DataFrame({
+            "GPA": [3.0, 3.5, 4.0],
+            "SATM": [600, 650, 700],
+        }),
+        dataset_name="test_data",
+        data_version_id="raw_v1",
+    )
+
+    return refreshed.dataset_profile_v2.model_dump()
 
 def test_verify_node_attaches_repair_state_for_recoverable_verification_failure(monkeypatch):
     action = ActionProposal(
@@ -36,6 +51,7 @@ def test_verify_node_attaches_repair_state_for_recoverable_verification_failure(
         "dataset_profile": {
             "columns": ["GPA"],
         },
+        "dataset_profile_v2": make_dataset_profile_v2(),
         "observations": [],
         "repair_attempts": [],
     })
@@ -88,6 +104,7 @@ def test_verify_node_attaches_terminal_repair_state_for_terminal_verification_fa
         "dataset_profile": {},
         "observations": [],
         "repair_attempts": [],
+        "dataset_profile_v2": make_dataset_profile_v2(),
     })
 
     assert updates["current_verification"]["status"] == "rejected_terminal"

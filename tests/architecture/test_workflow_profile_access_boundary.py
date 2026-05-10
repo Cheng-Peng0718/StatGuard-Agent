@@ -49,3 +49,17 @@ def test_active_workflow_nodes_do_not_directly_fetch_dataset_profile_state():
         text = Path(path).read_text(encoding="utf-8")
         for pattern in patterns:
             assert pattern not in text
+
+def test_verification_and_plan_execution_use_dataset_profile_v2_for_validation():
+    verification_text = Path(
+        "core/workflow/nodes/verification.py"
+    ).read_text(encoding="utf-8")
+    plan_execution_text = Path(
+        "core/workflow/nodes/plan_execution.py"
+    ).read_text(encoding="utf-8")
+
+    assert "require_dataset_profile_v2" in verification_text
+    assert "require_context_profile" not in verification_text
+
+    assert "get_dataset_profile_v2" in plan_execution_text
+    assert "get_context_profile" not in plan_execution_text

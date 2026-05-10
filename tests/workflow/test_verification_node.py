@@ -1,6 +1,21 @@
+import pandas as pd
+
+from core.data.context_refresh import refresh_dataset_context_from_df
+
 from core.schema import ActionProposal
 from core.workflow.nodes.verification import verify_node
 
+def make_dataset_profile_v2():
+    refreshed = refresh_dataset_context_from_df(
+        pd.DataFrame({
+            "GPA": [3.0, 3.5, 4.0],
+            "SATM": [600, 650, 700],
+        }),
+        dataset_name="test_data",
+        data_version_id="raw_v1",
+    )
+
+    return refreshed.dataset_profile_v2.model_dump()
 
 def test_verify_node_attaches_action_hash_to_allowed_verification(monkeypatch):
     action = ActionProposal(
@@ -36,6 +51,7 @@ def test_verify_node_attaches_action_hash_to_allowed_verification(monkeypatch):
             "columns": ["GPA"],
         },
         "repair_attempts": [],
+        "dataset_profile_v2": make_dataset_profile_v2(),
     })
 
     verification = updates["current_verification"]
@@ -78,6 +94,7 @@ def test_verify_node_rejected_failure_has_user_visible_response(monkeypatch):
         "dataset_profile": {
             "columns": ["GPA"],
         },
+        "dataset_profile_v2": make_dataset_profile_v2(),
         "observations": [],
         "repair_attempts": [],
         "active_data_version_id": "raw_v1",
