@@ -1,10 +1,10 @@
 import pandas as pd
 
 from core.data.context_refresh import refresh_dataset_context_from_df
-from core.services.llm_planner import build_llm_planner_input, create_llm_plan_from_state
 from core.services.llm_planner import (
     build_llm_planner_input,
     create_llm_plan_from_state,
+    generate_llm_plan_draft,
     normalize_llm_plan_draft,
 )
 from core.services.llm_planner_contracts import LLMPlanDraft, LLMPlanStepDraft
@@ -79,19 +79,50 @@ def test_build_llm_planner_input_exposes_tool_contracts():
     ]
 
 
-def test_create_llm_plan_from_state_returns_plan_proposal():
+def test_create_llm_plan_from_state_uses_structured_llm_draft(monkeypatch):
+    def fake_generate_llm_plan_draft(planner_input):
+        assert planner_input.user_request == "What analysis can I do with this data?"
+
+        return LLMPlanDraft(
+            user_goal="Summarize the student data.",
+            summary="Inspect the dataset and summarize numeric variables.",
+            steps=[
+                LLMPlanStepDraft(
+                    title="Inspect dataset",
+                    tool_name="inspect_dataset",
+                    purpose="Understand dataset shape and columns.",
+                    rationale="A dataset overview should come before deeper analysis.",
+                    status="ready",
+                    arguments={},
+                    variables={},
+                ),
+                LLMPlanStepDraft(
+                    title="Compute summary statistics",
+                    tool_name="get_summary_stats",
+                    purpose="Summarize numeric variables.",
+                    rationale="GPA and SATM are numeric and useful for initial EDA.",
+                    status="ready",
+                    arguments={},
+                    variables={},
+                ),
+            ],
+        )
+
+    monkeypatch.setattr(
+        "core.services.llm_planner.generate_llm_plan_draft",
+        fake_generate_llm_plan_draft,
+    )
+
     plan = create_llm_plan_from_state(_state())
 
     assert plan.plan_id.startswith("plan_")
-    assert plan.steps
-    assert plan.status in {
-        "draft",
-        "ready",
-        "verified",
-        "partially_ready",
-        "needs_clarification",
-        "blocked",
-    }
+    assert [
+        step.tool_name
+        for step in plan.steps
+    ] == [
+        "inspect_dataset",
+        "get_summary_stats",
+    ]
 
 def test_normalize_llm_plan_draft_builds_verified_plan_from_valid_tool_step():
     state = _state()
@@ -203,3 +234,48 @@ def test_normalize_llm_plan_draft_preserves_required_choices_for_missing_argumen
     assert "target_col" in step.required_user_choices
     assert "feature_cols" in step.required_user_choices
     assert step.execution_ready is False
+
+def test_generate_llm_plan_draft_invokes_structured_llm(monkeypatch):
+    seen_messages = {}
+
+    class FakeStructuredLLM:
+        def invoke(self, messages):
+            seen_messages["messages"] = messages
+            return LLMPlanDraft(
+                user_goal="Inspect data.",
+                summary="Inspect the dataset.",
+                steps=[
+                    LLMPlanStepDraft(
+                        title="Inspect dataset",
+                        tool_name="inspect_dataset",
+                        purpose="Understand the dataset.",
+                        rationale="Start with schema and overview.",
+                        status="ready",
+                    )
+                ],
+            )
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            seen_messages["llm_kwargs"] = kwargs
+
+        def with_structured_output(self, schema, **kwargs):
+            seen_messages["schema"] = schema
+            seen_messages["structured_output_kwargs"] = kwargs
+            return FakeStructuredLLM()
+
+    monkeypatch.setattr(
+        "langchain_openai.ChatOpenAI",
+        FakeChatOpenAI,
+    )
+
+    planner_input = build_llm_planner_input(_state())
+    draft = generate_llm_plan_draft(planner_input)
+
+    assert draft.steps[0].tool_name == "inspect_dataset"
+    assert seen_messages["schema"] is LLMPlanDraft
+    assert seen_messages["structured_output_kwargs"] == {
+        "method": "function_calling",
+    }
+    assert seen_messages["messages"][0][0] == "system"
+    assert seen_messages["messages"][1][0] == "user"

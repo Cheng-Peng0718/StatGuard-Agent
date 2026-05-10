@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import os
 import uuid
 from typing import Any, Dict, List
 
@@ -10,12 +10,12 @@ from core.planning.verifier import verify_plan
 from core.analysis_tool_plugins import PLUGIN_REGISTRY, ensure_plugins_loaded
 from core.analysis_tool_plugins.manifest import build_tool_manifests
 from core.planning.schemas import PlanProposal
-from core.services.intelligent_planner import create_plan_from_state
 from core.services.llm_planner_contracts import (
     LLMPlanDraft,
     LLMPlannerDatasetView,
     LLMPlannerInput,
     LLMPlannerToolView,
+    LLMPlanStepDraft,
 )
 
 
@@ -149,6 +149,66 @@ def build_llm_planner_input(state: Dict[str, Any]) -> LLMPlannerInput:
             "Mutating tools require explicit user confirmation before execution.",
         ],
     )
+
+def _planner_system_prompt() -> str:
+    return (
+        "You are a senior data analysis planning agent. "
+        "Your job is to create a statistically appropriate analysis plan, not to execute tools. "
+        "You must use only tool names provided in the tool manifest list. "
+        "If a required variable, argument, or operation choice is missing, include it in required_user_choices. "
+        "Do not invent tools, columns, files, or results. "
+        "Mutating tools must not be marked execution-ready unless the user explicitly requested the mutation; "
+        "they still require confirmation downstream. "
+        "Return only the structured plan draft matching the provided schema."
+    )
+
+def _make_structured_planner_llm():
+    from langchain_openai import ChatOpenAI
+
+    model = (
+        os.getenv("ANALYSIS_AGENT_PLANNER_MODEL")
+        or os.getenv("OPENAI_MODEL")
+        or "gpt-4.1-mini"
+    )
+
+    temperature_raw = os.getenv("ANALYSIS_AGENT_PLANNER_TEMPERATURE", "0")
+
+    try:
+        temperature = float(temperature_raw)
+    except ValueError:
+        temperature = 0.0
+
+    return ChatOpenAI(
+        model=model,
+        temperature=temperature,
+    ).with_structured_output(
+        LLMPlanDraft,
+        method="function_calling",
+    )
+
+def _planner_user_prompt(planner_input: LLMPlannerInput) -> str:
+    return (
+        "Create a data analysis plan from this planner input.\n\n"
+        f"{planner_input.model_dump_json(indent=2)}"
+    )
+
+def generate_llm_plan_draft(
+    planner_input: LLMPlannerInput,
+) -> LLMPlanDraft:
+    """
+    Generate a structured LLM plan draft.
+
+    This function is the only place in the planner service that calls the LLM.
+    Tests should monkeypatch this function rather than calling external APIs.
+    """
+    structured_llm = _make_structured_planner_llm()
+
+    result = structured_llm.invoke([
+        ("system", _planner_system_prompt()),
+        ("user", _planner_user_prompt(planner_input)),
+    ])
+
+    return LLMPlanDraft.model_validate(result)
 
 def _make_step_id(tool_name: str | None) -> str:
     safe_name = (tool_name or "non_tool_step").replace(" ", "_").replace("-", "_")
@@ -378,10 +438,16 @@ def create_llm_plan_from_state(state: Dict[str, Any]) -> PlanProposal:
     """
     LLM-first planner service boundary.
 
-    Current implementation:
+    Active implementation:
     - builds the LLM planner input contract;
-    - temporarily delegates plan generation to deterministic fallback;
-    - future implementation will call an LLM and normalize the structured output.
+    - asks the structured LLM planner for an LLMPlanDraft;
+    - normalizes the draft into the canonical PlanProposal;
+    - verifies the plan before returning it.
     """
-    build_llm_planner_input(state)
-    return create_plan_from_state(state)
+    planner_input = build_llm_planner_input(state)
+    draft = generate_llm_plan_draft(planner_input)
+
+    return normalize_llm_plan_draft(
+        draft=draft,
+        state=state,
+    )

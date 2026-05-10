@@ -9,12 +9,16 @@ def test_plan_only_node_uses_llm_planner_boundary():
     assert "core.services.intelligent_planner" not in text
     assert "create_plan_from_state(state)" not in text
 
-
-def test_llm_planner_temporarily_delegates_to_deterministic_fallback():
+def test_llm_planner_no_longer_delegates_to_deterministic_fallback():
     text = Path("core/services/llm_planner.py").read_text(encoding="utf-8")
 
-    assert "from core.services.intelligent_planner import create_plan_from_state" in text
-    assert "return create_plan_from_state(state)" in text
+    assert "from core.services.intelligent_planner import create_plan_from_state" not in text
+    assert "return create_plan_from_state(state)" not in text
+    assert "def generate_llm_plan_draft" in text
+    assert "with_structured_output(" in text
+    assert "LLMPlanDraft" in text
+    assert 'method="function_calling"' in text
+    assert "normalize_llm_plan_draft(" in text
 
 def test_llm_planner_defines_input_contract_boundary():
     text = Path("core/services/llm_planner.py").read_text(encoding="utf-8")
