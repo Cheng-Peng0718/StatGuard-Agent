@@ -30,6 +30,7 @@ from core.analysis_tool_plugins.policies import (
     NON_MUTATING_VERSIONING,
     DEFAULT_ANALYSIS_REPAIR,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -460,6 +461,44 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ],
 
     planning_policy=NEEDS_USER_VARIABLES_PLANNING,
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "regression_modeling",
+            "visualization",
+        ],
+        not_recommended_for_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+        ],
+        planning_tags=[
+            "regression",
+            "diagnostics",
+            "visualization",
+            "residuals",
+        ],
+        default_plan_purpose=(
+            "Generate residual distribution evidence after fitting the model."
+        ),
+        expected_deliverables=[
+            "residual_distribution",
+        ],
+        task_argument_bindings=[
+            {
+                "task_field": "target_variables",
+                "index": 0,
+                "argument": "target_col",
+                "required_choice": "target_col",
+            },
+            {
+                "task_field": "predictor_variables",
+                "argument": "feature_cols",
+                "required_choice": "feature_cols",
+            },
+        ],
+        plan_order=30,
+    ),
 
     # Residual histogram does not mutate the active dataset.
     mutates_data=False,

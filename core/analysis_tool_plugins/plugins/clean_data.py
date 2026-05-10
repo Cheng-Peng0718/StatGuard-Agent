@@ -23,6 +23,7 @@ from core.analysis_tool_plugins.policies import (
     DEFAULT_MUTATING_REPAIR,
     mutating_requires_choices,
 )
+from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None, data_version_update=None):
     result = {
@@ -578,6 +579,40 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     planning_policy=mutating_requires_choices(
         "action_type",
         "strategy",
+    ),
+
+    planning_metadata=PlanningMetadata(
+        supported_goal_types=[
+            "data_cleaning",
+        ],
+        not_recommended_for_goal_types=[
+            "dataset_overview",
+            "analysis_recommendation",
+            "analysis_planning",
+        ],
+        planning_tags=[
+            "data_cleaning",
+            "mutation",
+            "requires_confirmation",
+        ],
+        default_plan_purpose=(
+            "Prepare a data modification proposal that requires user confirmation."
+        ),
+        expected_deliverables=[
+            "cleaned_dataset_version",
+        ],
+        task_argument_bindings=[
+            {
+                "task_field": "target_variables",
+                "argument": "columns",
+                "required_choice": "columns",
+            },
+        ],
+        required_planning_choices=[
+            "action_type",
+            "strategy",
+        ],
+        plan_order=10,
     ),
 
     # clean_data mutates data and must create a child data version.
