@@ -46,3 +46,20 @@ def test_dataset_upload_backend_uses_data_version_and_snapshot_contracts():
     assert "create_initial_data_version" in text
     assert "refresh_dataset_context_from_path" in text
     assert "build_ui_snapshot" in text
+
+def test_turn_backend_uses_graph_runner_and_snapshot_contracts_only():
+    text = Path("core/app_backend/turn.py").read_text(encoding="utf-8")
+
+    assert "run_graph_once" in text
+    assert "build_ui_snapshot" in text
+
+    forbidden = [
+        "create_graph_app",
+        "core.workflow.nodes",
+        "workflow.add_node",
+        "streamlit",
+        "st.",
+    ]
+
+    for phrase in forbidden:
+        assert phrase not in text
