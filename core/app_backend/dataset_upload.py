@@ -11,38 +11,22 @@ from core.app_backend.snapshot import build_ui_snapshot
 from core.context_builder import generate_profile
 from core.data.context_refresh import refresh_dataset_context_from_path
 from core.data_versions import create_initial_data_version, make_audit_event
+from core.data.tabular_io import (
+    SUPPORTED_TABULAR_EXTENSIONS,
+    load_tabular_dataframe,
+)
 
-
-SUPPORTED_UPLOAD_EXTENSIONS = {".csv", ".xlsx", ".xls", ".parquet"}
+SUPPORTED_UPLOAD_EXTENSIONS = SUPPORTED_TABULAR_EXTENSIONS
 
 
 def read_uploaded_dataframe(source_path: str) -> pd.DataFrame:
     """
     Read a user-uploaded tabular file into a DataFrame.
 
-    This function is UI-framework-agnostic. Streamlit/FastAPI should save the
-    uploaded file to a temporary path first, then call this backend function.
+    This delegates to the canonical backend tabular reader so upload and
+    dataset context refresh use exactly the same file-format behavior.
     """
-    path = Path(source_path)
-    suffix = path.suffix.lower()
-
-    if suffix not in SUPPORTED_UPLOAD_EXTENSIONS:
-        supported = ", ".join(sorted(SUPPORTED_UPLOAD_EXTENSIONS))
-        raise ValueError(
-            f"Unsupported uploaded file type '{suffix}'. "
-            f"Supported types: {supported}."
-        )
-
-    if suffix == ".csv":
-        return pd.read_csv(path)
-
-    if suffix in {".xlsx", ".xls"}:
-        return pd.read_excel(path)
-
-    if suffix == ".parquet":
-        return pd.read_parquet(path)
-
-    raise ValueError(f"Unsupported uploaded file type '{suffix}'.")
+    return load_tabular_dataframe(source_path)
 
 
 def _ensure_workspace_dir(workspace_dir: str) -> str:

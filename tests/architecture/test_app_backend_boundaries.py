@@ -173,3 +173,24 @@ def test_app_backend_names_do_not_hide_backend_turn_reimplementation():
 
         for phrase in forbidden:
             assert phrase not in text
+
+def test_upload_and_context_refresh_use_canonical_tabular_reader():
+    upload_text = Path("core/app_backend/dataset_upload.py").read_text(
+        encoding="utf-8"
+    )
+    context_text = Path("core/data/context_refresh.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "load_tabular_dataframe" in upload_text
+    assert "load_tabular_dataframe" in context_text
+
+    assert "pd.read_excel" not in upload_text
+    assert "pd.read_csv" not in upload_text
+
+def test_tabular_reader_centralizes_excel_engine_selection():
+    text = Path("core/data/tabular_io.py").read_text(encoding="utf-8")
+
+    assert 'engine="openpyxl"' in text
+    assert 'engine="xlrd"' in text
+    assert "SUPPORTED_TABULAR_EXTENSIONS" in text

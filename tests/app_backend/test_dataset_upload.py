@@ -93,6 +93,31 @@ def test_initialize_dataset_session_rejects_unsupported_file_type(tmp_path):
             workspace_dir=str(tmp_path / "workspace"),
         )
     except ValueError as exc:
-        assert "Unsupported uploaded file type" in str(exc)
+        assert "Unsupported tabular file type" in str(exc)
     else:
         raise AssertionError("Expected unsupported file type to raise ValueError.")
+
+def test_initialize_dataset_session_from_xlsx_creates_state_and_snapshot(tmp_path):
+    source_path = tmp_path / "student_data.xlsx"
+    workspace_dir = tmp_path / "workspace"
+
+    pd.DataFrame({
+        "GPA": [3.0, 3.5, 4.0],
+        "SATM": [600, 650, 700],
+    }).to_excel(source_path, index=False)
+
+    result = initialize_dataset_session_from_file(
+        str(source_path),
+        workspace_dir=str(workspace_dir),
+        dataset_name="student_data",
+    )
+
+    state = result["state"]
+    snapshot = result["snapshot"]
+
+    assert state["active_data_version_id"] == "raw_v1"
+    assert state["data_versions"][0]["n_rows"] == 3
+    assert state["data_versions"][0]["n_cols"] == 2
+    assert "GPA" in state["dataset_profile_v2"]["columns"]
+    assert snapshot["dataset"]["dataset_name"] == "student_data"
+    assert snapshot["dataset"]["active_data_version_id"] == "raw_v1"

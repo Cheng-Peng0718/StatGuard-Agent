@@ -13,7 +13,7 @@ from core.dataset_intelligence.schemas import (
     DatasetSummary,
 )
 from core.domain.dataset_context import DatasetContext
-
+from core.data.tabular_io import load_tabular_dataframe
 
 @dataclass
 class DatasetContextRefresh:
@@ -77,19 +77,7 @@ class DatasetContextRefresh:
 
 
 def load_dataframe_for_dataset_context(path: str) -> pd.DataFrame:
-    lower_path = str(path).lower()
-
-    if lower_path.endswith(".parquet"):
-        return pd.read_parquet(path)
-
-    if lower_path.endswith(".csv"):
-        return pd.read_csv(path)
-
-    if lower_path.endswith(".xlsx") or lower_path.endswith(".xls"):
-        return pd.read_excel(path)
-
-    raise ValueError(f"Unsupported active data file type for profiling: {path}")
-
+    return load_tabular_dataframe(path)
 
 def refresh_dataset_context_from_df(
     df: pd.DataFrame,
