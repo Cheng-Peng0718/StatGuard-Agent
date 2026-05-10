@@ -4,7 +4,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from core.analysis_tool_plugins.guardrails import evaluate_guardrails_for_plugin
 from core.analysis_tool_plugins.reporting import (
     build_generic_report_blocks,
     default_extractor,
@@ -14,6 +13,34 @@ from core.analysis_tool_plugins.reporting import (
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+def evaluate_guardrails_for_plugin(
+    plugin: Any,
+    analysis_run: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+
+    for evaluator in getattr(plugin, "guardrail_evaluators", []) or []:
+        try:
+            findings.extend(evaluator(analysis_run) or [])
+        except Exception as exc:
+            findings.append({
+                "finding_id": f"gr_{uuid.uuid4().hex[:8]}",
+                "category": "guardrail_execution",
+                "severity": "warning",
+                "title": "Guardrail evaluator failed",
+                "message": (
+                    f"A guardrail evaluator failed for tool `{plugin.tool_name}`."
+                ),
+                "evidence": {
+                    "error": str(exc),
+                    "evaluator": getattr(evaluator, "__name__", str(evaluator)),
+                },
+                "recommendation": (
+                    "Inspect the guardrail evaluator implementation."
+                ),
+            })
+
+    return findings
 
 def build_analysis_run_for_plugin(
     plugin: Any,

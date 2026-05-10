@@ -153,7 +153,6 @@ def test_analysis_plugin_support_modules_exist():
         "roles.py",
         "applicability.py",
         "policy_types.py",
-        "guardrails.py",
         "result_builder.py",
     ]
 
@@ -186,3 +185,9 @@ def test_analysis_runs_does_not_import_legacy_analysis_plugins():
     assert "analysis_plugins" not in text
     assert "get_legacy_plugin" not in text
     assert "_build_legacy_analysis_run" not in text
+
+def test_argument_schema_no_longer_exposes_legacy_schema_adapter():
+    text = read_file("core/analysis_tool_plugins/arguments.py")
+
+    assert "to_legacy_schema_dict" not in text
+    assert "to_contract_dict" in text
