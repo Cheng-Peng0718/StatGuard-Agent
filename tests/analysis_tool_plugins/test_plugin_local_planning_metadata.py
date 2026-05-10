@@ -390,3 +390,53 @@ def test_inferential_plugin_manifests_use_local_planning_metadata():
         assert manifest.expected_deliverables == values["expected_deliverables"]
         assert manifest.plan_order == values["plan_order"]
         assert manifest.supported_goal_types
+
+def test_all_registered_plugins_declare_local_planning_metadata():
+    from core.analysis_tool_plugins import PLUGIN_REGISTRY, ensure_plugins_loaded
+
+    ensure_plugins_loaded()
+
+    missing = []
+
+    for tool_name, plugin in PLUGIN_REGISTRY.items():
+        if tool_name.startswith("unit_test_") or tool_name.startswith("fake_"):
+            continue
+
+        metadata = plugin.planning_metadata
+
+        if not metadata.supported_goal_types:
+            missing.append((tool_name, "supported_goal_types"))
+
+        if not metadata.expected_deliverables:
+            missing.append((tool_name, "expected_deliverables"))
+
+        if metadata.plan_order is None:
+            missing.append((tool_name, "plan_order"))
+
+    assert missing == []
+
+
+def test_manifest_builder_no_longer_depends_on_central_planning_metadata_file():
+    from pathlib import Path
+
+    manifest_text = Path("core/analysis_tool_plugins/manifest.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "TOOL_PLANNING_METADATA" not in manifest_text
+    assert "planning_metadata import" not in manifest_text
+
+def test_manifest_defaults_missing_local_plan_order_to_100():
+    plugin = AnalysisToolPlugin(
+        tool_name="fake_missing_plan_order_tool",
+        display_name="Fake Missing Plan Order Tool",
+        planning_metadata=PlanningMetadata(
+            supported_goal_types=["fake_goal"],
+            expected_deliverables=["fake_output"],
+            plan_order=None,
+        ),
+    )
+
+    manifest = build_tool_manifest(plugin)
+
+    assert manifest.plan_order == 100

@@ -6,8 +6,6 @@ from typing import Any, Dict, List, Mapping
 from pydantic import BaseModel, Field
 
 from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.planning_metadata import TOOL_PLANNING_METADATA
-
 
 class ToolManifest(BaseModel):
     tool_name: str
@@ -64,26 +62,22 @@ def _manifest_value(value: Any) -> Any:
 
     return value
 
-def _is_meaningful_planning_value(value: Any) -> bool:
-    return value not in (None, "", [], {})
-
-
 def _planning_metadata_for_plugin(plugin: AnalysisToolPlugin) -> Dict[str, Any]:
-    central = dict(TOOL_PLANNING_METADATA.get(plugin.tool_name, {}))
-
     local_raw = getattr(plugin, "planning_metadata", None)
     local = _manifest_value(local_raw)
 
-    if not isinstance(local, dict):
-        return central
+    if isinstance(local, dict):
+        return local
 
-    merged = dict(central)
+    return {}
 
-    for key, value in local.items():
-        if _is_meaningful_planning_value(value):
-            merged[key] = value
+def _planning_plan_order(metadata: Dict[str, Any]) -> int:
+    value = metadata.get("plan_order")
 
-    return merged
+    if isinstance(value, int):
+        return value
+
+    return 100
 
 def build_tool_manifest(plugin: AnalysisToolPlugin) -> ToolManifest:
     planning_metadata = _planning_metadata_for_plugin(plugin)
@@ -121,7 +115,7 @@ def build_tool_manifest(plugin: AnalysisToolPlugin) -> ToolManifest:
         required_planning_choices=_manifest_value(
             planning_metadata.get("required_planning_choices", [])
         ),
-        plan_order=planning_metadata.get("plan_order", 100),
+        plan_order=_planning_plan_order(planning_metadata),
         has_applicability_checker=plugin.applicability_checker is not None,
     )
 
