@@ -66,7 +66,7 @@ def assert_state_fields_json_safe(state, fields):
             assert_json_safe_value(state[field])
 
 
-def make_legacy_dataset_profile():
+def make_state_dataset_profile():
     return {
         "n_rows": 5,
         "n_cols": 3,
@@ -144,7 +144,7 @@ def make_success_state(tmp_path):
         "current_step": 0,
         "max_steps": 5,
 
-        "dataset_profile": make_legacy_dataset_profile(),
+        "dataset_profile": make_state_dataset_profile(),
 
         "observations": [],
         "analysis_runs": [],

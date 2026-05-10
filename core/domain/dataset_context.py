@@ -20,7 +20,7 @@ class DatasetContext(BaseModel):
     dataset_summary: DatasetSummary
     capability_map: CapabilityMap
 
-    legacy_dataset_profile: Optional[Dict[str, Any]] = None
+    state_dataset_profile: Optional[Dict[str, Any]] = None
     created_by: str = "context_refresh"
     source: Literal["upload", "build_context", "mutation_refresh", "unknown"] = "unknown"
     warnings: List[str] = Field(default_factory=list)

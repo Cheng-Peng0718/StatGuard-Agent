@@ -60,7 +60,7 @@ def build_context_node(state: dict):
         **refreshed_context.to_state_updates(
             include_dataset_context=True,
             dataset_name=state.get("dataset_name", "uploaded_dataset"),
-            legacy_dataset_profile=new_profile.model_dump(),
+            state_dataset_profile=new_profile.model_dump(),
             source="build_context",
         ),
     }

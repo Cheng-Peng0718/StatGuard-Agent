@@ -31,7 +31,7 @@ def test_dataset_context_accepts_refresh_outputs():
         dataset_profile_v2=refreshed.dataset_profile_v2,
         dataset_summary=refreshed.dataset_summary,
         capability_map=refreshed.capability_map,
-        legacy_dataset_profile={
+        state_dataset_profile={
             "n_rows": 4,
             "n_cols": 3,
         },
@@ -46,7 +46,7 @@ def test_dataset_context_accepts_refresh_outputs():
     assert dumped["dataset_profile_v2"]["data_version_id"] == "raw_v1"
     assert dumped["dataset_summary"]["n_rows"] == 4
     assert dumped["capability_map"]["data_version_id"] == "raw_v1"
-    assert dumped["legacy_dataset_profile"]["n_cols"] == 3
+    assert dumped["state_dataset_profile"]["n_cols"] == 3
     assert dumped["source"] == "upload"
 
     json.dumps(dumped)
@@ -57,7 +57,7 @@ def test_refresh_can_build_domain_dataset_context():
 
     context = refreshed.to_domain_context(
         dataset_name="student_data",
-        legacy_dataset_profile={
+        state_dataset_profile={
             "n_rows": 4,
             "n_cols": 3,
         },
@@ -70,7 +70,7 @@ def test_refresh_can_build_domain_dataset_context():
     assert context.dataset_profile_v2.data_version_id == "raw_v1"
     assert context.dataset_summary.n_cols == 3
     assert context.capability_map.data_version_id == "raw_v1"
-    assert context.legacy_dataset_profile == {
+    assert context.state_dataset_profile == {
         "n_rows": 4,
         "n_cols": 3,
     }
@@ -98,7 +98,7 @@ def test_refresh_state_updates_opt_in_includes_domain_dataset_context_dict():
     updates = refreshed.to_state_updates(
         include_dataset_context=True,
         dataset_name="student_data",
-        legacy_dataset_profile={
+        state_dataset_profile={
             "n_rows": 4,
             "n_cols": 3,
         },
@@ -120,7 +120,7 @@ def test_refresh_state_updates_opt_in_includes_domain_dataset_context_dict():
     assert dataset_context["dataset_profile_v2"]["data_version_id"] == "raw_v1"
     assert dataset_context["dataset_summary"]["n_rows"] == 4
     assert dataset_context["capability_map"]["data_version_id"] == "raw_v1"
-    assert dataset_context["legacy_dataset_profile"]["n_cols"] == 3
+    assert dataset_context["state_dataset_profile"]["n_cols"] == 3
     assert dataset_context["source"] == "upload"
 
     json.dumps(updates)

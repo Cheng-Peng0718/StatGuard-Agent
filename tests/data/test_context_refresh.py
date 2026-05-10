@@ -83,7 +83,7 @@ def test_state_updates_can_opt_in_to_dataset_context_dict():
     updates = refreshed.to_state_updates(
         include_dataset_context=True,
         dataset_name="student_data",
-        legacy_dataset_profile={
+        state_dataset_profile={
             "n_rows": 4,
             "n_cols": 2,
         },
@@ -104,7 +104,7 @@ def test_state_updates_can_opt_in_to_dataset_context_dict():
     assert dataset_context["dataset_name"] == "student_data"
     assert dataset_context["data_path"] == "workspace/data_versions/raw_v1.parquet"
     assert dataset_context["source"] == "build_context"
-    assert dataset_context["legacy_dataset_profile"]["n_cols"] == 2
+    assert dataset_context["state_dataset_profile"]["n_cols"] == 2
 
     json.dumps(updates)
 

@@ -39,7 +39,7 @@ class DatasetContextRefresh:
         *,
         include_dataset_context: bool = False,
         dataset_name: str = "uploaded_dataset",
-        legacy_dataset_profile: Optional[Dict[str, Any]] = None,
+        state_dataset_profile: Optional[Dict[str, Any]] = None,
         source: str = "unknown",
     ) -> Dict[str, Any]:
         updates = {
@@ -51,7 +51,7 @@ class DatasetContextRefresh:
         if include_dataset_context:
             updates["dataset_context"] = self.to_domain_context(
                 dataset_name=dataset_name,
-                legacy_dataset_profile=legacy_dataset_profile,
+                state_dataset_profile=state_dataset_profile,
                 source=source,
             ).model_dump()
 
@@ -61,7 +61,7 @@ class DatasetContextRefresh:
         self,
         *,
         dataset_name: str = "uploaded_dataset",
-        legacy_dataset_profile: Optional[Dict[str, Any]] = None,
+        state_dataset_profile: Optional[Dict[str, Any]] = None,
         source: str = "unknown",
     ) -> DatasetContext:
         return DatasetContext(
@@ -71,7 +71,7 @@ class DatasetContextRefresh:
             dataset_profile_v2=self.dataset_profile_v2,
             dataset_summary=self.dataset_summary,
             capability_map=self.capability_map,
-            legacy_dataset_profile=legacy_dataset_profile,
+            state_dataset_profile=state_dataset_profile,
             source=source,
         )
 
