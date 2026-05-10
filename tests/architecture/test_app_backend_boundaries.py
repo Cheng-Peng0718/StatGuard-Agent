@@ -119,3 +119,31 @@ def test_app_backend_public_api_exports_ui_contract_functions():
 
     for name in expected:
         assert name in text
+
+
+def test_backend_contract_smoke_tests_use_public_app_backend_api():
+    text = Path("tests/app_backend/test_backend_contract_smoke.py").read_text(
+        encoding="utf-8"
+    )
+
+    expected = [
+        "create_app_session",
+        "initialize_dataset_session_from_file",
+        "run_user_turn",
+        "run_pending_plan_until_pause",
+    ]
+
+    for name in expected:
+        assert name in text
+
+    forbidden = [
+        "core.workflow.nodes",
+        "create_graph_app",
+        "execute_pending_plan_node",
+        "verify_node",
+        "execute_node",
+        "summarize_node",
+    ]
+
+    for phrase in forbidden:
+        assert phrase not in text
