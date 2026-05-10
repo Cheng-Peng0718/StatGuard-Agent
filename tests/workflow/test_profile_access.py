@@ -11,6 +11,33 @@ from core.workflow.profile_access import (
 import pandas as pd
 
 
+def make_dataset_profile_v2():
+    return {
+        "dataset_name": "test_data",
+        "data_version_id": "raw_v1",
+        "n_rows": 3,
+        "columns": {
+            "GPA": {
+                "name": "GPA",
+                "dtype": "float64",
+                "semantic_type": "continuous_numeric",
+                "n_missing": 0,
+                "missing_rate": 0.0,
+                "n_unique": 3,
+                "examples": [3.0, 3.5],
+            },
+            "SATM": {
+                "name": "SATM",
+                "dtype": "int64",
+                "semantic_type": "continuous_numeric",
+                "n_missing": 0,
+                "missing_rate": 0.0,
+                "n_unique": 3,
+                "examples": [600, 700],
+            },
+        },
+    }
+
 def test_get_context_profile_returns_dataset_profile_state_value():
     state = {
         "dataset_profile": {

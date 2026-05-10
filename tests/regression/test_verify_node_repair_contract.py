@@ -30,21 +30,20 @@ def test_verify_node_attaches_repair_state_for_recoverable_verification_failure(
         reasoning_summary="Clean data with invalid aliases.",
     )
 
-    def fake_verify(action, profile):
-        return (
-            "rejected_recoverable",
-            "Invalid clean_data arguments.",
-            {
-                "status": "rejected_recoverable",
-                "feedback": "Invalid clean_data arguments.",
-                "error_code": "INVALID_TOOL_ARGUMENTS",
-                "details": {
-                    "tool_name": "clean_data",
-                },
+    def fake_validate_plugin_action(action, profile):
+        return {
+            "status": "rejected_recoverable",
+            "feedback": "Invalid clean_data arguments.",
+            "error_code": "INVALID_TOOL_ARGUMENTS",
+            "details": {
+                "tool_name": "clean_data",
             },
-        )
+        }
 
-    monkeypatch.setattr("core.workflow.nodes.verification.verify", fake_verify)
+    monkeypatch.setattr(
+        "core.workflow.nodes.verification.validate_plugin_action",
+        fake_validate_plugin_action,
+    )
 
     updates = verify_node({
         "current_action": action,
@@ -83,21 +82,20 @@ def test_verify_node_attaches_terminal_repair_state_for_terminal_verification_fa
         reasoning_summary="Try unknown tool.",
     )
 
-    def fake_verify(action, profile):
-        return (
-            "rejected_terminal",
-            "Unknown tool.",
-            {
-                "status": "rejected_terminal",
-                "feedback": "Unknown tool.",
-                "error_code": "UNKNOWN_TOOL",
-                "details": {
-                    "tool_name": "unknown_tool",
-                },
+    def fake_validate_plugin_action(action, profile):
+        return {
+            "status": "rejected_terminal",
+            "feedback": "Unknown tool.",
+            "error_code": "UNKNOWN_TOOL",
+            "details": {
+                "tool_name": "unknown_tool",
             },
-        )
+        }
 
-    monkeypatch.setattr("core.workflow.nodes.verification.verify", fake_verify)
+    monkeypatch.setattr(
+        "core.workflow.nodes.verification.validate_plugin_action",
+        fake_validate_plugin_action,
+    )
 
     updates = verify_node({
         "current_action": action,

@@ -204,12 +204,12 @@ def test_graph_kernel_direct_regression_flow_records_observation_and_run(monkeyp
             },
         }
 
-    def fake_verify(state):
+    def fake_verify_node(state):
         return {
             "current_verification": {
-                "action_id": "act_regression",
                 "status": "allowed",
                 "feedback": "ok",
+                "error_code": None,
                 "details": {},
             },
             "human_review_required": False,
@@ -267,7 +267,7 @@ def test_graph_kernel_direct_regression_flow_records_observation_and_run(monkeyp
             "build_context": _build_context_update,
             "intent_router": fake_intent_router,
             "supervisor": fake_supervisor,
-            "verify": fake_verify,
+            "verify": fake_verify_node,
             "execute": fake_execute,
             "summarize": fake_summarize,
         },
@@ -314,7 +314,7 @@ def test_graph_kernel_clean_data_requires_review_before_execution(monkeypatch):
             },
         }
 
-    def fake_verify(state):
+    def fake_validate_plugin_action(state):
         return {
             "current_verification": {
                 "action_id": "act_clean",
@@ -335,7 +335,7 @@ def test_graph_kernel_clean_data_requires_review_before_execution(monkeypatch):
             "build_context": _build_context_update,
             "intent_router": fake_intent_router,
             "supervisor": fake_supervisor,
-            "verify": fake_verify,
+            "verify": fake_validate_plugin_action,
             "human_review": fail_if_executed,
             "execute": fail_if_executed,
         },

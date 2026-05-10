@@ -28,21 +28,17 @@ def test_verify_node_attaches_action_hash_to_allowed_verification(monkeypatch):
         reasoning_summary="Summarize GPA.",
     )
 
-    def fake_verify(action, profile):
-        return (
-            "allowed",
-            "ok",
-            {
-                "status": "allowed",
-                "feedback": "ok",
-                "error_code": None,
-                "details": {},
-            },
-        )
+    def fake_validate_plugin_action(action, profile):
+        return {
+            "status": "allowed",
+            "feedback": "ok",
+            "error_code": None,
+            "details": {},
+        }
 
     monkeypatch.setattr(
-        "core.workflow.nodes.verification.verify",
-        fake_verify,
+        "core.workflow.nodes.verification.validate_plugin_action",
+        fake_validate_plugin_action,
     )
 
     updates = verify_node({
@@ -72,21 +68,17 @@ def test_verify_node_rejected_failure_has_user_visible_response(monkeypatch):
         reasoning_summary="Bad clean_data request.",
     )
 
-    def fake_verify(action, profile):
-        return (
-            "rejected_recoverable",
-            "Missing required arguments.",
-            {
-                "status": "rejected_recoverable",
-                "feedback": "Missing required arguments.",
-                "error_code": "INVALID_TOOL_ARGUMENTS",
-                "details": {},
-            },
-        )
+    def fake_validate_plugin_action(action, profile):
+        return {
+            "status": "rejected_recoverable",
+            "feedback": "Missing required arguments.",
+            "error_code": "INVALID_TOOL_ARGUMENTS",
+            "details": {},
+        }
 
     monkeypatch.setattr(
-        "core.workflow.nodes.verification.verify",
-        fake_verify,
+        "core.workflow.nodes.verification.validate_plugin_action",
+        fake_validate_plugin_action,
     )
 
     updates = verify_node({

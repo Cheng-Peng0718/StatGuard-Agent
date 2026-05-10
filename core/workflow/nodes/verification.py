@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from verifiers.validators import verify
+from core.analysis_tool_plugins.validation import validate_plugin_action
 
 from core.action_access import (
     get_action_arguments,
@@ -39,7 +39,10 @@ def verify_node(state: dict):
     """
     action = state["current_action"]
 
-    status, feedback, verify_result = verify(action, require_dataset_profile_v2(state))
+    verify_result = validate_plugin_action(
+        action,
+        profile=require_dataset_profile_v2(state),
+    )
 
     tool_name = get_action_tool_name(action)
     arguments = get_action_arguments(action)
