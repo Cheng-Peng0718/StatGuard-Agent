@@ -181,6 +181,21 @@ def test_manifest_exposes_task_argument_bindings_for_planner():
         == expected_regression_bindings
     )
 
+    assert manifests["run_correlation_test"].task_argument_bindings == [
+        {
+            "task_field": "predictor_variables",
+            "index": 0,
+            "argument": "x_col",
+            "required_choice": "x_col",
+        },
+        {
+            "task_field": "predictor_variables",
+            "index": 1,
+            "argument": "y_col",
+            "required_choice": "y_col",
+        },
+    ]
+
     assert manifests["clean_data"].task_argument_bindings == [
         {
             "task_field": "target_variables",
@@ -237,6 +252,45 @@ def test_planner_can_build_arguments_from_manifest_task_bindings(monkeypatch):
         "target_col": "GPA",
         "feature_cols": ["SATM", "ACT"],
     }
+
+def test_correlation_test_arguments_are_built_from_manifest_bindings():
+    arguments = planner._step_arguments_for_task(
+        "run_correlation_test",
+        TaskSpec(
+            goal_type="association_analysis",
+            user_goal="Test association.",
+            predictor_variables=["GPA", "SATM"],
+        ),
+    )
+
+    assert arguments == {
+        "x_col": "GPA",
+        "y_col": "SATM",
+    }
+
+
+def test_correlation_test_manifest_bindings_report_missing_choices():
+    from core.dataset_intelligence.schemas import AnalysisCapability
+
+    capability = AnalysisCapability(
+        tool_name="run_correlation_test",
+        display_name="Correlation Test",
+        method_family="association_test",
+        status="needs_user_choice",
+        reason="Needs selected variables.",
+        required_user_choices=[],
+    )
+
+    missing = planner._required_choices_for_task(
+        capability,
+        TaskSpec(
+            goal_type="association_analysis",
+            user_goal="Test association.",
+            predictor_variables=["GPA"],
+        ),
+    )
+
+    assert missing == ["y_col"]
 
 def test_current_planner_does_not_populate_manifest_expected_deliverables():
     profile, capability_map = _context(pd.DataFrame({

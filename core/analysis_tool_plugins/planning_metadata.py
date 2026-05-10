@@ -23,6 +23,21 @@ CLEAN_DATA_TASK_ARGUMENT_BINDINGS = [
     },
 ]
 
+PAIRWISE_CORRELATION_TASK_ARGUMENT_BINDINGS = [
+    {
+        "task_field": "predictor_variables",
+        "index": 0,
+        "argument": "x_col",
+        "required_choice": "x_col",
+    },
+    {
+        "task_field": "predictor_variables",
+        "index": 1,
+        "argument": "y_col",
+        "required_choice": "y_col",
+    },
+]
+
 
 TOOL_PLANNING_METADATA = {
     "inspect_dataset": {
@@ -92,6 +107,7 @@ TOOL_PLANNING_METADATA = {
         "planning_tags": ["association", "correlation", "inferential"],
         "default_plan_purpose": "Test association between selected variables.",
         "expected_deliverables": ["association_test"],
+        "task_argument_bindings": PAIRWISE_CORRELATION_TASK_ARGUMENT_BINDINGS,
         "plan_order": 10,
     },
     "generate_scatterplot": {
