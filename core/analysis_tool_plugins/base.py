@@ -406,6 +406,106 @@ def default_extractor(
     return title, summary, metrics, tables, metadata
 
 
+############################################################
+
+@dataclass
+class VariableRoleSpec:
+    """
+    Generic variable-role contract for an analysis method.
+
+    Examples:
+    - linear regression: outcome, predictors
+    - chi-square: x, y
+    - t-test: outcome, group
+    - correlation: columns
+    """
+    role_name: str
+    required: bool = True
+    user_must_select: bool = True
+
+    allowed_semantic_types: List[str] = field(default_factory=list)
+
+    min_variables: int = 1
+    max_variables: Optional[int] = 1
+
+    allow_auto_select: bool = False
+    description: str = ""
+
+
+@dataclass
+class ApplicabilityResult:
+    """
+    Generic result returned by a plugin's applicability checker.
+
+    This is used by planning and capability-map generation,
+    not by execution directly.
+    """
+    status: str
+    reason: str
+
+    required_user_choices: List[str] = field(default_factory=list)
+    candidate_variables: Dict[str, List[str]] = field(default_factory=dict)
+    warnings: List[str] = field(default_factory=list)
+    suggested_alternatives: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "status": self.status,
+            "reason": self.reason,
+            "required_user_choices": self.required_user_choices,
+            "candidate_variables": self.candidate_variables,
+            "warnings": self.warnings,
+            "suggested_alternatives": self.suggested_alternatives,
+        }
+
+
+@dataclass
+class VersioningPolicy:
+    """
+    Generic data-versioning contract.
+
+    Mutating plugins must create child data versions.
+    Non-mutating analytical plugins must not mutate active data.
+    """
+    mutates_data: bool = False
+    must_create_child_version: bool = False
+    allowed_to_call_save_df: bool = False
+
+
+@dataclass
+class RepairPolicy:
+    """
+    Generic ReAct repair contract.
+
+    This does not mean the agent can modify project source code.
+    It only governs analysis-level repair behavior.
+    """
+    max_attempts: int = 2
+
+    repairable_error_codes: List[str] = field(default_factory=list)
+    non_repairable_error_codes: List[str] = field(default_factory=list)
+
+    allow_argument_repair: bool = True
+    allow_method_fallback: bool = True
+    requires_user_for_missing_roles: bool = True
+
+@dataclass
+class PlanningPolicy:
+    """
+    Generic planning contract.
+    """
+    include_in_capability_map: bool = True
+    ready_without_user_variables: bool = False
+    allow_default_arguments: bool = False
+    planning_description: str = ""
+    requires_variable_contract: bool = True
+
+    # Non-column choices required before a plan step can execute.
+    # Examples:
+    # - clean_data: action_type, strategy
+    # - independent t-test: group1_val, group2_val
+    required_user_choices: List[str] = field(default_factory=list)
+
 # ==========================================================
 # Unified plugin
 # ==========================================================
@@ -423,6 +523,22 @@ class AnalysisToolPlugin:
 
     guardrail_evaluators: List[GuardrailFn] = field(default_factory=list)
     display_config: DisplayConfig = field(default_factory=DisplayConfig)
+
+    # Generic method/planning contract
+    method_family: str = "general"
+    variable_roles: List[VariableRoleSpec] = field(default_factory=list)
+    applicability_checker: Optional[Callable[..., ApplicabilityResult]] = None
+    plan_step_builder: Optional[Callable[..., Dict[str, Any]]] = None
+
+    # Generic versioning contract
+    mutates_data: bool = False
+    versioning_policy: VersioningPolicy = field(default_factory=VersioningPolicy)
+
+    # Generic repair contract
+    repair_policy: RepairPolicy = field(default_factory=RepairPolicy)
+
+    # Generic planning policy
+    planning_policy: PlanningPolicy = field(default_factory=PlanningPolicy)
 
     def run(self, context) -> Dict[str, Any]:
         if self.execute is None:

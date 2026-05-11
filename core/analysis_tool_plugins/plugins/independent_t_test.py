@@ -8,6 +8,7 @@ from scipy import stats
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
+    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     compact_dict,
@@ -17,6 +18,11 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
+from core.analysis_tool_plugins.policies import (
+    NON_MUTATING_VERSIONING,
+    DEFAULT_ANALYSIS_REPAIR,
+    needs_user_choices,
+)
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -305,6 +311,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_independent_t_test",
     display_name="Independent t-test",
     requires_confirmation=False,
+
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,
@@ -320,8 +327,63 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
+
     execute=execute_independent_t_test,
     extractor=extract_independent_t_test,
     guardrail_evaluators=[],
     display_config=INDEPENDENT_T_TEST_DISPLAY,
+
+    # Generic method/planning contract.
+    method_family="group_comparison",
+
+    # Independent t-test requires:
+    # - one continuous numeric target
+    # - one grouping variable
+    # - two specific group values selected by user or derived later by a checker
+    variable_roles=[
+        VariableRoleSpec(
+            role_name="target_col",
+            required=True,
+            user_must_select=True,
+            allowed_semantic_types=[
+                "continuous_numeric",
+            ],
+            min_variables=1,
+            max_variables=1,
+            allow_auto_select=False,
+            description=(
+                "Continuous numeric outcome variable to compare between two groups."
+            ),
+        ),
+        VariableRoleSpec(
+            role_name="group_col",
+            required=True,
+            user_must_select=True,
+            allowed_semantic_types=[
+                "binary_categorical",
+                "nominal_categorical",
+                "ordinal_categorical",
+                "discrete_numeric",
+            ],
+            min_variables=1,
+            max_variables=1,
+            allow_auto_select=False,
+            description=(
+                "Grouping variable defining the two independent groups."
+            ),
+        ),
+    ],
+
+    planning_policy=needs_user_choices(
+        "target_col",
+        "group_col",
+        "group1_val",
+        "group2_val",
+    ),
+
+    # Independent t-test does not mutate data.
+    mutates_data=False,
+    versioning_policy=NON_MUTATING_VERSIONING,
+
+    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

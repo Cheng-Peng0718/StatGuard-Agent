@@ -1,0 +1,23 @@
+from pathlib import Path
+
+
+def test_backend_clean_data_execute_smoke_does_not_import_ui_app():
+    text = Path(
+        "tests/integration/test_backend_clean_data_execute_smoke.py"
+    ).read_text(encoding="utf-8")
+
+    assert "import app" not in text
+    assert "from app" not in text
+    assert "streamlit" not in text.lower()
+
+
+def test_backend_clean_data_execute_smoke_uses_real_execute_node():
+    text = Path(
+        "tests/integration/test_backend_clean_data_execute_smoke.py"
+    ).read_text(encoding="utf-8")
+
+    assert "execute_node" in text
+    assert "clean_data" in text
+    assert "summarize_node" in text
+    assert "execute_pending_plan_node" in text
+    assert "verify_node" in text

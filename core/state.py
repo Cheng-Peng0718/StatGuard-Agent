@@ -24,4 +24,24 @@ class GraphState(TypedDict):
     data_versions: Optional[List[Dict[str, Any]]]
     active_data_version_id: Optional[str]
     data_audit_log: Optional[List[Dict[str, Any]]]
-    analysis_runs: Optional[List[Dict[str, Any]]]
+    analysis_runs: Annotated[list, operator.add]
+    action_origin: str
+
+    interaction_intent: str
+    dataset_profile_v2: dict
+    dataset_summary: dict
+    capability_map: dict
+    pending_plan: dict
+    plan_status: str
+    final_answer: str
+    assistant_response: dict
+    execution_audit: dict
+    repair_decision: dict
+    repair_attempts: list
+    repair_proposal: dict
+    state_serialization_audit: dict
+
+    latest_ui_event: dict
+    human_review_action_hash: str
+    human_review_rejection_reason: str
+    selected_plan_step_id: str
