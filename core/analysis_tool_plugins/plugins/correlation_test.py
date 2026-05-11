@@ -8,7 +8,6 @@ from scipy import stats
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     compact_dict,
@@ -17,11 +16,6 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -275,7 +269,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_correlation_test",
     display_name="Correlation Test",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={
             "x_col": str,
@@ -290,68 +283,9 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         column_list_args=[],
         allow_all_columns=False,
-        allowed_values={
-            "method": ["pearson", "spearman", "kendall"],
-        },
-        value_aliases={
-            "method": {
-                "pearson correlation": "pearson",
-                "spearman correlation": "spearman",
-                "spearman rank": "spearman",
-                "kendall tau": "kendall",
-                "kendall's tau": "kendall",
-            },
-        },
     ),
-
     execute=execute_correlation_test,
     extractor=extract_correlation_test,
     guardrail_evaluators=[],
     display_config=CORRELATION_TEST_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="association_test",
-
-    # Correlation test requires two user-selected numeric variables.
-    # It should appear in plans as needs_user_choice, not auto-ready.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="x_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "First numeric variable for the pairwise correlation test."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="y_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Second numeric variable for the pairwise correlation test."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    # Correlation test does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

@@ -1,57 +1,86 @@
-from core.analysis_tool_plugins.validation import validate_plugin_action
-from core.schema import ActionProposal
+from core.analysis_tool_plugins.base import AnalysisToolPlugin, ArgumentSchema
+from core.analysis_tool_plugins.registry import register_plugin
+from tools.tool_schema import validate_tool_call_schema
 
 
-def test_clean_data_drop_drop_is_canonicalized_to_drop_rows():
-    action = ActionProposal(
-        action_id="act_test",
-        action_type="tool_call",
-        tool_name="clean_data",
-        arguments={
-            "action_type": "drop",
-            "strategy": "drop",
-            "columns": ["GPA", "SATM"],
+def test_unified_plugin_schema_is_used_by_legacy_validator():
+    plugin = AnalysisToolPlugin(
+        tool_name="unit_test_schema_adapter_tool",
+        display_name="Unit Test Schema Adapter Tool",
+        argument_schema=ArgumentSchema(
+            required={
+                "x_col": str,
+                "y_col": str,
+            },
+            optional={
+                "method": str,
+            },
+            column_args=[
+                "x_col",
+                "y_col",
+            ],
+            column_list_args=[],
+            allow_all_columns=False,
+        ),
+    )
+
+    register_plugin(plugin)
+
+    result = validate_tool_call_schema(
+        "unit_test_schema_adapter_tool",
+        {
+            "x_col": "A",
+            "y_col": "B",
+            "method": "pearson",
         },
-        reasoning_summary="Drop missing rows.",
+        profile=None,
     )
 
-    result = validate_plugin_action(action, profile=None)
-
-    assert result.status == "needs_review"
-    assert action.arguments["strategy"] == "rows"
-    assert result.details["canonical_arguments"]["strategy"] == "rows"
+    assert result["status"] == "ok"
 
 
-def test_clean_data_invalid_strategy_is_rejected_before_review():
-    action = ActionProposal(
-        action_id="act_test",
-        action_type="tool_call",
-        tool_name="clean_data",
-        arguments={
-            "action_type": "impute",
-            "strategy": "rows",
-            "columns": ["GPA"],
+def test_unified_plugin_schema_blocks_missing_required_args():
+    plugin = AnalysisToolPlugin(
+        tool_name="unit_test_schema_missing_required_tool",
+        display_name="Unit Test Schema Missing Required Tool",
+        argument_schema=ArgumentSchema(
+            required={
+                "x_col": str,
+                "y_col": str,
+            },
+            optional={},
+            column_args=[
+                "x_col",
+                "y_col",
+            ],
+            column_list_args=[],
+            allow_all_columns=False,
+        ),
+    )
+
+    register_plugin(plugin)
+
+    result = validate_tool_call_schema(
+        "unit_test_schema_missing_required_tool",
+        {
+            "x_col": "A",
         },
-        reasoning_summary="Invalid imputation.",
+        profile=None,
     )
 
-    result = validate_plugin_action(action, profile=None)
-
-    assert result.status == "rejected_recoverable"
-    assert result.error_code == "INVALID_TOOL_ARGUMENTS"
-    assert result.details["conditional_violations"]
+    assert result["status"] == "blocked"
+    assert result["error_code"] == "INVALID_TOOL_ARGUMENTS"
+    assert "y_col" in result["details"]["missing_required_arguments"]
 
 
-def test_unknown_tool_is_rejected_terminal():
-    action = ActionProposal(
-        action_id="act_test",
-        action_type="tool_call",
-        tool_name="not_a_real_tool",
-        arguments={},
-        reasoning_summary="Invalid tool.",
+def test_legacy_schema_still_works_for_existing_tools():
+    result = validate_tool_call_schema(
+        "run_multiple_regression",
+        {
+            "target_col": "GPA",
+            "feature_cols": ["SATM"],
+        },
+        profile=None,
     )
 
-    result = validate_plugin_action(action, profile=None)
-
-    assert result.status == "rejected_terminal"
-    assert result.error_code == "TOOL_NOT_REGISTERED"
+    assert result["status"] == "ok"

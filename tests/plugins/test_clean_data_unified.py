@@ -1,55 +1,27 @@
-import os
-import tempfile
 import pandas as pd
+
 from core.analysis_tool_plugins import get_plugin
-from core.data_versions import create_initial_data_version
 
 
 class DummyContext:
-    def __init__(self, df, arguments):
-        self.df = df
-        self.arguments = arguments
+    def __init__(self, df, args=None):
+        self.df = df.copy()
         self.saved_df = None
-
-        self.workspace_dir = tempfile.mkdtemp(prefix="clean_data_plugin_test_")
-
-        raw_version = create_initial_data_version(
-            df=df,
-            workspace_dir=self.workspace_dir,
-            created_by="test",
-            description="test raw data",
-        )
-
-        self.data_versions = [raw_version]
-        self.active_data_version_id = raw_version["version_id"]
+        self.args = args or {}
+        self.workspace_dir = "."
+        self.active_data_version_id = "raw_v1"
+        self.data_versions = []
         self.data_audit_log = []
 
     def load_df(self):
-        return self.df.copy()
-
-    def get_arg(self, name, default=None):
-        return self.arguments.get(name, default)
+        return self.df
 
     def save_df(self, df):
         self.saved_df = df.copy()
+        self.df = df.copy()
 
-def assert_valid_data_version_update(raw):
-    update = raw.get("data_version_update")
-
-    assert isinstance(update, dict)
-    assert "new_version" in update
-    assert "active_data_version_id" in update
-    assert "audit_event" in update
-
-    new_version = update["new_version"]
-
-    assert isinstance(new_version, dict)
-    assert new_version["version_id"] == update["active_data_version_id"]
-    assert update["active_data_version_id"] is not None
-    assert new_version.get("path")
-    assert os.path.exists(new_version["path"])
-
-    return update
+    def get_arg(self, key, default=None):
+        return self.args.get(key, default)
 
 
 def test_clean_data_drop_rows_creates_data_version_update():
@@ -77,16 +49,8 @@ def test_clean_data_drop_rows_creates_data_version_update():
     raw = plugin.run(ctx)
 
     assert raw["status"] == "ok"
-
-    # New architecture: clean_data must not call context.save_df().
-    assert ctx.saved_df is None
-
-    update = assert_valid_data_version_update(raw)
-    new_df = pd.read_parquet(update["new_version"]["path"])
-
-    assert len(new_df) == 1
-    assert list(new_df["GPA"]) == [3.0]
-    assert list(new_df["SATM"]) == [600]
+    assert ctx.saved_df is not None
+    assert len(ctx.saved_df) == 1
 
     assert raw["details"]["original_n_rows"] == 3
     assert raw["details"]["final_n_rows"] == 1
@@ -97,11 +61,9 @@ def test_clean_data_drop_rows_creates_data_version_update():
     assert "data_version_update" in raw["details"]
 
     update = raw["data_version_update"]
-
-    assert update["new_version"]["parent_version_id"] == ctx.active_data_version_id
-    assert update["active_data_version_id"] == update["new_version"]["version_id"]
-    assert update["active_data_version_id"].startswith("data_v_")
-    assert update["new_version"]["version_id"].startswith("data_v_")
+    assert update["old_version_id"] == "raw_v1"
+    assert update["new_version_id"].startswith("data_v_")
+    assert update["operation"] == "clean_data"
 
     run = plugin.build_analysis_run(
         action_id="act_test",
@@ -169,12 +131,6 @@ def test_clean_data_impute_mean():
     raw = plugin.run(ctx)
 
     assert raw["status"] == "ok"
-
-    # New architecture: clean_data must not call context.save_df().
-    assert ctx.saved_df is None
-
-    update = assert_valid_data_version_update(raw)
-    new_df = pd.read_parquet(update["new_version"]["path"])
-
-    assert new_df["x"].isna().sum() == 0
-    assert list(new_df["x"]) == [1.0, 2.0, 3.0]
+    assert ctx.saved_df is not None
+    assert ctx.saved_df["x"].isna().sum() == 0
+    assert ctx.saved_df.loc[1, "x"] == 2.0

@@ -4,12 +4,9 @@ import uuid
 import numpy as np
 import pandas as pd
 
-from core.data_versions import create_child_data_version, make_audit_event
-
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -18,11 +15,6 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    MUTATING_CHILD_VERSIONING,
-    DEFAULT_MUTATING_REPAIR,
-    mutating_requires_choices,
-)
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None, data_version_update=None):
     result = {
@@ -303,52 +295,26 @@ def execute_clean_data(context) -> Dict[str, Any]:
         selected_inf_after = _inf_by_columns(new_df, cols)
 
         old_version_id = _active_version_id(context)
+        new_version_id = _make_version_id()
 
-        new_version = create_child_data_version(
-            df=new_df,
-            workspace_dir=context.workspace_dir,
-            parent_version_id=old_version_id,
-            operation=f"clean_data:{action_type}-{normalized_strategy}",
-            created_by="clean_data",
-            description=(
+        # This is the actual mutation.
+        context.save_df(new_df)
+
+        data_version_update = {
+            "old_version_id": old_version_id,
+            "new_version_id": new_version_id,
+            "parent_version_id": old_version_id,
+            "operation": "clean_data",
+            "description": (
                 f"Cleaned data using action_type={action_type}, "
                 f"strategy={normalized_strategy}, columns={cols}."
             ),
-            metadata={
-                "action_type": action_type,
-                "strategy": normalized_strategy,
-                "selected_columns": cols,
-                "original_shape": original_shape,
-                "final_shape": final_shape,
-                "rows_removed": int(original_shape[0] - final_shape[0]),
-                "total_missing_before": total_missing_before,
-                "total_missing_after": total_missing_after,
-            },
-        )
-
-        audit_event = make_audit_event(
-            event_type="data_cleaned",
-            version_id=new_version["version_id"],
-            parent_version_id=old_version_id,
-            tool_name="clean_data",
-            description=(
-                f"Created new data version {new_version['version_id']} "
-                f"from {old_version_id}."
-            ),
-            details={
-                "action_type": action_type,
-                "strategy": normalized_strategy,
-                "selected_columns": cols,
-                "old_shape": tuple(original_shape),
-                "new_shape": tuple(final_shape),
-                "rows_removed": int(original_shape[0] - final_shape[0]),
-            },
-        )
-
-        data_version_update = {
-            "new_version": new_version,
-            "active_data_version_id": new_version["version_id"],
-            "audit_event": audit_event,
+            "n_rows": int(new_df.shape[0]),
+            "n_cols": int(new_df.shape[1]),
+            "columns": list(new_df.columns),
+            "action_type": action_type,
+            "strategy": normalized_strategy,
+            "selected_columns": cols,
         }
 
         details = {
@@ -372,7 +338,7 @@ def execute_clean_data(context) -> Dict[str, Any]:
             "selected_inf_after": selected_inf_after,
             "final_columns": list(new_df.columns),
             "old_version_id": old_version_id,
-            "new_version_id": new_version["version_id"],
+            "new_version_id": new_version_id,
             "data_version_created": True,
         }
 
@@ -491,7 +457,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="clean_data",
     display_name="Data Cleaning",
     requires_confirmation=True,
-
     argument_schema=ArgumentSchema(
         required={
             "action_type": str,
@@ -501,88 +466,13 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
             "columns": object,
         },
         column_args=[],
-        column_list_args=["columns"],
+        column_list_args=[
+            "columns",
+        ],
         allow_all_columns=True,
-        allowed_values={
-            "action_type": ["drop", "impute"],
-            "strategy": ["rows", "mean", "median"],
-        },
-        conditional_allowed_values={
-            "action_type": {
-                "drop": {
-                    "strategy": ["rows"],
-                },
-                "impute": {
-                    "strategy": ["mean", "median"],
-                },
-            },
-        },
-        value_aliases={
-            "action_type": {
-                "drop rows": "drop",
-                "remove": "drop",
-                "remove rows": "drop",
-                "delete": "drop",
-                "impute missing": "impute",
-                "fill": "impute",
-            },
-            "strategy": {
-                "row": "rows",
-                "drop_rows": "rows",
-                "drop rows": "rows",
-                "drop": "rows",
-                "average": "mean",
-                "avg": "mean",
-                "med": "median",
-            },
-        },
     ),
-
     execute=execute_clean_data,
     extractor=extract_clean_data,
     guardrail_evaluators=[],
     display_config=CLEAN_DATA_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="data_cleaning",
-
-    # clean_data should not become execution-ready automatically from a generic plan.
-    # It mutates data and requires explicit user intent / confirmation.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="columns",
-            required=False,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "datetime",
-                "text",
-                "id_like",
-                "unknown",
-                "constant",
-            ],
-            min_variables=1,
-            max_variables=None,
-            allow_auto_select=False,
-            description=(
-                "Columns to clean. If omitted, the cleaning operation may apply "
-                "to eligible columns according to the requested strategy."
-            ),
-        ),
-    ],
-
-    planning_policy=mutating_requires_choices(
-        "action_type",
-        "strategy",
-    ),
-
-    # clean_data mutates data and must create a child data version.
-    mutates_data=True,
-    versioning_policy=MUTATING_CHILD_VERSIONING,
-
-    repair_policy=DEFAULT_MUTATING_REPAIR,
 ))

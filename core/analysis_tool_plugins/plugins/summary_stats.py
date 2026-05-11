@@ -9,13 +9,6 @@ from core.analysis_tool_plugins.base import (
     DisplayConfig,
     compact_dict,
 )
-
-from core.analysis_tool_plugins.policies import (
-    EDA_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
-
 from core.analysis_tool_plugins.registry import register_plugin
 
 
@@ -145,7 +138,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="get_summary_stats",
     display_name="Summary Statistics",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={},
@@ -153,21 +145,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_summary_stats,
     extractor=extract_summary_stats,
     guardrail_evaluators=[],
     display_config=SUMMARY_STATS_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="eda",
-
-    # Summary statistics can run without user-selected variables.
-    # It should use the tool's internal/default eligible-column selection.
-    variable_roles=[],
-
-    planning_policy=EDA_READY_PLANNING,
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))

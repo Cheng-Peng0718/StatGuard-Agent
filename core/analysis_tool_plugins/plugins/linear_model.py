@@ -7,7 +7,6 @@ import statsmodels.api as sm
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -20,11 +19,6 @@ from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.regression_utils import prepare_regression_data
 from core.guardrails import evaluate_regression_guardrails
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -312,7 +306,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_multiple_regression",
     display_name="Linear Model",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,
@@ -332,60 +325,10 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         allow_all_columns=False,
     ),
-
     execute=execute_linear_model,
     extractor=extract_linear_model,
     guardrail_evaluators=[
         evaluate_regression_guardrails,
     ],
     display_config=LINEAR_MODEL_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="regression",
-
-    # Linear model requires a user-selected continuous target and one or more predictors.
-    # It must not auto-select GPA/SATM or any other outcome/predictor pair.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="target_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Continuous numeric response variable for the linear model."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="feature_cols",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-            ],
-            min_variables=1,
-            max_variables=None,
-            allow_auto_select=False,
-            description=(
-                "Predictor variables for the linear model. Categorical predictors "
-                "may require encoding or factor handling during execution."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    # Linear model does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

@@ -8,7 +8,6 @@ from scipy import stats
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -19,11 +18,6 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -328,9 +322,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_anova",
     display_name="One-way ANOVA",
     requires_confirmation=False,
-
-    # Execution-time argument contract.
-    # This is still used by validate_plugin_action before execution.
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,
@@ -344,61 +335,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_anova,
     extractor=extract_anova,
     guardrail_evaluators=[],
     display_config=ANOVA_DISPLAY,
-
-    # Phase 5A: generic method/planning contract.
-    method_family="group_comparison",
-
-    # Variable-role contract.
-    # Use role names matching argument names.
-    # This will make later PlanStep -> ActionProposal mapping cleaner.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="target_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Continuous numeric outcome variable to compare across groups."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="group_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Grouping variable. Numeric-coded grouping variables may appear "
-                "as discrete_numeric and should be treated as factors."
-            ),
-        ),
-    ],
-
-    # Planning policy.
-    # ANOVA requires user-selected variables, so it is NOT ready by default.
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    # ANOVA does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    # Basic repair policy.
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

@@ -9,7 +9,6 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -22,11 +21,6 @@ from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.regression_utils import prepare_regression_data
 from core.guardrails import evaluate_diagnostics_guardrails
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -299,7 +293,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="regression_diagnostics",
     display_name="Model Diagnostics",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,
@@ -319,61 +312,10 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         allow_all_columns=False,
     ),
-
     execute=execute_regression_diagnostics,
     extractor=extract_regression_diagnostics,
     guardrail_evaluators=[
         evaluate_diagnostics_guardrails,
     ],
     display_config=MODEL_DIAGNOSTICS_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="model_diagnostics",
-
-    # Regression diagnostics requires the same variable roles as the fitted
-    # linear model: a continuous target and one or more predictors.
-    # It should not auto-select variables from a generic plan.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="target_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Continuous numeric response variable for the diagnostic model."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="feature_cols",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-            ],
-            min_variables=1,
-            max_variables=None,
-            allow_auto_select=False,
-            description=(
-                "Predictor variables used in the diagnostic model. "
-                "They should match the intended or previously fitted regression specification."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    # Regression diagnostics does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

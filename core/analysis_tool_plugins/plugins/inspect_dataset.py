@@ -13,12 +13,6 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    EDA_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
-
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -236,7 +230,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="inspect_dataset",
     display_name="Dataset Inspection",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={},
@@ -244,23 +237,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_inspect_dataset,
     extractor=extract_inspect_dataset,
     guardrail_evaluators=[],
     display_config=INSPECT_DATASET_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="eda",
-
-    # Dataset inspection does not require user-selected variables.
-    variable_roles=[],
-
-    planning_policy=EDA_READY_PLANNING,
-
-    # Dataset inspection does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))

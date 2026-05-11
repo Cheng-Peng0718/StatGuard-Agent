@@ -8,7 +8,6 @@ from scipy.stats import chi2_contingency
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -19,11 +18,6 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -365,8 +359,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_chi_square",
     display_name="Chi-square Test",
     requires_confirmation=False,
-
-    # Execution-time argument contract.
     argument_schema=ArgumentSchema(
         required={
             "row_col": str,
@@ -380,57 +372,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_chi_square,
     extractor=extract_chi_square,
     guardrail_evaluators=[],
     display_config=CHI_SQUARE_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="categorical_association",
-
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="row_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "First categorical variable used as rows in the contingency table."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="col_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Second categorical variable used as columns in the contingency table."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    # Chi-square does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

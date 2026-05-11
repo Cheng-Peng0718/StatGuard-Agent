@@ -6,19 +6,14 @@ import pandas as pd
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
     compact_dict,
+    format_number,
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    ASSOCIATION_SCREENING_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -285,7 +280,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="get_correlation_matrix",
     display_name="Correlation Matrix",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={
@@ -297,41 +291,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         allow_all_columns=True,
     ),
-
     execute=execute_correlation_matrix,
     extractor=extract_correlation_matrix,
     guardrail_evaluators=[],
     display_config=CORRELATION_MATRIX_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="association_screening",
-
-    # Correlation matrix can run with default numeric-column selection,
-    # but if the user specifies columns, they should be numeric.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="columns",
-            required=False,
-            user_must_select=False,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=2,
-            max_variables=None,
-            allow_auto_select=True,
-            description=(
-                "Numeric columns to include in the correlation matrix. "
-                "If omitted, eligible numeric columns may be selected by default."
-            ),
-        ),
-    ],
-
-    planning_policy=ASSOCIATION_SCREENING_READY_PLANNING,
-
-    # Correlation matrix does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))

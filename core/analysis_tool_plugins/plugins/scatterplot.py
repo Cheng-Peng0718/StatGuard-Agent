@@ -9,7 +9,6 @@ import pandas as pd
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    VariableRoleSpec,
     DisplayConfig,
     MetricDisplayConfig,
     compact_dict,
@@ -17,11 +16,6 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -311,7 +305,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="generate_scatterplot",
     display_name="Scatterplot",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={
             "x_column": str,
@@ -327,55 +320,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_scatterplot,
     extractor=extract_scatterplot,
     guardrail_evaluators=[],
     display_config=SCATTERPLOT_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="visualization",
-
-    # Scatterplot requires two user-selected numeric variables.
-    # It should appear in plans as needs_user_choice, not auto-ready.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="x_column",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Numeric variable shown on the x-axis of the scatterplot."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="y_column",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Numeric variable shown on the y-axis of the scatterplot."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    # Scatterplot does not mutate the active dataset.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

@@ -2,6 +2,9 @@ import os
 import pandas as pd
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Any, Dict, List, Literal, Optional
+from typing_extensions import TypedDict
+from typing import TypedDict, Annotated
+import operator
 
 
 class RequiredDeliverable(BaseModel):
@@ -56,6 +59,18 @@ class DatasetProfile(BaseModel):
     n_rows: int = Field(..., description="Row count")
     n_cols: int = Field(..., description="Column count")
     columns: Dict[str, ColumnProfile] = Field(..., description="Per-column profile")
+
+
+class GraphState(TypedDict):
+    # observations must use operator.add for list merging
+    observations: Annotated[list, operator.add]
+
+    current_action: object
+    current_execution: object
+    current_step: int
+    max_steps: int
+    user_request: str
+    workspace_dir: str
 
 # --- 3. Actions and tools ---
 class ToolSpec(BaseModel):
