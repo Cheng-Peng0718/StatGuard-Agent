@@ -12,7 +12,7 @@ from ui.panels import (
     render_upload_panel,
 )
 from ui.state import current_snapshot, ensure_session_state
-
+from ui.styles import inject_app_styles
 
 st.set_page_config(
     page_title="Analysis Agent",
@@ -24,7 +24,7 @@ st.set_page_config(
 def render_layout() -> None:
     snapshot = current_snapshot()
 
-    left, center, right = st.columns([0.95, 1.45, 1.1], gap="large")
+    left, center, right = st.columns([0.9, 1.55, 1.15], gap="large")
 
     with left:
         render_upload_panel()
@@ -46,12 +46,21 @@ def render_layout() -> None:
 
 def main() -> None:
     ensure_session_state()
+    inject_app_styles()
 
-    st.title("📊 Analysis Agent")
-    st.caption("Plan-first, plugin-driven data analysis assistant.")
+    st.markdown(
+        """
+        <div class="app-header">
+            <div class="app-title">Analysis Agent</div>
+            <div class="app-subtitle">
+                Plan-first, plugin-driven data analysis assistant with review gates and data versioning.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     render_layout()
-
 
 if __name__ == "__main__":
     main()

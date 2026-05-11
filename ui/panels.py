@@ -25,10 +25,11 @@ from ui.state import (
     has_dataset,
     sync_assistant_response_to_chat,
 )
+from ui.styles import panel_header, status_pill
 
 
 def render_upload_panel() -> None:
-    st.subheader("Upload Dataset")
+    panel_header("Upload Dataset", "CSV, Excel, or Parquet.")
 
     uploaded = st.file_uploader(
         "CSV, XLSX, XLS, or Parquet",
@@ -63,7 +64,7 @@ def render_upload_panel() -> None:
 
 
 def render_dataset_panel(snapshot: Dict[str, Any]) -> None:
-    st.subheader("Dataset")
+    panel_header("Dataset", "Current active data version.")
 
     dataset = snapshot.get("dataset") or {}
 
@@ -73,7 +74,8 @@ def render_dataset_panel(snapshot: Dict[str, Any]) -> None:
 
     st.markdown(f"**{dataset.get('dataset_name')}**")
     active_version_id = dataset.get("active_data_version_id")
-    st.success(f"Active data version: `{active_version_id}`")
+    status_pill(f"Active: {active_version_id}", kind="ok")
+    st.write("")
 
     summary = dataset.get("summary") or {}
     profile = dataset.get("profile") or {}
@@ -100,7 +102,7 @@ def render_data_versions(snapshot: Dict[str, Any]) -> None:
     versions = dataset.get("data_versions") or []
     active_version_id = dataset.get("active_data_version_id")
 
-    st.subheader("Data Versions")
+    panel_header("Data Versions", "Track mutations and lineage.")
 
     render_data_version_timeline(
         versions,
@@ -109,7 +111,7 @@ def render_data_versions(snapshot: Dict[str, Any]) -> None:
 
 
 def render_plan_panel(snapshot: Dict[str, Any]) -> None:
-    st.subheader("Plan")
+    panel_header("Plan", "Review planned analysis steps.")
 
     plan = snapshot.get("plan") or {}
     pending_plan = plan.get("pending_plan")
@@ -167,7 +169,7 @@ def render_plan_panel(snapshot: Dict[str, Any]) -> None:
 
 
 def render_analysis_panel(snapshot: Dict[str, Any]) -> None:
-    st.subheader("Analysis Results")
+    panel_header("Analysis Results", "Executed tools and generated outputs.")
 
     analysis = snapshot.get("analysis") or {}
     runs = analysis.get("analysis_runs") or []
@@ -185,13 +187,16 @@ def render_analysis_panel(snapshot: Dict[str, Any]) -> None:
 
 
 def render_review_panel(snapshot: Dict[str, Any]) -> None:
-    st.subheader("Review")
+    panel_header("Review", "Approve or reject high-risk actions.")
 
     review = snapshot.get("review") or {}
 
     if not review.get("human_review_required"):
-        st.info("No human review required.")
+        status_pill("No approval required", kind="neutral")
         return
+
+    status_pill("Approval required", kind="danger")
+    st.write("")
 
     st.warning("This action requires approval before execution.")
 
@@ -271,7 +276,7 @@ def render_review_panel(snapshot: Dict[str, Any]) -> None:
 
 
 def render_chat(snapshot: Dict[str, Any]) -> None:
-    st.subheader("Chat")
+    panel_header("Chat", "Ask questions or request analysis plans.")
 
     sync_assistant_response_to_chat(snapshot)
 

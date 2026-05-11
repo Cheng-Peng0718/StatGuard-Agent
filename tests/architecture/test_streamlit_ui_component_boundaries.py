@@ -125,3 +125,27 @@ def test_renderers_own_data_version_timeline_rendering():
     assert "def render_data_version_timeline" in text
     assert "def data_version_rows" in text
     assert "render_data_version_timeline" in panels_text
+
+def test_ui_styles_are_isolated_from_backend_logic():
+    text = Path("ui/styles.py").read_text(encoding="utf-8")
+
+    forbidden = [
+        "core.graph",
+        "core.workflow",
+        "core.runtime",
+        "core.app_backend",
+        "run_user_turn",
+        "run_pending_plan_until_pause",
+        "approve_pending_review",
+        "reject_pending_review",
+    ]
+
+    for phrase in forbidden:
+        assert phrase not in text
+
+
+def test_app_injects_ui_styles():
+    text = Path("app.py").read_text(encoding="utf-8")
+
+    assert "inject_app_styles" in text
+    assert "app-header" in text
