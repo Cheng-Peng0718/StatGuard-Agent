@@ -5,10 +5,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import chi2_contingency
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.roles import VariableRoleSpec
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -19,12 +18,6 @@ from core.analysis_tool_plugins.display import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -366,8 +359,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_chi_square",
     display_name="Chi-square Test",
     requires_confirmation=False,
-
-    # Execution-time argument contract.
     argument_schema=ArgumentSchema(
         required={
             "row_col": str,
@@ -381,95 +372,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_chi_square,
     extractor=extract_chi_square,
     guardrail_evaluators=[],
     display_config=CHI_SQUARE_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="categorical_association",
-
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="row_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "First categorical variable used as rows in the contingency table."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="col_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Second categorical variable used as columns in the contingency table."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "categorical_association",
-            "association_analysis",
-        ],
-        not_recommended_for_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-        ],
-        planning_tags=[
-            "categorical_association",
-            "chi_square",
-            "inferential",
-        ],
-        default_plan_purpose=(
-            "Test association between categorical variables."
-        ),
-        expected_deliverables=[
-            "categorical_association_test",
-        ],
-        task_argument_bindings=[
-            {
-                "task_field": "target_variables",
-                "index": 0,
-                "argument": "row_col",
-                "required_choice": "row_col",
-            },
-            {
-                "task_field": "predictor_variables",
-                "index": 0,
-                "argument": "col_col",
-                "required_choice": "col_col",
-            },
-        ],
-        plan_order=10,
-    ),
-
-    # Chi-square does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

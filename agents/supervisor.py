@@ -102,13 +102,13 @@ If a task_contract already exists in context, do not replace it unless the user 
 - If evidence is insufficient, say that additional diagnostics such as a Q-Q plot, residual-vs-fitted plot, or formal normality checks would be needed.
 
 ### Deliverable gate policy
-- If the context contains a Deliverable Check with status "needs_more_work", "missing", or "blocked", do not produce final_answer.
+- If the context contains a Deliverable Check with status "missing" or "blocked", do not produce final_answer.
 - Instead, inspect the missing deliverables and call the tool needed to satisfy them.
 - Only produce final_answer when the Deliverable Check is ok, or when a missing deliverable is unrecoverable and you explicitly explain the blocker.
 - For deliverable status, use only one of: "pending", "satisfied", "missing", "blocked". Do not use "completed" or "done".
 
 ### DeliverableGate blocked policy:
-- If Deliverable Check status is "blocked" and the blocker is unrecoverable, you may produce final_answer.
+- If Deliverable Check status is "blocked", you may produce final_answer.
 - The final_answer must clearly separate completed deliverables from blocked deliverables.
 - For each blocked deliverable, explain the specific blocker and how it limits the report.
 - Do not claim the blocked deliverable was completed.

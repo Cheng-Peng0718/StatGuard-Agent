@@ -4,10 +4,9 @@ import math
 import numpy as np
 import pandas as pd
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.roles import VariableRoleSpec
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -16,12 +15,6 @@ from core.analysis_tool_plugins.display import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    EDA_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -359,7 +352,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="summarize_columns",
     display_name="Column Summary",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={
@@ -371,68 +363,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         allow_all_columns=True,
     ),
-
     execute=execute_summarize_columns,
     extractor=extract_summarize_columns,
     guardrail_evaluators=[],
     display_config=SUMMARIZE_COLUMNS_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="eda",
-
-    # Column summary can run with default all-column selection.
-    # If columns are specified, any semantic type is acceptable.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="columns",
-            required=False,
-            user_must_select=False,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "datetime",
-                "text",
-                "id_like",
-                "unknown",
-                "constant",
-            ],
-            min_variables=1,
-            max_variables=None,
-            allow_auto_select=True,
-            description=(
-                "Columns to summarize. If omitted, all eligible columns may be "
-                "summarized by default."
-            ),
-        ),
-    ],
-
-    planning_policy=EDA_READY_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-            "eda",
-        ],
-        planning_tags=[
-            "overview",
-            "column_summary",
-            "eda",
-        ],
-        default_plan_purpose="Summarize column-level distributions and types.",
-        expected_deliverables=[
-            "column_summary",
-        ],
-        plan_order=40,
-    ),
-
-    # Column summary does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))

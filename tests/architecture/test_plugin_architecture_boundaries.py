@@ -115,53 +115,6 @@ def test_analysis_plugin_base_is_method_agnostic():
     )
 
 
-def test_analysis_plugin_base_stays_minimal_runtime_wrapper():
-    text = read_file("core/analysis_tool_plugins/base.py")
-
-    forbidden_terms = [
-        "def format_p_value",
-        "def format_number",
-        "def build_generic_report_blocks",
-        "def default_extractor",
-        "def metric_rows_from_dict_with_display",
-        "def normalize_table_from_list_with_display",
-        "def build_analysis_run",
-        "def evaluate_guardrails",
-        "class ArgumentSchema",
-        "class DisplayConfig",
-        "class MetricDisplayConfig",
-        "class TableDisplayConfig",
-        "class VariableRoleSpec",
-        "class ApplicabilityResult",
-        "class VersioningPolicy",
-        "class RepairPolicy",
-        "class PlanningPolicy",
-    ]
-
-    violations = [term for term in forbidden_terms if term in text]
-    assert not violations, (
-        "core/analysis_tool_plugins/base.py must only define the minimal "
-        f"AnalysisToolPlugin wrapper. Found: {violations}"
-    )
-
-
-def test_analysis_plugin_support_modules_exist():
-    expected = [
-        "arguments.py",
-        "display.py",
-        "reporting.py",
-        "roles.py",
-        "applicability.py",
-        "policy_types.py",
-        "result_builder.py",
-    ]
-
-    plugin_dir = PROJECT_ROOT / "core" / "analysis_tool_plugins"
-
-    for filename in expected:
-        assert (plugin_dir / filename).exists(), f"Missing plugin support module: {filename}"
-
-
 def test_plugin_files_are_allowed_to_contain_method_specific_terms():
     """
     Plugin files are the correct place for method-specific logic.
@@ -185,9 +138,3 @@ def test_analysis_runs_does_not_import_legacy_analysis_plugins():
     assert "analysis_plugins" not in text
     assert "get_legacy_plugin" not in text
     assert "_build_legacy_analysis_run" not in text
-
-def test_argument_schema_no_longer_exposes_legacy_schema_adapter():
-    text = read_file("core/analysis_tool_plugins/arguments.py")
-
-    assert "to_legacy_schema_dict" not in text
-    assert "to_contract_dict" in text

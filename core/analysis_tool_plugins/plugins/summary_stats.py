@@ -3,21 +3,14 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import pandas as pd
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     compact_dict,
 )
-
-from core.analysis_tool_plugins.policies import (
-    EDA_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
-
 from core.analysis_tool_plugins.registry import register_plugin
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
+
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -145,7 +138,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="get_summary_stats",
     display_name="Summary Statistics",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={},
@@ -153,42 +145,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_summary_stats,
     extractor=extract_summary_stats,
     guardrail_evaluators=[],
     display_config=SUMMARY_STATS_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="eda",
-
-    # Summary statistics can run without user-selected variables.
-    # It should use the tool's internal/default eligible-column selection.
-    variable_roles=[],
-
-    planning_policy=EDA_READY_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-            "eda",
-        ],
-        planning_tags=[
-            "overview",
-            "descriptive_statistics",
-            "numeric_summary",
-            "eda",
-        ],
-        default_plan_purpose="Summarize numeric variables with descriptive statistics.",
-        expected_deliverables=[
-            "descriptive_statistics",
-        ],
-        plan_order=30,
-    ),
-
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))

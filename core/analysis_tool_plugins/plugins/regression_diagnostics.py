@@ -6,10 +6,9 @@ import statsmodels.api as sm
 import statsmodels.stats.api as sms
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.roles import VariableRoleSpec
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -22,12 +21,6 @@ from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.regression_utils import prepare_regression_data
 from core.guardrails import evaluate_diagnostics_guardrails
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -300,7 +293,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="regression_diagnostics",
     display_name="Model Diagnostics",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,
@@ -320,95 +312,10 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         allow_all_columns=False,
     ),
-
     execute=execute_regression_diagnostics,
     extractor=extract_regression_diagnostics,
     guardrail_evaluators=[
         evaluate_diagnostics_guardrails,
     ],
     display_config=MODEL_DIAGNOSTICS_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="model_diagnostics",
-
-    # Regression diagnostics requires the same variable roles as the fitted
-    # linear model: a continuous target and one or more predictors.
-    # It should not auto-select variables from a generic plan.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="target_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Continuous numeric response variable for the diagnostic model."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="feature_cols",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-            ],
-            min_variables=1,
-            max_variables=None,
-            allow_auto_select=False,
-            description=(
-                "Predictor variables used in the diagnostic model. "
-                "They should match the intended or previously fitted regression specification."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "regression_modeling",
-        ],
-        not_recommended_for_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-        ],
-        planning_tags=[
-            "regression",
-            "diagnostics",
-            "model_checking",
-        ],
-        default_plan_purpose="Check model diagnostics after the regression fit.",
-        expected_deliverables=[
-            "regression_diagnostics",
-        ],
-        task_argument_bindings=[
-            {
-                "task_field": "target_variables",
-                "index": 0,
-                "argument": "target_col",
-                "required_choice": "target_col",
-            },
-            {
-                "task_field": "predictor_variables",
-                "argument": "feature_cols",
-                "required_choice": "feature_cols",
-            },
-        ],
-        plan_order=20,
-    ),
-
-    # Regression diagnostics does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

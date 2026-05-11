@@ -3,23 +3,17 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import pandas as pd
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.roles import VariableRoleSpec
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
     compact_dict,
+    format_number,
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    ASSOCIATION_SCREENING_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 MISSING_TOKENS = {
     "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
@@ -286,7 +280,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="get_correlation_matrix",
     display_name="Correlation Matrix",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={
@@ -298,64 +291,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         allow_all_columns=True,
     ),
-
     execute=execute_correlation_matrix,
     extractor=extract_correlation_matrix,
     guardrail_evaluators=[],
     display_config=CORRELATION_MATRIX_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="association_screening",
-
-    # Correlation matrix can run with default numeric-column selection,
-    # but if the user specifies columns, they should be numeric.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="columns",
-            required=False,
-            user_must_select=False,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=2,
-            max_variables=None,
-            allow_auto_select=True,
-            description=(
-                "Numeric columns to include in the correlation matrix. "
-                "If omitted, eligible numeric columns may be selected by default."
-            ),
-        ),
-    ],
-
-    planning_policy=ASSOCIATION_SCREENING_READY_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-            "association_analysis",
-            "eda",
-        ],
-        planning_tags=[
-            "association",
-            "correlation",
-            "screening",
-            "eda",
-        ],
-        default_plan_purpose=(
-            "Screen numeric associations only when enough numeric variables exist."
-        ),
-        expected_deliverables=[
-            "correlation_screening",
-        ],
-        plan_order=50,
-    ),
-
-    # Correlation matrix does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))

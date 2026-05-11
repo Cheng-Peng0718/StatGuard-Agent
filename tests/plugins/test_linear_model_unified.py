@@ -1,4 +1,3 @@
-from core.analysis_tool_plugins.result_builder import build_analysis_run_for_plugin
 import pandas as pd
 
 from core.analysis_tool_plugins import get_plugin
@@ -42,7 +41,7 @@ def test_linear_model_unified_execute_and_analysis_run():
     assert raw["details"]["nobs"] == 8
     assert raw["details"]["p_eff"] == 1
 
-    run = build_analysis_run_for_plugin(plugin,
+    run = plugin.build_analysis_run(
         action_id="act_test",
         arguments={
             "target_col": "y",

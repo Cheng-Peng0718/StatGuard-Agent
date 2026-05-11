@@ -5,10 +5,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.roles import VariableRoleSpec
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     compact_dict,
@@ -17,12 +16,6 @@ from core.analysis_tool_plugins.display import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    NEEDS_USER_VARIABLES_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_ANALYSIS_REPAIR,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
     return {
@@ -276,7 +269,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_correlation_test",
     display_name="Correlation Test",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={
             "x_col": str,
@@ -291,98 +283,9 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         ],
         column_list_args=[],
         allow_all_columns=False,
-        allowed_values={
-            "method": ["pearson", "spearman", "kendall"],
-        },
-        value_aliases={
-            "method": {
-                "pearson correlation": "pearson",
-                "spearman correlation": "spearman",
-                "spearman rank": "spearman",
-                "kendall tau": "kendall",
-                "kendall's tau": "kendall",
-            },
-        },
     ),
-
     execute=execute_correlation_test,
     extractor=extract_correlation_test,
     guardrail_evaluators=[],
     display_config=CORRELATION_TEST_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="association_test",
-
-    # Correlation test requires two user-selected numeric variables.
-    # It should appear in plans as needs_user_choice, not auto-ready.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="x_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "First numeric variable for the pairwise correlation test."
-            ),
-        ),
-        VariableRoleSpec(
-            role_name="y_col",
-            required=True,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-            ],
-            min_variables=1,
-            max_variables=1,
-            allow_auto_select=False,
-            description=(
-                "Second numeric variable for the pairwise correlation test."
-            ),
-        ),
-    ],
-
-    planning_policy=NEEDS_USER_VARIABLES_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "association_analysis",
-        ],
-        planning_tags=[
-            "association",
-            "correlation",
-            "inferential",
-        ],
-        default_plan_purpose="Test association between selected variables.",
-        expected_deliverables=[
-            "association_test",
-        ],
-        task_argument_bindings=[
-            {
-                "task_field": "predictor_variables",
-                "index": 0,
-                "argument": "x_col",
-                "required_choice": "x_col",
-            },
-            {
-                "task_field": "predictor_variables",
-                "index": 1,
-                "argument": "y_col",
-                "required_choice": "y_col",
-            },
-        ],
-        plan_order=10,
-    ),
-
-    # Correlation test does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_ANALYSIS_REPAIR,
 ))

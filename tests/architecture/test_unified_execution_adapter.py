@@ -1,5 +1,4 @@
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
+from core.analysis_tool_plugins.base import AnalysisToolPlugin, ArgumentSchema
 from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.execution import execute_analysis_tool
 

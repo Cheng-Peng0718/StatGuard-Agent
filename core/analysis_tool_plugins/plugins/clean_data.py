@@ -6,10 +6,9 @@ import pandas as pd
 
 from core.data_versions import create_child_data_version, make_audit_event
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.roles import VariableRoleSpec
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     TableDisplayConfig,
@@ -18,12 +17,6 @@ from core.analysis_tool_plugins.display import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 
-from core.analysis_tool_plugins.policies import (
-    MUTATING_CHILD_VERSIONING,
-    DEFAULT_MUTATING_REPAIR,
-    mutating_requires_choices,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None, data_version_update=None):
     result = {
@@ -492,7 +485,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="clean_data",
     display_name="Data Cleaning",
     requires_confirmation=True,
-
     argument_schema=ArgumentSchema(
         required={
             "action_type": str,
@@ -531,93 +523,15 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
                 "row": "rows",
                 "drop_rows": "rows",
                 "drop rows": "rows",
-                "drop": "rows",
+                "drop": "rows",  # 注意：这会把 strategy='drop' 规范化成 rows
                 "average": "mean",
                 "avg": "mean",
                 "med": "median",
             },
         },
     ),
-
     execute=execute_clean_data,
     extractor=extract_clean_data,
     guardrail_evaluators=[],
     display_config=CLEAN_DATA_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="data_cleaning",
-
-    # clean_data should not become execution-ready automatically from a generic plan.
-    # It mutates data and requires explicit user intent / confirmation.
-    variable_roles=[
-        VariableRoleSpec(
-            role_name="columns",
-            required=False,
-            user_must_select=True,
-            allowed_semantic_types=[
-                "continuous_numeric",
-                "discrete_numeric",
-                "binary_categorical",
-                "nominal_categorical",
-                "ordinal_categorical",
-                "datetime",
-                "text",
-                "id_like",
-                "unknown",
-                "constant",
-            ],
-            min_variables=1,
-            max_variables=None,
-            allow_auto_select=False,
-            description=(
-                "Columns to clean. If omitted, the cleaning operation may apply "
-                "to eligible columns according to the requested strategy."
-            ),
-        ),
-    ],
-
-    planning_policy=mutating_requires_choices(
-        "action_type",
-        "strategy",
-    ),
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "data_cleaning",
-        ],
-        not_recommended_for_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-        ],
-        planning_tags=[
-            "data_cleaning",
-            "mutation",
-            "requires_confirmation",
-        ],
-        default_plan_purpose=(
-            "Prepare a data modification proposal that requires user confirmation."
-        ),
-        expected_deliverables=[
-            "cleaned_dataset_version",
-        ],
-        task_argument_bindings=[
-            {
-                "task_field": "target_variables",
-                "argument": "columns",
-                "required_choice": "columns",
-            },
-        ],
-        required_planning_choices=[
-            "action_type",
-            "strategy",
-        ],
-        plan_order=10,
-    ),
-
-    # clean_data mutates data and must create a child data version.
-    mutates_data=True,
-    versioning_policy=MUTATING_CHILD_VERSIONING,
-
-    repair_policy=DEFAULT_MUTATING_REPAIR,
 ))

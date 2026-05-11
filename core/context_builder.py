@@ -62,159 +62,6 @@ def format_observation_history(observations, active_data_version_id=None, max_it
     return "\n".join(lines) if lines else "No previous observations."
 
 
-def _format_deliverable_gate_item(item):
-    if isinstance(item, str):
-        return f"- {item}\n"
-
-    if not isinstance(item, dict):
-        return f"- {item}\n"
-
-    lines = []
-
-    for key in [
-        "deliverable_id",
-        "description",
-        "reason",
-        "satisfied_by",
-        "required_evidence",
-        "missing_evidence",
-    ]:
-        value = item.get(key)
-
-        if value not in (None, "", [], {}):
-            lines.append(f"  {key}: {value}")
-
-    if not lines:
-        return f"- {item}\n"
-
-    return "- " + "\n".join(lines).lstrip() + "\n"
-
-
-def format_deliverable_gate_feedback(deliverable_check):
-    if not deliverable_check:
-        return ""
-
-    if not isinstance(deliverable_check, dict):
-        deliverable_check = {
-            "status": getattr(deliverable_check, "status", None),
-            "message": getattr(deliverable_check, "message", None),
-            "satisfied": getattr(deliverable_check, "satisfied", []),
-            "missing": getattr(deliverable_check, "missing", []),
-            "blocked": getattr(deliverable_check, "blocked", []),
-        }
-
-    deliverable_log = "Deliverable Gate Feedback:\n"
-    deliverable_log += f"- status: {deliverable_check.get('status')}\n"
-    deliverable_log += f"- message: {deliverable_check.get('message')}\n"
-
-    satisfied = deliverable_check.get("satisfied", []) or []
-    if satisfied:
-        deliverable_log += "\nSatisfied deliverables/evidence:\n"
-        for item in satisfied:
-            deliverable_log += _format_deliverable_gate_item(item)
-
-    missing = deliverable_check.get("missing", []) or []
-    if missing:
-        deliverable_log += "\nMissing deliverables/evidence:\n"
-        for item in missing:
-            deliverable_log += _format_deliverable_gate_item(item)
-
-    blocked = deliverable_check.get("blocked", []) or []
-    if blocked:
-        deliverable_log += "\nBlocked deliverables/evidence:\n"
-        for item in blocked:
-            deliverable_log += _format_deliverable_gate_item(item)
-
-    if deliverable_check.get("status") in {"needs_more_work", "missing", "blocked"}:
-        deliverable_log += (
-            "\nCRITICAL: A previous final_answer was blocked by the DeliverableGate. "
-            "Do not produce final_answer yet. Call the tools needed to satisfy the missing deliverables/evidence, "
-            "unless the missing item is truly unrecoverable.\n"
-        )
-
-    return deliverable_log
-
-
-def _as_mapping(value):
-    if isinstance(value, dict):
-        return value
-
-    if hasattr(value, "model_dump"):
-        return value.model_dump()
-
-    if hasattr(value, "dict"):
-        return value.dict()
-
-    return {}
-
-
-def format_task_contract_summary(task_contract):
-    contract = _as_mapping(task_contract)
-
-    if not contract:
-        return ""
-
-    lines = ["Task Contract:"]
-
-    for key in ["contract_id", "user_goal", "status"]:
-        value = contract.get(key)
-
-        if value not in (None, "", [], {}):
-            lines.append(f"- {key}: {value}")
-
-    deliverables = contract.get("required_deliverables", []) or []
-
-    if deliverables:
-        lines.append("\nRequired deliverables:")
-
-        for item in deliverables:
-            if isinstance(item, str):
-                lines.append(f"- deliverable_id: {item}")
-                continue
-
-            deliverable = _as_mapping(item)
-
-            if not deliverable:
-                lines.append(f"- {item}")
-                continue
-
-            deliverable_id = deliverable.get("deliverable_id", "unknown")
-            lines.append(f"- deliverable_id: {deliverable_id}")
-
-            for key in ["description", "status", "satisfied_by", "required_evidence"]:
-                value = deliverable.get(key)
-
-                if value not in (None, "", [], {}):
-                    lines.append(f"  {key}: {value}")
-
-    constraints = contract.get("constraints", []) or []
-
-    if constraints:
-        lines.append("\nConstraints:")
-
-        for item in constraints:
-            constraint = _as_mapping(item)
-
-            if not constraint:
-                lines.append(f"- {item}")
-                continue
-
-            constraint_id = constraint.get("constraint_id", "unknown")
-            description = constraint.get("description", "")
-            constraint_type = constraint.get("type", "other")
-            lines.append(
-                f"- constraint_id: {constraint_id}, type: {constraint_type}, "
-                f"description: {description}"
-            )
-
-    lines.append(
-        "\nPreserve this task_contract unless the user changes the task. "
-        "Use it to choose the next missing tool/evidence before final_answer."
-    )
-
-    return "\n".join(lines)
-
-
 def generate_profile(file_path: str) -> DatasetProfile:
     """Build a dataset profile report (multiple formats supported)."""
 
@@ -303,7 +150,6 @@ def build_context(step,
                   observations,
                   workspace_dir="./",
                   deliverable_check=None,
-                  task_contract=None,
                   data_versions=None,
                   active_data_version_id=None,
                   data_audit_log=None,
@@ -359,8 +205,38 @@ def build_context(step,
     if not history_log:
         history_log = "No prior executions. This is the first step—choose the first tool to call."
 
-    task_contract_log = format_task_contract_summary(task_contract)
-    deliverable_log = format_deliverable_gate_feedback(deliverable_check)
+    deliverable_log = ""
+
+    if deliverable_check:
+        deliverable_log += "Deliverable Gate Feedback:\n"
+        deliverable_log += f"- status: {deliverable_check.get('status')}\n"
+        deliverable_log += f"- message: {deliverable_check.get('message')}\n"
+
+        missing = deliverable_check.get("missing", []) or []
+        if missing:
+            deliverable_log += "\nMissing deliverables:\n"
+            for item in missing:
+                deliverable_log += (
+                    f"- deliverable_id: {item.get('deliverable_id')}\n"
+                    f"  description: {item.get('description')}\n"
+                    f"  reason: {item.get('reason')}\n"
+                    f"  satisfied_by: {item.get('satisfied_by')}\n"
+                    f"  required_evidence: {item.get('required_evidence')}\n"
+                    f"  missing_evidence: {item.get('missing_evidence')}\n"
+                )
+
+        blocked = deliverable_check.get("blocked", []) or []
+        if blocked:
+            deliverable_log += "\nBlocked deliverables:\n"
+            for item in blocked:
+                deliverable_log += f"- {item}\n"
+
+        if deliverable_check.get("status") in {"missing", "blocked"}:
+            deliverable_log += (
+                "\nCRITICAL: A previous final_answer was blocked by the DeliverableGate. "
+                "Do not produce final_answer yet. Call the tools needed to satisfy the missing deliverables, "
+                "unless the missing deliverable is truly unrecoverable.\n"
+            )
 
     data_version_log = ""
 
@@ -384,7 +260,6 @@ def build_context(step,
         f"User request:\n{user_request}\n\n"
         f"Dataset overview:\n- rows: {rows}\n- columns: {cols}\n\n"
         f"{data_version_log}\n"
-        f"{task_contract_log}\n\n"
         f"History of actions and results:\n{history_log}\n\n"
         "Evidence reuse policy:\n"
         "- A previous observation may be reused for a numeric answer only if its "

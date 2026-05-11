@@ -2,12 +2,40 @@ import os
 import pandas as pd
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Any, Dict, List, Literal, Optional
-from core.domain.deliverable import (
-    DeliverableCheckResult,
-    RequiredDeliverable,
-    TaskConstraint,
-    TaskContract,
-)
+from typing_extensions import TypedDict
+from typing import TypedDict, Annotated
+import operator
+
+
+class RequiredDeliverable(BaseModel):
+    deliverable_id: str = Field(..., description="Stable id for the deliverable.")
+    description: str = Field(..., description="Human-readable deliverable description.")
+    satisfied_by: List[str] = Field(default_factory=list, description="Tool names that can satisfy this deliverable.")
+    required_evidence: List[str] = Field(default_factory=list, description="Evidence keys required to consider this deliverable complete.")
+    status: Literal["pending", "satisfied", "missing", "blocked"] = "pending"
+
+
+class TaskConstraint(BaseModel):
+    constraint_id: str
+    description: str
+    type: Literal["data_mutation", "method", "reporting", "safety", "other"] = "other"
+
+
+class TaskContract(BaseModel):
+    contract_id: str = Field(..., description="Unique contract id.")
+    user_goal: str = Field(..., description="What the user wants to accomplish.")
+    required_deliverables: List[RequiredDeliverable] = Field(default_factory=list)
+    constraints: List[TaskConstraint] = Field(default_factory=list)
+    created_by: str = "supervisor"
+    status: Literal["active", "satisfied", "blocked"] = "active"
+
+
+class DeliverableCheckResult(BaseModel):
+    status: Literal["ok", "missing", "blocked"] = "ok"
+    satisfied: List[Dict[str, Any]] = Field(default_factory=list)
+    missing: List[Dict[str, Any]] = Field(default_factory=list)
+    blocked: List[Dict[str, Any]] = Field(default_factory=list)
+    message: Optional[str] = None
 
 # --- 1. User goals ---
 class UserGoal(BaseModel):
@@ -31,6 +59,18 @@ class DatasetProfile(BaseModel):
     n_rows: int = Field(..., description="Row count")
     n_cols: int = Field(..., description="Column count")
     columns: Dict[str, ColumnProfile] = Field(..., description="Per-column profile")
+
+
+class GraphState(TypedDict):
+    # observations must use operator.add for list merging
+    observations: Annotated[list, operator.add]
+
+    current_action: object
+    current_execution: object
+    current_step: int
+    max_steps: int
+    user_request: str
+    workspace_dir: str
 
 # --- 3. Actions and tools ---
 class ToolSpec(BaseModel):

@@ -1,4 +1,3 @@
-from core.analysis_tool_plugins.result_builder import build_analysis_run_for_plugin
 import pandas as pd
 
 from core.analysis_tool_plugins import get_plugin
@@ -35,7 +34,7 @@ def test_inspect_dataset_unified_execute_and_analysis_run():
     assert raw["details"]["total_missing"] >= 1
     assert len(raw["details"]["columns"]) == 2
 
-    run = build_analysis_run_for_plugin(plugin,
+    run = plugin.build_analysis_run(
         action_id="act_test",
         arguments={},
         data_version_id="raw_v1",

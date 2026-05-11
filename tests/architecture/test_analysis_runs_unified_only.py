@@ -1,7 +1,7 @@
 from core.analysis_runs import build_analysis_run_from_observation
 
 
-def test_analysis_runs_unknown_tool_uses_generic_placeholder_plugin():
+def test_analysis_runs_unknown_tool_uses_unified_generic_fallback():
     run = build_analysis_run_from_observation(
         tool_name="unknown_tool_after_migration",
         action_id="act_test",

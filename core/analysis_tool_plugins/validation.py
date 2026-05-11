@@ -4,11 +4,7 @@ from typing import Any, Dict, List, Tuple
 
 from core.analysis_tool_plugins import get_plugin
 from core.schema import VerificationResult
-from core.action_access import (
-    get_action_arguments,
-    get_action_id,
-    get_action_tool_name,
-)
+
 
 def _type_ok(value: Any, expected_type: type) -> bool:
     if expected_type is object:
@@ -216,12 +212,11 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
     This is the only runtime validator that should be used going forward.
     It validates against core.analysis_tool_plugins only.
     """
-    tool_name = get_action_tool_name(action)
-    action_id = get_action_id(action)
+    tool_name = getattr(action, "tool_name", None)
 
     if not tool_name:
         return VerificationResult(
-            action_id=action_id or "unknown",
+            action_id=getattr(action, "action_id", "unknown"),
             status="rejected_recoverable",
             feedback="Error: tool_name is missing.",
             error_code="MISSING_TOOL_NAME",
@@ -232,7 +227,7 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
 
     if plugin is None:
         return VerificationResult(
-            action_id=action_id or "unknown",
+            action_id=getattr(action, "action_id", "unknown"),
             status="rejected_terminal",
             feedback=f"Error: tool '{tool_name}' is not registered in analysis_tool_plugins.",
             error_code="TOOL_NOT_REGISTERED",
@@ -240,11 +235,11 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
         )
 
     schema = plugin.argument_schema
-    raw_arguments = get_action_arguments(action) or {}
+    raw_arguments = getattr(action, "arguments", {}) or {}
 
     if not isinstance(raw_arguments, dict):
         return VerificationResult(
-            action_id=action_id or "unknown",
+            action_id=getattr(action, "action_id", "unknown"),
             status="rejected_recoverable",
             feedback=f"Arguments for tool '{tool_name}' must be a dictionary.",
             error_code="ARGUMENTS_NOT_DICT",
@@ -285,7 +280,7 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
 
     if missing_required or wrong_types or invalid_values or conditional_violations or missing_columns:
         return VerificationResult(
-            action_id=action_id or "unknown",
+            action_id=getattr(action, "action_id", "unknown"),
             status="rejected_recoverable",
             feedback=(
                 f"Tool argument validation failed for '{tool_name}'. "
@@ -305,17 +300,13 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
         )
 
     if canonical_arguments != raw_arguments:
-        if isinstance(action, dict):
-            action["arguments"] = canonical_arguments
-        else:
-            action.arguments = canonical_arguments
+        # Mutate current action deterministically after validation.
+        # This is safe because canonicalization is plugin-owned and non-LLM.
+        action.arguments = canonical_arguments
 
-    requires_confirmation = bool(getattr(plugin, "requires_confirmation", False))
-    mutates_data = bool(getattr(plugin, "mutates_data", False))
-
-    if requires_confirmation or mutates_data:
+    if plugin.requires_confirmation:
         return VerificationResult(
-            action_id=action_id or "unknown",
+            action_id=getattr(action, "action_id", "unknown"),
             status="needs_review",
             feedback=(
                 f"Action '{tool_name}' mutates data or is high-risk; "
@@ -325,13 +316,12 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
             details={
                 "tool_name": tool_name,
                 "canonical_arguments": canonical_arguments,
-                "requires_confirmation": requires_confirmation,
-                "mutates_data": mutates_data,
+                "requires_confirmation": True,
             },
         )
 
     return VerificationResult(
-        action_id=action_id or "unknown",
+        action_id=getattr(action, "action_id", "unknown"),
         status="allowed",
         feedback="Validation passed; executing.",
         error_code=None,
@@ -339,6 +329,5 @@ def validate_plugin_action(action, profile=None) -> VerificationResult:
             "tool_name": tool_name,
             "canonical_arguments": canonical_arguments,
             "requires_confirmation": False,
-            "mutates_data": False,
         },
     )

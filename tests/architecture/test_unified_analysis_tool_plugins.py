@@ -1,6 +1,4 @@
-from core.analysis_tool_plugins.result_builder import build_analysis_run_for_plugin
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
+from core.analysis_tool_plugins.base import AnalysisToolPlugin, ArgumentSchema
 from core.analysis_tool_plugins.registry import register_plugin, get_plugin
 
 
@@ -26,7 +24,7 @@ def test_analysis_tool_plugin_can_build_fallback_analysis_run():
         display_name="Unit Test Tool Plugin Fallback",
     )
 
-    run = build_analysis_run_for_plugin(plugin,
+    run = plugin.build_analysis_run(
         action_id="act_test",
         arguments={},
         data_version_id="raw_v1",

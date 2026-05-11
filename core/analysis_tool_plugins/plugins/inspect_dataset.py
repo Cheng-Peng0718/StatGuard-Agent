@@ -3,22 +3,15 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import pandas as pd
 
-from core.analysis_tool_plugins.base import AnalysisToolPlugin
-from core.analysis_tool_plugins.arguments import ArgumentSchema
-from core.analysis_tool_plugins.display import (
+from core.analysis_tool_plugins.base import (
+    AnalysisToolPlugin,
+    ArgumentSchema,
     DisplayConfig,
     MetricDisplayConfig,
     compact_dict,
     format_number,
 )
 from core.analysis_tool_plugins.registry import register_plugin
-
-from core.analysis_tool_plugins.policies import (
-    EDA_READY_PLANNING,
-    NON_MUTATING_VERSIONING,
-    DEFAULT_LOW_RISK_REPAIR,
-)
-from core.analysis_tool_plugins.planning_contracts import PlanningMetadata
 
 
 MISSING_TOKENS = {
@@ -237,7 +230,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="inspect_dataset",
     display_name="Dataset Inspection",
     requires_confirmation=False,
-
     argument_schema=ArgumentSchema(
         required={},
         optional={},
@@ -245,42 +237,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         column_list_args=[],
         allow_all_columns=False,
     ),
-
     execute=execute_inspect_dataset,
     extractor=extract_inspect_dataset,
     guardrail_evaluators=[],
     display_config=INSPECT_DATASET_DISPLAY,
-
-    # Generic method/planning contract.
-    method_family="eda",
-
-    # Dataset inspection does not require user-selected variables.
-    variable_roles=[],
-
-    planning_policy=EDA_READY_PLANNING,
-
-    planning_metadata=PlanningMetadata(
-        supported_goal_types=[
-            "dataset_overview",
-            "analysis_recommendation",
-            "analysis_planning",
-            "eda",
-        ],
-        planning_tags=[
-            "overview",
-            "schema",
-            "eda",
-        ],
-        default_plan_purpose="Inspect dataset shape, columns, and basic schema.",
-        expected_deliverables=[
-            "dataset_overview",
-        ],
-        plan_order=10,
-    ),
-
-    # Dataset inspection does not mutate data.
-    mutates_data=False,
-    versioning_policy=NON_MUTATING_VERSIONING,
-
-    repair_policy=DEFAULT_LOW_RISK_REPAIR,
 ))
