@@ -17,7 +17,7 @@ def get_observation_data_version(obs):
 
     return None
 
-def format_observation_history(observations, active_data_version_id=None, max_items=20):
+def format_observation_history(observations, active_data_version_id=None, max_items=10):
     lines = []
 
     for obs in (observations or [])[-max_items:]:
@@ -171,37 +171,6 @@ def build_context(step,
         active_data_version_id=active_data_version_id,
     )
 
-    for idx, obs in enumerate(observations):
-        if isinstance(obs, dict):
-            t_name = obs.get("tool_name", "unknown_tool")
-            status = obs.get("status") or obs.get("structured_data", {}).get("status", "unknown")
-            success = obs.get("success") if "success" in obs else obs.get("structured_data", {}).get("success")
-            error_code = obs.get("error_code") or obs.get("structured_data", {}).get("error_code")
-            message = obs.get("message") or obs.get("summary", "")
-            artifacts = obs.get("artifacts") or obs.get("structured_data", {}).get("artifacts", [])
-
-            marker = "✅" if status in ["ok", "warning"] else "❌"
-            history_log += (
-                f"{marker} [step {idx + 1}] tool: {t_name}\n"
-                f"- status: {status}\n"
-                f"- success: {success}\n"
-            )
-
-            if error_code:
-                history_log += f"- error_code: {error_code}\n"
-
-            if message:
-                history_log += f"- message: {str(message)[:500]}\n"
-
-            if artifacts:
-                history_log += f"- artifacts: {artifacts}\n"
-
-            payload = obs.get("structured_data", {}).get("payload")
-            if payload:
-                history_log += f"- key payload: {str(payload)[:800]}\n"
-
-            history_log += "\n"
-
     if not history_log:
         history_log = "No prior executions. This is the first step—choose the first tool to call."
 
@@ -266,11 +235,9 @@ def build_context(step,
         "data_version_id equals the current active_data_version_id.\n"
         "- Observations marked STALE must not be used to answer current numeric questions.\n"
         "- If the needed result is only available from a stale observation, call the appropriate tool again.\n\n"
-        f"History of actions and results:\n{history_log}\n\n"
         f"{deliverable_log}\n"
-        f"Read the history carefully. Do not repeat successful tools with the same intent. "
-        f"If you see a Deliverable Gate warning, satisfy the missing deliverables before final_answer. "
-        f"If you see an intervention warning, change strategy or output final_answer."
+        "Read the history carefully. Do not repeat successful tools with the same intent. "
+        "If you see an intervention warning, change strategy or output final_answer."
     )
 
     return ContextPackage(
