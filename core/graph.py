@@ -301,23 +301,58 @@ def execute_node(state: GraphState):
     # 1. Current action fingerprint
     current_hash = get_action_hash(action.tool_name, action.arguments)
 
-    # 2. Fingerprints from prior observations
+    # 2. Fingerprints from prior successful observations on the same active data version.
+    # Do not block retries after failed/rejected runs.
+    # Do not block reruns after data version changed.
+    active_version_id = state.get("active_data_version_id")
     executed_hashes = []
-    for obs in state.get("observations", []):
-        if isinstance(obs, dict) and obs.get('tool_name'):
-            # Legacy observations without arguments default to {}
-            obs_args = obs.get('arguments', {})
-            executed_hashes.append(get_action_hash(obs['tool_name'], obs_args))
 
-    # 3. Fingerprint gate: block identical parameters
+    for obs in state.get("observations", []):
+        if not isinstance(obs, dict) or not obs.get("tool_name"):
+            continue
+
+        obs_status = obs.get("status")
+        obs_success = obs.get("success")
+        obs_version = obs.get("data_version_id")
+
+        structured = obs.get("structured_data", {}) or {}
+        if obs_version is None and isinstance(structured, dict):
+            obs_version = structured.get("data_version_id")
+
+        if obs_status not in {"ok", "warning"} and obs_success is not True:
+            continue
+
+        if active_version_id and obs_version and obs_version != active_version_id:
+            continue
+
+        obs_args = obs.get("arguments", {}) or {}
+        executed_hashes.append(get_action_hash(obs["tool_name"], obs_args))
+
+    # 3. Fingerprint gate: block identical successful tool calls only.
     if current_hash in executed_hashes:
         error_msg = (
-            f"[System intervention]: 🚫 Execution refused. You are calling '{action.tool_name}' "
-            f"with parameters identical to a previous attempt.\n"
-            f"To retry, change arguments (e.g. add .dropna() in chart code or change cleaning strategy)."
+            f"Duplicate tool call blocked: `{action.tool_name}` was already executed "
+            f"successfully with the same arguments on the current data version. "
+            f"Choose a different tool, different arguments, or provide a final answer from the existing result."
         )
+
         print(f"[Fingerprint gate]: blocked duplicate {action.tool_name} (fp: {current_hash[:6]})")
-        return {"current_execution": error_msg}
+
+        return {
+            "current_execution": {
+                "status": "blocked",
+                "success": False,
+                "error_code": "DUPLICATE_SUCCESSFUL_TOOL_CALL",
+                "message": error_msg,
+                "recoverable": True,
+                "payload": {
+                    "tool_name": action.tool_name,
+                    "arguments": action.arguments,
+                    "active_data_version_id": active_version_id,
+                },
+                "artifacts": [],
+            }
+        }
 
     print(f"[Execute]: {action.tool_name}")
     context_pkg = build_context(
