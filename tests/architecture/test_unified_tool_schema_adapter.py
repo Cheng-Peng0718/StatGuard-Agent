@@ -1,6 +1,6 @@
 from core.analysis_tool_plugins.base import AnalysisToolPlugin, ArgumentSchema
 from core.analysis_tool_plugins.registry import register_plugin
-from tools.tool_schema import validate_tool_call_schema
+from core.analysis_tool_plugins.validation import validate_tool_call_schema
 
 
 def test_unified_plugin_schema_is_used_by_legacy_validator():
@@ -73,7 +73,7 @@ def test_unified_plugin_schema_blocks_missing_required_args():
     assert "y_col" in result["details"]["missing_required_arguments"]
 
 
-def test_legacy_schema_still_works_for_existing_tools():
+def test_existing_plugin_schema_works_for_existing_tools():
     result = validate_tool_call_schema(
         "run_multiple_regression",
         {

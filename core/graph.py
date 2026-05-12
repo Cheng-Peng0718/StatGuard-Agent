@@ -12,7 +12,7 @@ from core.schema import Observation, ContextPackage, VerificationResult
 # Import generate_profile for build_context_node.
 from core.context_builder import build_context, generate_profile
 from agents.supervisor import call_supervisor
-from tools.execution import execute_tool
+from core.analysis_tool_plugins.execution import execute_tool
 import hashlib
 import json
 from core.deliverables import check_deliverables

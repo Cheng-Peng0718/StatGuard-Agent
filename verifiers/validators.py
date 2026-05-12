@@ -1,22 +1,13 @@
-from tools.registry import registry
-from tools.tool_schema import validate_tool_call_schema
-
-
-def _tool_requires_confirmation(tool_spec) -> bool:
-    if tool_spec is None:
-        return False
-
-    if isinstance(tool_spec, dict):
-        return bool(tool_spec.get("requires_confirmation", False))
-
-    return bool(getattr(tool_spec, "requires_confirmation", False))
+from core.analysis_tool_plugins.registry import get_plugin
+from core.analysis_tool_plugins.validation import validate_tool_call_schema
 
 
 def verify(action, profile):
     """
     Verify whether the proposed action is valid and needs human review.
-    Phase 0:
-    1. tool exists
+
+    Stabilized plugin-only mode:
+    1. plugin exists
     2. schema validation
     3. requires_confirmation
     """
@@ -25,22 +16,13 @@ def verify(action, profile):
     if not tool_name:
         return "rejected_recoverable", "Error: tool_name is missing."
 
-    if tool_name not in registry.tools:
-        return "rejected_terminal", f"Error: tool '{tool_name}' is not registered."
+    plugin = get_plugin(tool_name)
 
-    tool_spec = registry.tools[tool_name]
+    if plugin is None:
+        return "rejected_terminal", (
+            f"Error: tool '{tool_name}' is not registered as an analysis tool plugin."
+        )
 
-# ##### DEBUG
-#     print("\n" + "=" * 40)
-#     print("[VERIFIER DEBUG]")
-#     print(f"tool_name = {tool_name}")
-#     print(f"tool_spec = {tool_spec}")
-#     print(f"requires_confirmation = {getattr(tool_spec, 'requires_confirmation', None)}")
-#     print(f"action.arguments = {getattr(action, 'arguments', {})}")
-#     print("=" * 40 + "\n")
-# ##### DEBUG
-
-    # 2. schema validation
     schema_result = validate_tool_call_schema(
         tool_name=tool_name,
         arguments=getattr(action, "arguments", {}) or {},
@@ -56,20 +38,13 @@ def verify(action, profile):
         )
         return "rejected_recoverable", feedback
 
-
-
-    if _tool_requires_confirmation(tool_spec):
-
-        ##### DEBUG
+    if bool(getattr(plugin, "requires_confirmation", False)):
         print(f"[VERIFIER DECISION] {tool_name} -> needs_review")
-        ##### DEBUG
 
         return "needs_review", (
             f"Action '{tool_name}' mutates data or is high-risk; user confirmation is required before execution."
         )
 
-    ##### DEBUG
     print(f"[VERIFIER DECISION] {tool_name} -> allowed")
-    ##### DEBUG
 
     return "allowed", "Validation passed; executing..."

@@ -1,6 +1,9 @@
 from core.analysis_tool_plugins.base import AnalysisToolPlugin
 from core.analysis_tool_plugins.registry import register_plugin
-from tools.registry import ToolRegistry
+from core.analysis_tool_plugins.registry import (
+    get_plugin,
+    get_tool_specs_for_llm,
+)
 
 
 def test_tool_registry_can_register_unified_plugin_as_tool():
@@ -19,19 +22,19 @@ def test_tool_registry_can_register_unified_plugin_as_tool():
         execute=execute_demo,
     )
 
-    registry = ToolRegistry()
-    registry.register_analysis_tool_plugin(plugin)
+    register_plugin(plugin)
 
-    assert "unit_test_unified_tool" in registry.tools
+    registered = get_plugin("unit_test_unified_tool")
 
-    spec = registry.tools["unit_test_unified_tool"]
-    result = spec.func(context=None)
+    assert registered is plugin
+
+    result = registered.run(context=None)
 
     assert result["status"] == "ok"
     assert result["details"]["value"] == 123
 
 
-def test_tool_registry_loads_registered_unified_plugins():
+def test_get_tool_specs_for_llm_lists_registered_plugins():
     def execute_demo(context):
         return {
             "status": "ok",
@@ -49,7 +52,7 @@ def test_tool_registry_loads_registered_unified_plugins():
 
     register_plugin(plugin)
 
-    registry = ToolRegistry()
-    registry.load_all_tools()
+    specs = get_tool_specs_for_llm()
 
-    assert "unit_test_registered_unified_tool" in registry.tools
+    assert "unit_test_registered_unified_tool" in specs
+    assert specs["unit_test_registered_unified_tool"]["display_name"] == "Unit Test Registered Unified Tool"

@@ -43,8 +43,6 @@ def test_gpa_prediction_query_end_to_end(class_survey_workspace: str) -> None:
 
     os.environ.setdefault("LANGGRAPH_ALLOWED_MSGPACK_MODULES", "core.schema")
 
-    import tools.methods  # noqa: F401 — register tools
-
     from core.context_builder import generate_profile
     from core.graph import app
     from core.schema import VerificationResult

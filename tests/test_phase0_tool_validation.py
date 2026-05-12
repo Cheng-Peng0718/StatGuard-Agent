@@ -18,7 +18,6 @@ def _profile():
 
 
 def test_regression_missing_target_col_is_rejected():
-    import tools.methods  # ensure registry populated
 
     action = ActionProposal(
         action_id=f"act_{uuid.uuid4().hex[:8]}",
@@ -35,7 +34,6 @@ def test_regression_missing_target_col_is_rejected():
 
 
 def test_regression_feature_cols_must_be_list():
-    import tools.methods
 
     action = ActionProposal(
         action_id=f"act_{uuid.uuid4().hex[:8]}",
@@ -52,7 +50,6 @@ def test_regression_feature_cols_must_be_list():
 
 
 def test_nonexistent_column_is_rejected():
-    import tools.methods
 
     action = ActionProposal(
         action_id=f"act_{uuid.uuid4().hex[:8]}",
@@ -69,7 +66,6 @@ def test_nonexistent_column_is_rejected():
 
 
 def test_valid_regression_tool_call_passes_validation():
-    import tools.methods
 
     action = ActionProposal(
         action_id=f"act_{uuid.uuid4().hex[:8]}",

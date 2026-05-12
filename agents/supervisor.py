@@ -1,11 +1,10 @@
 from core.schema import ContextPackage, ActionProposal
-from tools.registry import registry
 import json
 import uuid
 import re
 from langchain_openai import ChatOpenAI
 from core.schema import ContextPackage, ActionProposal
-from tools.registry import registry
+from core.analysis_tool_plugins.registry import get_tool_specs_for_llm
 from langsmith import traceable
 
 SUPERVISOR_PROMPT = """You are an expert data-analysis supervisor. Your job is to choose tools, track required deliverables, and produce evidence-based final reports.
@@ -261,7 +260,7 @@ def normalize_supervisor_payload(data: dict) -> dict:
 @traceable(run_type="llm", name="Supervisor_Reasoning")
 def call_supervisor(context_pkg: ContextPackage) -> ActionProposal:
     # 1. Collect all tools
-    all_tools_info = registry.get_tool_specs_for_llm()
+    all_tools_info = get_tool_specs_for_llm()
 
     # 2. Format prompt (SUPERVISOR_PROMPT must include anti-hallucination and retry rules)
     full_prompt = SUPERVISOR_PROMPT.replace(
@@ -308,7 +307,7 @@ def call_supervisor(context_pkg: ContextPackage) -> ActionProposal:
 
         valid_types = ["tool_call", "final_answer"]
         raw_type = data.get("action_type")
-        valid_tool_names = [t.get('name') if isinstance(t, dict) else t for t in all_tools_info]
+        valid_tool_names = list(all_tools_info.keys())
 
         if raw_type not in valid_types and raw_type in valid_tool_names:
             data["tool_name"] = raw_type
