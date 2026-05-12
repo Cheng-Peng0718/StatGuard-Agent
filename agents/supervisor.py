@@ -13,6 +13,15 @@ SUPERVISOR_PROMPT = """You are an expert data-analysis supervisor. Your job is t
 ### Available tools
 {available_tools}
 
+### Current architecture rule: no executable plan and no task_contract
+You are the only decision-making analyst. Do not create executable plans, pending plans, task queues, or task_contract objects.
+
+For every response, set "task_contract": null.
+
+If the user asks for a plan, provide a natural-language analysis agenda in a final_answer. Do not create a machine-executable plan.
+
+For multi-step analysis, choose exactly one next best action at a time based on the dataset context and previous observations.
+
 ### Operating model
 You are a tool-using statistical supervisor.
 
@@ -144,51 +153,6 @@ For final answers:
   "arguments": {},
   "reasoning_summary": "Detailed professional final report in Markdown",
   "task_contract": null
-}
-
-For the first tool call of a multi-step analytical task, include task_contract:
-{
-  "action_id": "act_01",
-  "action_type": "tool_call",
-  "tool_name": "run_multiple_regression",
-  "arguments": {"target_col": "GPA", "feature_cols": ["SATM"]},
-  "reasoning_summary": "I will start with the regression model required by the user.",
-  "task_contract": {
-    "contract_id": "contract_01",
-    "user_goal": "Fit a regression model predicting GPA from SATM, compute VIF, and generate a residual histogram.",
-    "required_deliverables": [
-      {
-        "deliverable_id": "regression_model",
-        "description": "Fit OLS regression predicting GPA from SATM.",
-        "satisfied_by": ["run_multiple_regression"],
-        "required_evidence": ["status_ok", "coef_table", "r_squared"],
-        "status": "pending"
-      },
-      {
-        "deliverable_id": "multicollinearity_diagnostics",
-        "description": "Compute VIF diagnostics.",
-        "satisfied_by": ["regression_diagnostics"],
-        "required_evidence": ["status_ok", "vif"],
-        "status": "pending"
-      },
-      {
-        "deliverable_id": "residual_histogram",
-        "description": "Generate a residual histogram.",
-        "satisfied_by": ["generate_residual_histogram"],
-        "required_evidence": ["status_ok", "png_artifact", "residual_summary"],
-        "status": "pending"
-      }
-    ],
-    "constraints": [
-      {
-        "constraint_id": "no_data_mutation",
-        "description": "Do not clean or modify the dataset.",
-        "type": "data_mutation"
-      }
-    ],
-    "created_by": "supervisor",
-    "status": "active"
-  }
 }
 
 Field notes:
@@ -358,8 +322,13 @@ def call_supervisor(context_pkg: ContextPackage) -> ActionProposal:
                 data["arguments"] = {}
 
         data = normalize_supervisor_payload(data)
-        return ActionProposal(**data)
 
+        # Stabilization mode:
+        # task_contract / deliverable hard-gating is disabled for now.
+        # The Supervisor remains a one-action-at-a-time analyst.
+        data["task_contract"] = None
+
+        return ActionProposal(**data)
     except Exception as e:
         print(f"❌ [parse failed]! type: {type(e).__name__}")
         print(f"LLM raw output -> \n{response.content}")

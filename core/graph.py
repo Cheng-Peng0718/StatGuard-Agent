@@ -80,21 +80,25 @@ def supervisor_node(state: GraphState):
     print(f"[Reasoning summary]: {action.reasoning_summary}")
     print("=" * 40 + "\n")
 
-    contract = getattr(action, "task_contract", None)
-    if contract is not None:
-        if hasattr(contract, "model_dump"):
-            contract_dict = contract.model_dump()
-        elif isinstance(contract, dict):
-            contract_dict = contract
-        else:
-            contract_dict = {}
+    # Stabilization mode:
+    # task_contract is disabled. The Supervisor should operate one action at a time.
+    # Do not persist task_contract into graph state.
 
-        print(
-            f"[TASK CONTRACT DECLARED] "
-            f"deliverables={len(contract_dict.get('required_deliverables', []))}"
-        )
-
-        updates["task_contract"] = contract_dict
+    # contract = getattr(action, "task_contract", None)
+    # if contract is not None:
+    #     if hasattr(contract, "model_dump"):
+    #         contract_dict = contract.model_dump()
+    #     elif isinstance(contract, dict):
+    #         contract_dict = contract
+    #     else:
+    #         contract_dict = {}
+    #
+    #     print(
+    #         f"[TASK CONTRACT DECLARED] "
+    #         f"deliverables={len(contract_dict.get('required_deliverables', []))}"
+    #     )
+    #
+    #     updates["task_contract"] = contract_dict
 
     return updates
 
