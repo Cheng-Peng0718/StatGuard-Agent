@@ -537,7 +537,7 @@ def summarize_node(state: GraphState):
     }
 
     # Phase 3: append successful tool result to Analysis Results registry
-    if status in {"ok", "warning"} and tool_name not in {"unknown_tool"}:
+    if status in {"ok", "warning", "blocked"} and tool_name not in {"unknown_tool"}:
         analysis_run = build_analysis_run_from_observation(
             tool_name=tool_name,
             action_id=getattr(current_action, "action_id", "unknown"),

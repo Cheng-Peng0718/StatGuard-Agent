@@ -463,12 +463,34 @@ class AnalysisToolPlugin:
         if message:
             default_summary += f" {message}"
 
-        title, summary, metrics, tables, metadata = self.extract(
-            payload=payload,
-            arguments=arguments,
-            default_title=default_title,
-            default_summary=default_summary,
-        )
+        if status in {"blocked", "failed"}:
+            title = default_title
+
+            if status == "blocked":
+                title = f"{default_title} (Blocked)"
+            elif status == "failed":
+                title = f"{default_title} (Failed)"
+
+            summary = default_summary
+            metrics = {
+                "status": status,
+                "success": success,
+            }
+
+            tables = {}
+            if payload:
+                tables["details"] = payload
+
+            metadata = {
+                "blocked_or_failed": True,
+            }
+        else:
+            title, summary, metrics, tables, metadata = self.extract(
+                payload=payload,
+                arguments=arguments,
+                default_title=default_title,
+                default_summary=default_summary,
+            )
 
         report_blocks = build_generic_report_blocks(
             summary=summary,
