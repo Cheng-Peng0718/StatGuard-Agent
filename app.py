@@ -21,7 +21,7 @@ if "thread_id" not in st.session_state:
     st.session_state.thread_id = str(uuid.uuid4())
 
 st.set_page_config(page_title="AI Data Analyst", page_icon="📊", layout="wide")
-st.title("SQL-backed LLM Statistical Analysis Agent")
+st.title("SQL-backed LLM Business Analytics Agent")
 
 if "session_id" not in st.session_state:
     st.session_state.session_id = f"web_{uuid.uuid4().hex[:8]}"
