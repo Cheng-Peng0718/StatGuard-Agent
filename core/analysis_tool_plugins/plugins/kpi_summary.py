@@ -103,6 +103,37 @@ def _clean_float(value: Any) -> float | None:
     return numeric
 
 
+def _is_identifier_like_column(col: str) -> bool:
+    lower = str(col).lower()
+
+    identifier_patterns = [
+        "id",
+        "_id",
+        "id_",
+        "customer_id",
+        "order_id",
+        "product_id",
+        "user_id",
+        "account_id",
+        "transaction_id",
+        "record_id",
+    ]
+
+    if lower in identifier_patterns:
+        return True
+
+    if lower.endswith("_id"):
+        return True
+
+    if lower.startswith("id_"):
+        return True
+
+    if lower == "id":
+        return True
+
+    return False
+
+
 def _infer_metric_columns(df: pd.DataFrame, limit: int = 8) -> list[str]:
     numeric_cols = [
         str(col)
@@ -110,6 +141,14 @@ def _infer_metric_columns(df: pd.DataFrame, limit: int = 8) -> list[str]:
     ]
 
     if not numeric_cols:
+        return []
+
+    metric_candidates = [
+        col for col in numeric_cols
+        if not _is_identifier_like_column(col)
+    ]
+
+    if not metric_candidates:
         return []
 
     priority_terms = [
@@ -129,14 +168,22 @@ def _infer_metric_columns(df: pd.DataFrame, limit: int = 8) -> list[str]:
         "rate",
     ]
 
-    def score(col: str) -> tuple[int, int, str]:
+    def score(col: str) -> tuple[int, str]:
         lower = col.lower()
         matched = any(term in lower for term in priority_terms)
-        id_like = lower.endswith("_id") or lower == "id" or "id" in lower.split("_")
-        return (0 if matched else 1, 1 if id_like else 0, lower)
+        return (0 if matched else 1, lower)
 
-    return sorted(numeric_cols, key=score)[:limit]
+    return sorted(metric_candidates, key=score)[:limit]
 
+def _infer_id_columns(df: pd.DataFrame, limit: int = 5) -> list[str]:
+    columns = [str(col) for col in df.columns]
+
+    id_candidates = [
+        col for col in columns
+        if _is_identifier_like_column(col)
+    ]
+
+    return id_candidates[:limit]
 
 def _validate_columns(df: pd.DataFrame, columns: list[str]) -> list[str]:
     return [col for col in columns if col not in df.columns]
@@ -185,7 +232,10 @@ def execute_kpi_summary(context) -> Dict[str, Any]:
         else:
             metric_columns = _infer_metric_columns(df, limit=max_metrics)
 
-        id_columns = [str(col) for col in id_columns]
+        if id_columns:
+            id_columns = [str(col) for col in id_columns]
+        else:
+            id_columns = _infer_id_columns(df)
 
         missing = _validate_columns(df, metric_columns + id_columns)
         if missing:

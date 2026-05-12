@@ -89,6 +89,8 @@ def test_kpi_summary_infers_numeric_metrics(tmp_path):
 
     assert result["status"] == "ok"
     assert "total_revenue" in result["details"]["metric_columns"]
+    assert "customer_id" not in result["details"]["metric_columns"]
+    assert "customer_id" in result["details"]["id_columns"]
 
 
 def test_kpi_summary_blocks_missing_column(tmp_path):
