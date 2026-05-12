@@ -485,7 +485,7 @@ if (is_new_task or is_resuming) and not is_interrupted:
 
             state_input = {
                 "user_request": st.session_state.messages[-1]["content"],
-                "max_steps": 30,
+                "max_steps": 20,
                 "workspace_dir": st.session_state.get("workspace", "./"),
                 "dataset_profile": profile_dict,
                 "deliverable_gate_attempts": 0,

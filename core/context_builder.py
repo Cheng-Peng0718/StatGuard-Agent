@@ -17,6 +17,89 @@ def get_observation_data_version(obs):
 
     return None
 
+####### HELPER ########
+
+def _sql_observation_extra(obs: dict) -> str:
+    """
+    Return compact SQL-specific context for the Supervisor.
+
+    SQL observations are not tied to the active DataFrame data_version_id,
+    so they must be exposed even when version_status is UNKNOWN_VERSION.
+    Keep this compact: do not dump full previews or large payloads.
+    """
+    tool_name = obs.get("tool_name")
+    structured = obs.get("structured_data", {}) or {}
+
+    payload = {}
+    if isinstance(structured, dict):
+        payload = structured.get("payload", {}) or {}
+
+    if not isinstance(payload, dict):
+        return ""
+
+    if tool_name == "inspect_sql_schema":
+        compact_schema = payload.get("compact_schema")
+
+        if compact_schema:
+            return f"\n  SQL schema: {compact_schema}"
+
+        tables = payload.get("tables", [])
+        if isinstance(tables, list):
+            parts = []
+
+            for table in tables:
+                if not isinstance(table, dict):
+                    continue
+
+                table_name = table.get("table_name")
+                columns = table.get("columns", [])
+
+                column_names = [
+                    col.get("column_name")
+                    for col in columns
+                    if isinstance(col, dict) and col.get("column_name")
+                ]
+
+                if table_name and column_names:
+                    parts.append(f"{table_name}({', '.join(column_names)})")
+
+            if parts:
+                return f"\n  SQL schema: {'; '.join(parts)}"
+
+    if tool_name in {"run_sql_query", "materialize_sql_query_result"}:
+        extras = []
+
+        query = payload.get("query")
+        if query:
+            extras.append(f"SQL query: {query}")
+
+        columns = payload.get("columns")
+        if columns:
+            extras.append(f"SQL result columns: {columns}")
+
+        n_rows = payload.get("n_rows") or payload.get("n_rows_returned")
+        n_cols = payload.get("n_cols") or payload.get("n_cols_returned")
+        if n_rows is not None or n_cols is not None:
+            extras.append(f"SQL result shape: rows={n_rows}, cols={n_cols}")
+
+        new_data_version_id = (
+            payload.get("new_data_version_id")
+            or payload.get("data_version_update", {}).get("active_data_version_id")
+            if isinstance(payload.get("data_version_update"), dict)
+            else None
+        )
+        if new_data_version_id:
+            extras.append(f"materialized_data_version_id: {new_data_version_id}")
+
+        error_message = payload.get("error_message")
+        if error_message:
+            extras.append(f"SQL error: {error_message}")
+
+        if extras:
+            return "\n  " + "\n  ".join(extras)
+
+    return ""
+
 def format_observation_history(observations, active_data_version_id=None, max_items=10):
     lines = []
 
@@ -39,14 +122,27 @@ def format_observation_history(observations, active_data_version_id=None, max_it
         else:
             version_status = "UNKNOWN_VERSION"
 
-        lines.append(
+        line = (
             f"- tool={tool_name}, status={status}, success={success}, "
             f"data_version_id={obs_version}, version_status={version_status}, "
             f"message={message}, summary={summary}"
         )
 
-        # 关键：只有 CURRENT observation 才允许暴露 payload
-        if version_status == "CURRENT":
+        # SQL-specific compact context should be visible even when there is
+        # no active DataFrame data version.
+        sql_extra = _sql_observation_extra(obs)
+        if sql_extra:
+            line += sql_extra
+
+        lines.append(line)
+
+        # Only expose general payload for CURRENT DataFrame observations.
+        # Do not expose full SQL payload here; SQL tools are summarized above.
+        if version_status == "CURRENT" and tool_name not in {
+            "inspect_sql_schema",
+            "run_sql_query",
+            "materialize_sql_query_result",
+        }:
             structured = obs.get("structured_data", {})
             payload = structured.get("payload") if isinstance(structured, dict) else None
 
@@ -60,7 +156,6 @@ def format_observation_history(observations, active_data_version_id=None, max_it
             )
 
     return "\n".join(lines) if lines else "No previous observations."
-
 
 def generate_profile(file_path: str) -> DatasetProfile:
     """Build a dataset profile report (multiple formats supported)."""

@@ -291,11 +291,111 @@ def _format_report_block_markdown(block: Dict[str, Any]) -> str:
 
     return "\n".join(lines)
 
+def _extract_payload_from_run(run: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extract canonical payload from an AnalysisRun.
+
+    Newer runs may store payload directly. Older/generic runs may store it
+    inside a report block titled 'Payload' with type='json'.
+    """
+    payload = run.get("payload")
+
+    if isinstance(payload, dict):
+        return payload
+
+    for block in run.get("report_blocks", []) or []:
+        if not isinstance(block, dict):
+            continue
+
+        title = str(block.get("title", "")).strip().lower()
+        block_type = block.get("type")
+
+        if block_type == "json" and title == "payload":
+            content = block.get("content", {})
+            if isinstance(content, dict):
+                return content
+
+    return {}
+
+def _render_sql_schema_summary(payload: dict) -> str:
+    tables = payload.get("tables", [])
+
+    if isinstance(tables, list) and tables:
+        lines = ["### SQL Schema Summary", ""]
+
+        for table in tables:
+            if not isinstance(table, dict):
+                continue
+
+            table_name = table.get("table_name")
+            row_count = table.get("row_count")
+            columns = table.get("columns", [])
+
+            column_names = [
+                col.get("column_name")
+                for col in columns
+                if isinstance(col, dict) and col.get("column_name")
+            ]
+
+            lines.append(
+                f"- **{table_name}** "
+                f"({row_count} rows): `{', '.join(column_names)}`"
+            )
+
+        return "\n".join(lines)
+
+    compact_schema = payload.get("compact_schema")
+
+    if compact_schema:
+        return (
+            "### SQL Schema Summary\n\n"
+            f"`{compact_schema}`\n"
+        )
+
+    return ""
+
+def _render_sql_materialization_summary(payload: dict) -> str:
+    query = payload.get("query", "")
+    result_name = payload.get("result_name", "sql_query_result")
+    new_data_version_id = payload.get("new_data_version_id")
+    n_rows = payload.get("n_rows")
+    n_cols = payload.get("n_cols")
+    columns = payload.get("columns", [])
+    database_path = payload.get("database_path")
+    parquet_path = payload.get("parquet_path")
+
+    if not isinstance(columns, list):
+        columns = []
+
+    lines = [
+        "### SQL Query Materialization",
+        "",
+        f"- **Result name:** `{result_name}`",
+        f"- **Source database:** `{database_path}`",
+        f"- **Produced data version:** `{new_data_version_id}`",
+        f"- **Shape:** {n_rows} rows × {n_cols} columns",
+        f"- **Columns:** `{', '.join(str(c) for c in columns)}`",
+    ]
+
+    if parquet_path:
+        lines.append(f"- **Workspace parquet:** `{parquet_path}`")
+
+    if query:
+        lines.append("")
+        lines.append("**SQL query used:**")
+        lines.append("")
+        lines.append("```sql")
+        lines.append(query.strip())
+        lines.append("```")
+
+    return "\n".join(lines)
+
 def _format_analysis_run_markdown(run: Dict[str, Any], index: int) -> str:
     title = run.get("title") or run.get("tool_name") or f"Analysis Run {index}"
     status = run.get("status", "unknown")
     data_version_id = run.get("data_version_id")
     tool_name = run.get("tool_name", "unknown")
+    payload = _extract_payload_from_run(run)
 
     lines: List[str] = []
 
@@ -305,9 +405,51 @@ def _format_analysis_run_markdown(run: Dict[str, Any], index: int) -> str:
     lines.append("| Field | Value |")
     lines.append("|---|---|")
     lines.append(f"| Status | {status} |")
-    lines.append(f"| Data version | `{data_version_id}` |")
+
+    if tool_name == "materialize_sql_query_result":
+        produced_version = payload.get("new_data_version_id")
+
+        lines.append(f"| Input data version | `{data_version_id or 'N/A'}` |")
+        lines.append(f"| Produced data version | `{produced_version or 'N/A'}` |")
+
+    else:
+        lines.append(f"| Data version | `{data_version_id or 'N/A'}` |")
+
     lines.append(f"| Tool | `{tool_name}` |")
     lines.append("")
+
+    # SQL-specific report rendering.
+    # These are presentation adapters, not analysis/planning rules.
+    # They prevent raw internal JSON from dominating the human-facing report.
+    if tool_name == "inspect_sql_schema":
+        rendered = _render_sql_schema_summary(payload)
+        if rendered:
+            lines.append(rendered)
+            lines.append("")
+        else:
+            summary = run.get("summary")
+            if summary:
+                lines.append("### Summary")
+                lines.append("")
+                lines.append(str(summary))
+                lines.append("")
+
+        return "\n".join(lines)
+
+    if tool_name == "materialize_sql_query_result":
+        rendered = _render_sql_materialization_summary(payload)
+        if rendered:
+            lines.append(rendered)
+            lines.append("")
+        else:
+            summary = run.get("summary")
+            if summary:
+                lines.append("### Summary")
+                lines.append("")
+                lines.append(str(summary))
+                lines.append("")
+
+        return "\n".join(lines)
 
     blocks = run.get("report_blocks", []) or []
 
@@ -838,6 +980,16 @@ pre {{
     border-radius: 12px;
     overflow-x: auto;
     font-size: 13px;
+}}
+
+pre code {{
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+    display: block;
+    white-space: pre;
 }}
 
 strong {{

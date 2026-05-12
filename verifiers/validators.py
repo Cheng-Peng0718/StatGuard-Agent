@@ -13,7 +13,11 @@ def verify(action, profile):
     """
     tool_name = action.tool_name
 
-    SQL_TOOLS = {"inspect_sql_schema", "run_sql_query"}
+    SQL_TOOLS = {
+        "inspect_sql_schema",
+        "run_sql_query",
+        "materialize_sql_query_result",
+    }
 
     if profile is None and tool_name not in SQL_TOOLS:
         return "rejected_recoverable", (

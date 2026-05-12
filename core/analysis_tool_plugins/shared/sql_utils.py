@@ -8,6 +8,7 @@ from typing import Any
 import duckdb
 import sqlglot
 from sqlglot import exp
+import hashlib
 
 
 FORBIDDEN_SQL_NODES = (
@@ -118,3 +119,21 @@ def dataframe_preview_payload(df, *, max_preview_rows: int = 20) -> dict[str, An
         "preview": preview_df.to_dict(orient="records"),
         "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
     }
+
+def sql_query_hash(query: str) -> str:
+    normalized = " ".join((query or "").strip().split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+
+
+def strip_sql_semicolon(query: str) -> str:
+    return (query or "").strip().rstrip(";")
+
+
+def count_query_rows(query: str) -> str:
+    query = strip_sql_semicolon(query)
+    return f"SELECT COUNT(*) AS n_rows FROM ({query}) AS _agent_count_result"
+
+
+def materialization_query(query: str) -> str:
+    query = strip_sql_semicolon(query)
+    return f"SELECT * FROM ({query}) AS _agent_materialized_result"

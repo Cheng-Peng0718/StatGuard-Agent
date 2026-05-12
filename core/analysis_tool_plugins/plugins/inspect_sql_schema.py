@@ -66,14 +66,36 @@ def _execute(context) -> dict[str, Any]:
 
         con.close()
 
+        compact_schema_parts = []
+
+        for table_summary in table_summaries:
+            table_name = table_summary.get("table_name")
+            columns = table_summary.get("columns", [])
+
+            column_names = [
+                col.get("column_name")
+                for col in columns
+                if isinstance(col, dict) and col.get("column_name")
+            ]
+
+            compact_schema_parts.append(
+                f"{table_name}({', '.join(column_names)})"
+            )
+
+        compact_schema = "; ".join(compact_schema_parts)
+
         return {
             "status": "ok",
-            "message": f"Inspected SQL schema for {len(tables)} table(s).",
+            "message": (
+                f"Inspected SQL schema for {len(tables)} table(s). "
+                f"Schema: {compact_schema}"
+            ),
             "recoverable": False,
             "details": {
                 "database_path": resolved_path,
                 "n_tables": len(tables),
                 "tables": table_summaries,
+                "compact_schema": compact_schema,
             },
             "artifacts": [],
         }
