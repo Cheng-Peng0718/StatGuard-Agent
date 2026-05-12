@@ -614,18 +614,14 @@ def planner_node(state: GraphState):
 
 def router_gate(state: GraphState):
     """
-    Route after build_context: planner vs supervisor.
+    Current architecture decision:
+    all analytical decisions go through the Supervisor.
+
+    The old planner_node is a historical stub and must not drive execution.
+    We keep the node in the graph for compatibility, but the active route is
+    always build_context -> supervisor.
     """
-    if state.get("analysis_plan") or state.get("current_step", 0) > 1:
-        return "supervisor"
-
-    route_decision = call_llm_to_route(state)
-
-    if "PLANNER" in route_decision:
-        return "planner"
-
     return "supervisor"
-
 
 def sanitize_results(obj):
     """
