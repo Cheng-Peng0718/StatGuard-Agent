@@ -101,6 +101,33 @@ def _execute(context) -> dict[str, Any]:
 run_sql_query_plugin = AnalysisToolPlugin(
     tool_name="run_sql_query",
     display_name="Run Safe SQL Query",
+    description="Run a read-only SQL SELECT/WITH query against a DuckDB database and return a preview-style result.",
+    usage_guidance=(
+        "Use this for SQL previews, KPI summaries, trend summaries, top-N results, "
+        "and business metric queries that do not need to become the active DataFrame dataset."
+    ),
+    use_when=[
+        "The user asks for a SQL-derived metric or summary such as revenue by month, top products, or customer counts.",
+        "The user wants to preview rows or check a query result.",
+        "The result can be answered directly from a small SQL output.",
+    ],
+    do_not_use_when=[
+        "The user wants the SQL query result to become the active dataset for downstream DataFrame/statistical tools; use materialize_sql_query_result instead.",
+        "The user asks about the active/current/materialized DataFrame dataset.",
+        "The query would mutate data.",
+        "The database path is missing or looks like a placeholder.",
+    ],
+    requires_data_source="sql",
+    produces_active_dataset=False,
+    examples=[
+        {
+            "user_request": "Using demo_data/ecommerce_demo.duckdb, calculate monthly revenue.",
+            "arguments": {
+                "database_path": "demo_data/ecommerce_demo.duckdb",
+                "query": "SELECT DATE_TRUNC('month', o.order_date::DATE) AS month, SUM(oi.net_revenue) AS revenue FROM orders o JOIN order_items oi ON o.order_id = oi.order_id GROUP BY 1 ORDER BY 1",
+            },
+        }
+    ],
     execute=_execute,
     argument_schema=ArgumentSchema(
         required={

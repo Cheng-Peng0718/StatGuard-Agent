@@ -1,8 +1,40 @@
 from core.analysis_tool_plugins.registry import get_plugin
 from core.analysis_tool_plugins.validation import validate_tool_call_schema
+from pathlib import Path
 
+def _has_active_dataframe_dataset(profile=None, state=None) -> bool:
+    """
+    A DataFrame dataset is available if either:
+    1. dataset_profile exists, or
+    2. active_data_version_id points to a data version with an existing file path.
+    """
+    if profile is not None:
+        return True
 
-def verify(action, profile):
+    if not isinstance(state, dict):
+        return False
+
+    active_id = state.get("active_data_version_id")
+    data_versions = state.get("data_versions", []) or []
+
+    if not active_id:
+        return False
+
+    for version in data_versions:
+        if not isinstance(version, dict):
+            continue
+
+        if version.get("version_id") != active_id:
+            continue
+
+        path = version.get("path")
+
+        if path and Path(path).exists():
+            return True
+
+    return False
+
+def verify(action, profile=None, state=None):
     """
     Verify whether the proposed action is valid and needs human review.
 
@@ -13,19 +45,6 @@ def verify(action, profile):
     """
     tool_name = action.tool_name
 
-    SQL_TOOLS = {
-        "inspect_sql_schema",
-        "run_sql_query",
-        "materialize_sql_query_result",
-        "groupby_summary",
-    }
-
-    if profile is None and tool_name not in SQL_TOOLS:
-        return "rejected_recoverable", (
-            "No in-memory CSV/DataFrame dataset is loaded. "
-            "Use SQL tools if the user provided a database path, "
-            "or ask the user to upload a dataset before using DataFrame-specific tools."
-        )
 
     if not tool_name:
         return "rejected_recoverable", "Error: tool_name is missing."
@@ -35,6 +54,18 @@ def verify(action, profile):
     if plugin is None:
         return "rejected_terminal", (
             f"Error: tool '{tool_name}' is not registered as an analysis tool plugin."
+        )
+
+    requires_data_source = getattr(plugin, "requires_data_source", "any")
+
+    if requires_data_source == "dataframe" and not _has_active_dataframe_dataset(
+            profile=profile,
+            state=state,
+    ):
+        return "rejected_recoverable", (
+            f"Tool `{tool_name}` requires an active DataFrame dataset, "
+            "but no active workspace dataset is currently available. "
+            "Upload a dataset or materialize a SQL query result first."
         )
 
     schema_result = validate_tool_call_schema(

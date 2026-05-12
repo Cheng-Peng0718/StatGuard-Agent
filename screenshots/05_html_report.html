@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Data Analysis Report</title>
+<style>
+:root {
+    --bg: #f6f7fb;
+    --paper: #ffffff;
+    --text: #111827;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-soft: #eff6ff;
+    --code-bg: #f3f4f6;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    line-height: 1.6;
+}
+
+.report-container {
+    max-width: 980px;
+    margin: 40px auto;
+    padding: 0 24px;
+}
+
+.report-paper {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 44px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+h1 {
+    font-size: 34px;
+    line-height: 1.2;
+    margin: 0 0 28px;
+    letter-spacing: -0.03em;
+}
+
+h2 {
+    font-size: 24px;
+    margin-top: 42px;
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    letter-spacing: -0.02em;
+}
+
+h3 {
+    font-size: 19px;
+    margin-top: 28px;
+    margin-bottom: 12px;
+}
+
+h4 {
+    font-size: 16px;
+    margin-top: 18px;
+    margin-bottom: 8px;
+}
+
+p {
+    margin: 8px 0 14px;
+}
+
+ul {
+    margin: 10px 0 18px 22px;
+    padding: 0;
+}
+
+li {
+    margin: 6px 0;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0 24px;
+    font-size: 14px;
+    overflow: hidden;
+    border-radius: 10px;
+}
+
+thead {
+    background: var(--accent-soft);
+}
+
+th, td {
+    border: 1px solid var(--border);
+    padding: 9px 11px;
+    text-align: left;
+    vertical-align: top;
+}
+
+th {
+    color: #1e3a8a;
+    font-weight: 700;
+}
+
+code {
+    background: var(--code-bg);
+    padding: 2px 5px;
+    border-radius: 5px;
+    font-size: 0.92em;
+}
+
+pre {
+    background: #0f172a;
+    color: #e5e7eb;
+    padding: 16px;
+    border-radius: 12px;
+    overflow-x: auto;
+    font-size: 13px;
+}
+
+pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+    display: block;
+    white-space: pre;
+}
+
+strong {
+    font-weight: 700;
+}
+
+.figure-block {
+    margin: 18px 0 34px;
+}
+
+.figure-block h4 {
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.report-image {
+    width: 100%;
+    max-width: 820px;
+    display: block;
+    margin: 16px auto 32px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+@media print {
+    body {
+        background: white;
+    }
+
+    .report-container {
+        margin: 0;
+        max-width: none;
+        padding: 0;
+    }
+
+    .report-paper {
+        box-shadow: none;
+        border: none;
+        border-radius: 0;
+    }
+}
+</style>
+</head>
+<body>
+<div class="report-container">
+  <article class="report-paper">
+    <h1>Data Analysis Report</h1>
+<h2>Analysis Request</h2>
+<p>Compare total_revenue by region in the active dataset.</p>
+<h2>Executive Summary</h2>
+<p>This report uses data version <code>data_v_29acb4da</code>, with 98 rows and 5 columns.</p>
+<p>Key summary:</p>
+<ul>
+<li>Completed analysis runs: <strong>3</strong>.</li>
+<li>Guardrails identified <strong>0</strong> critical and <strong>0</strong> warning-level issue(s).</li>
+</ul>
+<h2>Data Provenance</h2>
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Active data version</td>
+<td><code>data_v_29acb4da</code></td>
+</tr>
+<tr>
+<td>Parent version</td>
+<td>N/A</td>
+</tr>
+<tr>
+<td>Rows</td>
+<td>98</td>
+</tr>
+<tr>
+<td>Columns</td>
+<td>5</td>
+</tr>
+<tr>
+<td>Operation</td>
+<td><code>materialize_sql_query_result</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Data Audit Trail</h3>
+<table>
+<thead><tr>
+<th>Event</th>
+<th>Version</th>
+<th>Parent</th>
+<th>Description</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>sql_query_materialized</td>
+<td><code>data_v_29acb4da</code></td>
+<td>N/A</td>
+<td>Materialized SQL query result <code>customer_level_revenue</code> from demo_data\ecommerce_demo.duckdb into workspace data version data_v_29acb4da.</td>
+</tr>
+</tbody>
+</table>
+<h2>Analysis Results</h2>
+<h2>1. Inspect SQL Database Schema</h2>
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Status</td>
+<td>ok</td>
+</tr>
+<tr>
+<td>Data version</td>
+<td><code>N/A</code></td>
+</tr>
+<tr>
+<td>Tool</td>
+<td><code>inspect_sql_schema</code></td>
+</tr>
+</tbody>
+</table>
+<h3>SQL Schema Summary</h3>
+<ul>
+<li><strong>customers</strong> (100 rows): <code>customer_id, region, segment, signup_month</code></li>
+<li><strong>order_items</strong> (1247 rows): <code>order_id, product_id, quantity, discount, net_revenue</code></li>
+<li><strong>orders</strong> (500 rows): <code>order_id, customer_id, order_date, channel</code></li>
+<li><strong>products</strong> (5 rows): <code>product_id, category, price</code></li>
+</ul>
+<h2>2. Materialize SQL Query Result</h2>
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Status</td>
+<td>ok</td>
+</tr>
+<tr>
+<td>Input data version</td>
+<td><code>N/A</code></td>
+</tr>
+<tr>
+<td>Produced data version</td>
+<td><code>data_v_29acb4da</code></td>
+</tr>
+<tr>
+<td>Tool</td>
+<td><code>materialize_sql_query_result</code></td>
+</tr>
+</tbody>
+</table>
+<h3>SQL Query Materialization</h3>
+<ul>
+<li><strong>Result name:</strong> <code>customer_level_revenue</code></li>
+<li><strong>Source database:</strong> <code>demo_data\ecommerce_demo.duckdb</code></li>
+<li><strong>Produced data version:</strong> <code>data_v_29acb4da</code></li>
+<li><strong>Shape:</strong> 98 rows × 5 columns</li>
+<li><strong>Columns:</strong> <code>customer_id, region, segment, number_of_orders, total_revenue</code></li>
+<li><strong>Workspace parquet:</strong> <code>workspaces\web_ab81c271\data_versions\data_v_29acb4da.parquet</code></li>
+</ul>
+<p><strong>SQL query used:</strong></p>
+<pre><code>SELECT c.customer_id, c.region, c.segment, COUNT(DISTINCT o.order_id) AS number_of_orders, SUM(oi.net_revenue) AS total_revenue FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_items oi ON o.order_id = oi.order_id GROUP BY c.customer_id, c.region, c.segment</code></pre>
+<h2>3. Groupby Summary</h2>
+<table>
+<thead><tr>
+<th>Field</th>
+<th>Value</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>Status</td>
+<td>ok</td>
+</tr>
+<tr>
+<td>Data version</td>
+<td><code>data_v_29acb4da</code></td>
+</tr>
+<tr>
+<td>Tool</td>
+<td><code>groupby_summary</code></td>
+</tr>
+</tbody>
+</table>
+<h3>Groupby Summary</h3>
+<ul>
+<li><strong>Grouping columns:</strong> <code>region</code></li>
+<li><strong>Value column:</strong> <code>total_revenue</code></li>
+<li><strong>Groups returned:</strong> 4</li>
+<li><strong>Rows used:</strong> 98</li>
+</ul>
+<table>
+<thead><tr>
+<th>Region</th>
+<th>Count total revenue</th>
+<th>Sum total revenue</th>
+<th>Mean total revenue</th>
+<th>Median total revenue</th>
+</tr></thead>
+<tbody>
+<tr>
+<td>East</td>
+<td>31</td>
+<td>148659.25</td>
+<td>4795.4597</td>
+<td>4315.25</td>
+</tr>
+<tr>
+<td>West</td>
+<td>27</td>
+<td>125578.25</td>
+<td>4651.0463</td>
+<td>4282.75</td>
+</tr>
+<tr>
+<td>South</td>
+<td>22</td>
+<td>92784.5</td>
+<td>4217.4773</td>
+<td>4239.625</td>
+</tr>
+<tr>
+<td>North</td>
+<td>18</td>
+<td>91737.75</td>
+<td>5096.5417</td>
+<td>4822.875</td>
+</tr>
+</tbody>
+</table>
+<h2>Notes</h2>
+<ul>
+<li>Results are tied to the data version shown above.</li>
+<li>If the active data version changes, statistics and model results should be recomputed.</li>
+<li>Guardrail findings are screening signals and should be interpreted with domain knowledge.</li>
+</ul>
+  </article>
+</div>
+</body>
+</html>

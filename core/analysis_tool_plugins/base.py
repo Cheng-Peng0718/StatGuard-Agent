@@ -368,6 +368,20 @@ class AnalysisToolPlugin:
     guardrail_evaluators: List[GuardrailFn] = field(default_factory=list)
     display_config: DisplayConfig = field(default_factory=DisplayConfig)
 
+    description: str = ""
+    usage_guidance: str = ""
+    use_when: List[str] = field(default_factory=list)
+    do_not_use_when: List[str] = field(default_factory=list)
+
+    # "any" | "dataframe" | "sql"
+    requires_data_source: str = "any"
+
+    # True if this tool can create/update the active workspace dataset.
+    produces_active_dataset: bool = False
+
+    # Lightweight examples shown to the Supervisor.
+    examples: List[Dict[str, Any]] = field(default_factory=list)
+
     def run(self, context) -> Dict[str, Any]:
         if self.execute is None:
             return {

@@ -70,9 +70,15 @@ def get_tool_specs_for_llm() -> Dict[str, Dict[str, Any]]:
         specs[name] = {
             "name": plugin.tool_name,
             "display_name": plugin.display_name,
-            "description": plugin.display_name,
+            "description": plugin.description or plugin.display_name,
+            "usage_guidance": plugin.usage_guidance,
+            "use_when": list(plugin.use_when or []),
+            "do_not_use_when": list(plugin.do_not_use_when or []),
+            "requires_data_source": plugin.requires_data_source,
+            "produces_active_dataset": bool(plugin.produces_active_dataset),
             "requires_confirmation": plugin.requires_confirmation,
             "argument_schema": _format_argument_schema(plugin),
+            "examples": list(plugin.examples or []),
         }
 
     return specs

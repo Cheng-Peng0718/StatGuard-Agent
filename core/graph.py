@@ -160,7 +160,8 @@ def verify_node(state: GraphState):
     """
     action = state["current_action"]
 
-    status, feedback = verify(action, state["dataset_profile"])
+    profile = state.get("dataset_profile")
+    status, feedback = verify(action, profile=profile, state=state)
 
     verify_result = VerificationResult(
         action_id=action.action_id,

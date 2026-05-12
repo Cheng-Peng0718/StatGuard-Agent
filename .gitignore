@@ -1,24 +1,64 @@
-venv/
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
-workspaces/
-artifacts/
-*.parquet
-*.png
-*.jpg
-*.jpeg
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
 
+# Environment / secrets
 .env
+*.env
 .env.*
-.streamlit/secrets.toml
+OPENAI_API_KEY*
+LANGSMITH_API_KEY*
+*.key
+*.pem
 
+# IDE / OS
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
 
+# Local app state
+workspaces/
+app_sessions/
+checkpoints/
+.checkpoints/
+
+# Generated data / outputs
+data_versions/
+outputs/
+artifacts/
+reports/
+*.parquet
+*.sqlite
+*.db
+
+# DuckDB demo outputs
 demo_data/*.duckdb
 !demo_data/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Large generated media
+*.mp4
+*.mov
+*.gif
+
+# Keep intentional documentation assets
+!docs/
+!screenshots/

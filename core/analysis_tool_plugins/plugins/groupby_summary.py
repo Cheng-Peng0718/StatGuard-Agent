@@ -282,6 +282,44 @@ def _execute(context) -> dict[str, Any]:
 groupby_summary_plugin = AnalysisToolPlugin(
     tool_name="groupby_summary",
     display_name="Groupby Summary",
+    description="Compare a numeric metric across one or more grouping columns in the active DataFrame dataset.",
+    usage_guidance=(
+        "Use this for business comparisons such as revenue by region, revenue by segment, "
+        "customer value by group, or numeric metric by category."
+    ),
+    use_when=[
+        "The user asks to compare a numeric column across categories, groups, segments, regions, or cohorts.",
+        "The user asks for total_revenue by region, total_revenue by segment, or customer value by group.",
+        "An active DataFrame dataset exists and contains both the grouping columns and numeric value column.",
+    ],
+    do_not_use_when=[
+        "No active DataFrame dataset exists.",
+        "The user is asking to inspect or query a SQL database directly.",
+        "The value column is non-numeric.",
+        "The requested columns are not in the active dataset.",
+    ],
+    requires_data_source="dataframe",
+    produces_active_dataset=False,
+    examples=[
+        {
+            "user_request": "Compare total_revenue by region in the active dataset.",
+            "arguments": {
+                "group_cols": ["region"],
+                "value_col": "total_revenue",
+                "agg_funcs": ["count", "sum", "mean", "median"],
+                "sort_by": "sum_total_revenue",
+                "ascending": False,
+            },
+        },
+        {
+            "user_request": "Compare total_revenue by region and segment.",
+            "arguments": {
+                "group_cols": ["region", "segment"],
+                "value_col": "total_revenue",
+                "agg_funcs": ["count", "sum", "mean"],
+            },
+        },
+    ],
     execute=_execute,
     argument_schema=ArgumentSchema(
         required={

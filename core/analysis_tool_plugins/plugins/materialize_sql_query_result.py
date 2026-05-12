@@ -193,6 +193,34 @@ def _execute(context) -> dict[str, Any]:
 materialize_sql_query_result_plugin = AnalysisToolPlugin(
     tool_name="materialize_sql_query_result",
     display_name="Materialize SQL Query Result",
+    description="Run a safe SQL SELECT/WITH query and save the result as a workspace DataFrame data version.",
+    usage_guidance=(
+        "Use this when a SQL query result should become the active dataset for downstream "
+        "DataFrame tools such as groupby_summary, summary statistics, regression, or plotting."
+    ),
+    use_when=[
+        "The user asks to materialize, extract, prepare, or create a dataset from SQL.",
+        "The user wants to analyze a SQL query result with DataFrame/statistical tools.",
+        "The source is SQL-only and a selected query result is needed as the active workspace dataset.",
+    ],
+    do_not_use_when=[
+        "The user only needs a quick KPI, preview, or summary; use run_sql_query instead.",
+        "An active DataFrame dataset already exists and the user asks about the active/current/materialized dataset.",
+        "The database path is missing or looks like a placeholder.",
+        "The query returns an unnecessarily large table when filtering or aggregation would be more appropriate.",
+    ],
+    requires_data_source="sql",
+    produces_active_dataset=True,
+    examples=[
+        {
+            "user_request": "Materialize a customer-level revenue dataset from demo_data/ecommerce_demo.duckdb.",
+            "arguments": {
+                "database_path": "demo_data/ecommerce_demo.duckdb",
+                "query": "SELECT c.customer_id, c.region, c.segment, COUNT(DISTINCT o.order_id) AS number_of_orders, SUM(oi.net_revenue) AS total_revenue FROM customers c JOIN orders o ON c.customer_id = o.customer_id JOIN order_items oi ON o.order_id = oi.order_id GROUP BY c.customer_id, c.region, c.segment",
+                "result_name": "customer_level_revenue",
+            },
+        }
+    ],
     execute=_execute,
     argument_schema=ArgumentSchema(
         required={

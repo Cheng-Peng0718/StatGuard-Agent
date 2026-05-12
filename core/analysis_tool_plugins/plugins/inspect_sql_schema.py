@@ -118,11 +118,31 @@ def _execute(context) -> dict[str, Any]:
 inspect_sql_schema_plugin = AnalysisToolPlugin(
     tool_name="inspect_sql_schema",
     display_name="Inspect SQL Database Schema",
+    description="Inspect a DuckDB database and return tables, columns, data types, and row counts.",
+    usage_guidance=(
+        "Use this before writing SQL when the database schema is unknown. "
+        "Reuse prior schema observations for the same database path instead of calling this repeatedly."
+    ),
+    use_when=[
+        "The user provides a SQL database path and asks what tables or columns are available.",
+        "The user asks to analyze a SQL database but the schema has not been inspected yet.",
+        "A SQL query needs to be written and table/column names are unknown.",
+    ],
+    do_not_use_when=[
+        "The schema for the same database path has already been successfully inspected and is visible in observation history.",
+        "The user asks about the active DataFrame dataset rather than a SQL database.",
+    ],
+    requires_data_source="sql",
+    produces_active_dataset=False,
+    examples=[
+        {
+            "user_request": "Inspect the SQL schema for demo_data/ecommerce_demo.duckdb",
+            "arguments": {"database_path": "demo_data/ecommerce_demo.duckdb"},
+        }
+    ],
     execute=_execute,
     argument_schema=ArgumentSchema(
-        required={
-            "database_path": str,
-        },
+        required={"database_path": str},
         optional={},
     ),
     requires_confirmation=False,
