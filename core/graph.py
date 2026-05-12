@@ -31,7 +31,53 @@ def build_context_node(state: GraphState):
             break
 
     if not current_data_path:
-        raise FileNotFoundError(f"No data file found in sandbox {current_workspace}.")
+        # No CSV/DataFrame dataset is loaded.
+        # This is allowed because the agent may still answer general questions
+        # or use SQL tools such as inspect_sql_schema / run_sql_query.
+        user_request = state.get("user_request", "")
+
+        observations = state.get("observations", []) or []
+        recent_history = ""
+
+        for obs in observations[-10:]:
+            if isinstance(obs, dict):
+                tool_name = obs.get("tool_name", "unknown_tool")
+                status = obs.get("status", "unknown")
+                summary = obs.get("summary") or obs.get("message") or ""
+                recent_history += f"- {tool_name} [{status}]: {summary}\n"
+
+        if not recent_history:
+            recent_history = "(No previous observations.)"
+
+        context_text = (
+            f"User request:\n{user_request}\n\n"
+            "Current data context:\n"
+            "- No in-memory CSV/DataFrame dataset is currently loaded.\n"
+            "- DataFrame-specific tools such as summary statistics, missingness_report, "
+            "regression, scatterplot, and residual plots require an uploaded dataset.\n"
+            "- The user may still ask general questions or ask to inspect/analyze a SQL database.\n"
+            "- If the user provides a DuckDB database path, prefer SQL tools such as "
+            "`inspect_sql_schema` and `run_sql_query`.\n\n"
+            f"Recent observations:\n{recent_history}\n"
+        )
+
+        return {
+            "current_context_text": context_text,
+            "dataset_profile": None,
+
+            # Keep existing state fields stable.
+            "workspace_dir": current_workspace,
+            "data_versions": state.get("data_versions", []),
+            "active_data_version_id": state.get("active_data_version_id"),
+            "data_audit_log": state.get("data_audit_log", []),
+            "analysis_runs": state.get("analysis_runs", []),
+
+            # Old hard-gating state should not be revived.
+            "task_contract": None,
+            "deliverable_check": None,
+            "deliverable_gate_attempts": 0,
+        }
+
     # Refresh dataset profile from sandbox.
     new_profile = generate_profile(current_data_path)
 

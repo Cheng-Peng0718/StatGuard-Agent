@@ -87,6 +87,11 @@ If a task_contract already exists in context, do not replace it unless the user 
 - If a tool fails, repair parameters or choose a valid alternative.
 - If the same tool fails repeatedly and cannot be repaired, explain the specific blocker honestly.
 
+### When no CSV/DataFrame dataset is loaded
+- If no in-memory dataset is loaded, do not call DataFrame-specific tools.
+- If the user provides a SQL database path, use SQL tools such as `inspect_sql_schema` and `run_sql_query`.
+- If the user asks for DataFrame analysis without uploading data or giving a database path, ask them to upload a dataset or provide a SQL database path.
+
 ### SQL database tools
 If the user asks about a SQL database or business dataset stored in a database, use SQL tools as ordinary analysis tools.
 

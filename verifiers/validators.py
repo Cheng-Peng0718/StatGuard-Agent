@@ -13,6 +13,15 @@ def verify(action, profile):
     """
     tool_name = action.tool_name
 
+    SQL_TOOLS = {"inspect_sql_schema", "run_sql_query"}
+
+    if profile is None and tool_name not in SQL_TOOLS:
+        return "rejected_recoverable", (
+            "No in-memory CSV/DataFrame dataset is loaded. "
+            "Use SQL tools if the user provided a database path, "
+            "or ask the user to upload a dataset before using DataFrame-specific tools."
+        )
+
     if not tool_name:
         return "rejected_recoverable", "Error: tool_name is missing."
 

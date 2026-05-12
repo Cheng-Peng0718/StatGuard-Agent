@@ -31,6 +31,24 @@ if "session_id" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Data-related session defaults.
+# Chat should work even before a CSV/DataFrame dataset is uploaded,
+# because SQL tools may operate directly on a database path.
+if "data_versions" not in st.session_state:
+    st.session_state.data_versions = []
+
+if "active_data_version_id" not in st.session_state:
+    st.session_state.active_data_version_id = None
+
+if "data_audit_log" not in st.session_state:
+    st.session_state.data_audit_log = []
+
+if "analysis_runs" not in st.session_state:
+    st.session_state.analysis_runs = []
+
+if "dataset_profile" not in st.session_state:
+    st.session_state.dataset_profile = None
+
 config = {
     "configurable": {
         "thread_id": st.session_state.thread_id
@@ -52,6 +70,7 @@ with st.sidebar:
             st.session_state.messages = []
             st.session_state.resume_stream = False
             st.session_state.analysis_runs = []
+            st.session_state.thread_id = str(uuid.uuid4())
 
             config = {
                 "configurable": {
@@ -255,6 +274,16 @@ with st.sidebar:
                 key="download_html_report_main",
             )
 
+    else:
+        st.divider()
+        st.info(
+            "No CSV/DataFrame dataset loaded yet. You can upload a CSV/Excel file, "
+            "or ask the agent to inspect a SQL database path."
+        )
+        st.caption(
+            "Try: `Inspect the SQL schema for demo_data/ecommerce_demo.duckdb`"
+        )
+
     state_snapshot = app.get_state(config)
     plan = state_snapshot.values.get("analysis_plan")
     if plan:
@@ -432,9 +461,6 @@ if is_interrupted:
             st.rerun()
 
 elif prompt := st.chat_input("Enter your analysis request..."):
-    if not uploaded_file:
-        st.warning("Please upload data first")
-        st.stop()
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
@@ -447,6 +473,7 @@ if (is_new_task or is_resuming) and not is_interrupted:
         state_input = None
         if is_new_task and not is_resuming:
             real_profile = st.session_state.get("dataset_profile")
+
             if hasattr(real_profile, "model_dump"):
                 profile_dict = real_profile.model_dump()
             elif hasattr(real_profile, "dict"):
@@ -454,7 +481,7 @@ if (is_new_task or is_resuming) and not is_interrupted:
             elif isinstance(real_profile, dict):
                 profile_dict = real_profile
             else:
-                profile_dict = {"n_rows": "unknown", "columns": {"unknown": "unknown type"}}
+                profile_dict = None
 
             state_input = {
                 "user_request": st.session_state.messages[-1]["content"],
@@ -523,16 +550,35 @@ if (is_new_task or is_resuming) and not is_interrupted:
                             elif action_type == "final_answer":
                                 st.success("Reasoning complete, preparing report.")
 
+
                 elif node_name == "execute_node":
+
                     execution = state_data.get("current_execution")
 
                     with live_display.container():
-                        if isinstance(execution, str) and (
-                            "System intervention" in execution or "Fingerprint gate" in execution or "❌" in execution
-                        ):
+
+                        if isinstance(execution, dict):
+
+                            status = execution.get("status")
+
+                            message = execution.get("message", "")
+
+                            if status in {"blocked", "failed"}:
+
+                                st.warning(f"Tool returned `{status}`: {message}", icon="⚠️")
+
+                            else:
+
+                                st.success("✅ Tool finished; syncing to memory...")
+
+                        elif isinstance(execution, str):
+
                             st.warning(f"System message: {execution}", icon="⚠️")
+
                         else:
-                            st.success(f"✅ Tool finished; syncing to memory...")
+
+                            st.success("✅ Tool finished; syncing to memory...")
+
                         time.sleep(0.5)
 
                 current_action = state_data.get("current_action")
