@@ -17,6 +17,7 @@ def verify(action, profile):
         "inspect_sql_schema",
         "run_sql_query",
         "materialize_sql_query_result",
+        "groupby_summary",
     }
 
     if profile is None and tool_name not in SQL_TOOLS:

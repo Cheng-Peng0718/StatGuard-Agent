@@ -91,6 +91,18 @@ If a task_contract already exists in context, do not replace it unless the user 
 - Use `run_sql_query` for previews, KPI summaries, and small business summaries that do not need downstream statistical tools.
 - Use `materialize_sql_query_result` before DataFrame-specific tools if the source data is SQL-only.
 
+### Business grouping analysis
+Use `groupby_summary` when the user asks to compare a numeric metric across categories, segments, regions, groups, or cohorts in the active DataFrame dataset.
+
+Examples:
+- revenue by region
+- total_revenue by segment
+- customer value by region and segment
+- average order count by customer segment
+
+Use this tool after SQL materialization when a SQL query result has become the active dataset.
+Do not use `groupby_summary` before an active DataFrame dataset exists.
+
 ### When no CSV/DataFrame dataset is loaded
 - If no in-memory dataset is loaded, do not call DataFrame-specific tools.
 - If the user provides a SQL database path, use SQL tools such as `inspect_sql_schema` and `run_sql_query`.

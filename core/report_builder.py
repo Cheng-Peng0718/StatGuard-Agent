@@ -390,6 +390,51 @@ def _render_sql_materialization_summary(payload: dict) -> str:
 
     return "\n".join(lines)
 
+def _render_groupby_summary(payload: dict) -> str:
+    group_cols = payload.get("group_cols", [])
+    value_col = payload.get("value_col")
+    rows = payload.get("rows", [])
+    columns = payload.get("columns", [])
+    n_groups = payload.get("n_groups")
+    rows_used = payload.get("rows_used")
+    rows_dropped = payload.get("rows_dropped_due_to_missing")
+
+    if not isinstance(group_cols, list):
+        group_cols = []
+
+    lines = [
+        "### Groupby Summary",
+        "",
+        f"- **Grouping columns:** `{', '.join(str(c) for c in group_cols)}`",
+        f"- **Value column:** `{value_col}`",
+        f"- **Groups returned:** {n_groups}",
+        f"- **Rows used:** {rows_used}",
+    ]
+
+    if rows_dropped:
+        lines.append(f"- **Rows dropped due to missing values:** {rows_dropped}")
+
+    lines.append("")
+
+    if rows and columns:
+        table_block = {
+            "type": "table",
+            "columns": [
+                {"label": _humanize_key(col), "raw_key": col}
+                for col in columns
+            ],
+            "rows": [
+                [row.get(col, "") for col in columns]
+                for row in rows
+                if isinstance(row, dict)
+            ],
+        }
+
+        lines.append(_format_generic_table_block(table_block))
+        lines.append("")
+
+    return "\n".join(lines)
+
 def _format_analysis_run_markdown(run: Dict[str, Any], index: int) -> str:
     title = run.get("title") or run.get("tool_name") or f"Analysis Run {index}"
     status = run.get("status", "unknown")
@@ -438,6 +483,21 @@ def _format_analysis_run_markdown(run: Dict[str, Any], index: int) -> str:
 
     if tool_name == "materialize_sql_query_result":
         rendered = _render_sql_materialization_summary(payload)
+        if rendered:
+            lines.append(rendered)
+            lines.append("")
+        else:
+            summary = run.get("summary")
+            if summary:
+                lines.append("### Summary")
+                lines.append("")
+                lines.append(str(summary))
+                lines.append("")
+
+        return "\n".join(lines)
+
+    if tool_name == "groupby_summary":
+        rendered = _render_groupby_summary(payload)
         if rendered:
             lines.append(rendered)
             lines.append("")
