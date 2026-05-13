@@ -83,3 +83,27 @@ def get_tool_specs_for_llm() -> Dict[str, Dict[str, Any]]:
         }
 
     return specs
+
+def get_available_evidence_categories() -> list[str]:
+    """
+    Return the evidence category universe dynamically declared by registered plugins.
+
+    Evidence categories are plugin-owned metadata, not a central enum.
+    Adding a new tool should only require declaring evidence_categories on that tool.
+    """
+    categories: list[str] = []
+
+    for plugin in list_plugins(executable_only=True).values():
+        for category in plugin.evidence_categories or []:
+            if not isinstance(category, str):
+                continue
+
+            value = category.strip()
+
+            if not value:
+                continue
+
+            if value not in categories:
+                categories.append(value)
+
+    return categories

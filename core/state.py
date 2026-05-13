@@ -25,3 +25,5 @@ class GraphState(TypedDict):
     active_data_version_id: Optional[str]
     data_audit_log: Optional[List[Dict[str, Any]]]
     analysis_runs: Optional[List[Dict[str, Any]]]
+    analysis_coverage_brief: Optional[Dict[str, Any]]
+    answer_quality_continuation_attempts: int

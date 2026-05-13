@@ -142,3 +142,53 @@ def test_answer_quality_gate_warns_when_statistical_run_has_no_limitations():
 
     warning_ids = {item["check_id"] for item in check["warnings"]}
     assert "statistical_limitations_present" in warning_ids
+
+def test_answer_quality_gate_uses_plugin_scanned_coverage_brief():
+    check = check_answer_quality(
+        user_request="Analyze the ecommerce database end-to-end.",
+        current_action=DummyAction("final_answer"),
+        active_data_version_id="data_v_1",
+        observations=[],
+        analysis_coverage_brief={
+            "analysis_goal": "end_to_end_ecommerce_analysis",
+            "required_evidence_categories": [
+                "kpi_summary",
+                "group_comparison",
+                "regression_model",
+            ],
+            "optional_evidence_categories": [],
+            "autonomy_level": "continue_until_covered",
+            "reasoning_summary": "The user asked for KPI, comparison, and modeling evidence.",
+        },
+        analysis_runs=[
+            {
+                "tool_name": "materialize_sql_query_result",
+                "title": "Materialize SQL Query Result",
+                "status": "ok",
+                "data_version_id": "data_v_1",
+                "summary": "Materialized a dataset.",
+                "metrics": {},
+                "tables": {},
+                "guardrails": [],
+                "evidence_categories": ["data_preparation"],
+            },
+            {
+                "tool_name": "kpi_summary",
+                "title": "KPI Summary",
+                "status": "ok",
+                "data_version_id": "data_v_1",
+                "summary": "Computed KPI summary.",
+                "metrics": {"n_rows": 98},
+                "tables": {"kpi_rows": []},
+                "guardrails": [],
+                "evidence_categories": ["kpi_summary", "dataset_overview"],
+            },
+        ],
+    )
+
+    assert check["quality_status"] == "needs_attention"
+    assert check["continuation_recommended"] is True
+    assert "group_comparison" in check["missing_evidence_categories"]
+    assert "regression_model" in check["missing_evidence_categories"]
+    assert "kpi_summary" in check["covered_evidence_categories"]
+    assert "regression_model" in check["available_evidence_categories"]

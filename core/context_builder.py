@@ -285,6 +285,41 @@ def build_context(step,
         if gate_type == "answer_quality_gate":
             deliverable_log += f"- quality_status: {deliverable_check.get('quality_status')}\n"
 
+            continuation_recommended = bool(deliverable_check.get("continuation_recommended"))
+            missing_evidence_categories = deliverable_check.get("missing_evidence_categories", []) or []
+            covered_evidence_categories = deliverable_check.get("covered_evidence_categories", []) or []
+            available_evidence_categories = deliverable_check.get("available_evidence_categories", []) or []
+
+            if available_evidence_categories:
+                deliverable_log += (
+                        "- available_evidence_categories: "
+                        + ", ".join(str(item) for item in available_evidence_categories)
+                        + "\n"
+                )
+
+            if covered_evidence_categories:
+                deliverable_log += (
+                        "- covered_evidence_categories: "
+                        + ", ".join(str(item) for item in covered_evidence_categories)
+                        + "\n"
+                )
+
+            if missing_evidence_categories:
+                deliverable_log += (
+                        "- missing_evidence_categories: "
+                        + ", ".join(str(item) for item in missing_evidence_categories)
+                        + "\n"
+                )
+
+            if continuation_recommended:
+                deliverable_log += "\nCONTINUE_ANALYSIS_RECOMMENDED: true\n"
+                deliverable_log += (
+                    "The previous final answer did not yet satisfy the required evidence coverage. "
+                    "Do not produce another final_answer unless the missing evidence is impossible to obtain. "
+                    "Call exactly one appropriate analysis tool next. Use the tool metadata evidence_categories "
+                    "to choose a tool that covers one missing evidence category.\n"
+                )
+
             warnings = deliverable_check.get("warnings", []) or []
             if warnings:
                 deliverable_log += "\nAnswer quality warnings:\n"

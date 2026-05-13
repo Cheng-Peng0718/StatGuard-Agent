@@ -1,5 +1,10 @@
 from typing import Any, Dict, List
-
+from core.analysis_coverage import (
+    available_evidence_categories_from_plugins,
+    covered_evidence_categories_from_runs,
+    missing_required_evidence_categories,
+    normalize_coverage_brief,
+)
 
 def _get_obs_payload(obs: Dict[str, Any]) -> Dict[str, Any]:
     structured = obs.get("structured_data", {}) or {}
@@ -305,6 +310,7 @@ def check_answer_quality(
     analysis_runs: List[Dict[str, Any]],
     observations: List[Dict[str, Any]],
     active_data_version_id: str | None = None,
+    analysis_coverage_brief: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """
     Soft final-answer quality gate for the workbench-style analyst loop.
@@ -331,6 +337,11 @@ def check_answer_quality(
             "quality_status": "pass",
             "message": "Answer quality gate passed for an ask_user action.",
             "checks": checks,
+            "continuation_recommended": False,
+            "coverage_brief": {},
+            "available_evidence_categories": available_evidence_categories_from_plugins(),
+            "covered_evidence_categories": [],
+            "missing_evidence_categories": [],
             "warnings": [],
             "satisfied": [],
             "missing": [],
@@ -353,6 +364,24 @@ def check_answer_quality(
     ]
 
     warnings: List[Dict[str, Any]] = []
+
+    available_evidence_categories = available_evidence_categories_from_plugins()
+
+    coverage_brief = normalize_coverage_brief(
+        analysis_coverage_brief,
+        allowed_categories=available_evidence_categories,
+        drop_unknown=True,
+    )
+
+    covered_evidence_categories = covered_evidence_categories_from_runs(
+        analysis_runs or []
+    )
+
+    missing_evidence_categories = missing_required_evidence_categories(
+        coverage_brief=coverage_brief,
+        analysis_runs=analysis_runs or [],
+        allowed_categories=available_evidence_categories,
+    )
 
     if recorded_runs:
         checks.append(_quality_check(
@@ -445,12 +474,31 @@ def check_answer_quality(
         checks.append(warning)
         warnings.append(warning)
 
+    if coverage_brief and missing_evidence_categories:
+        warning = _quality_check(
+            "requested_evidence_coverage",
+            "warn",
+            "The final answer does not yet cover all evidence categories required by the analysis coverage brief.",
+            (
+                    "Continue analysis by calling an appropriate tool whose plugin-declared "
+                    "evidence_categories cover: "
+                    + ", ".join(missing_evidence_categories)
+            ),
+        )
+        checks.append(warning)
+        warnings.append(warning)
+
     quality_status = "needs_attention" if warnings else "pass"
 
     return {
         "status": "ok",
         "gate_type": "answer_quality_gate",
         "quality_status": quality_status,
+        "continuation_recommended": bool(missing_evidence_categories),
+        "coverage_brief": coverage_brief,
+        "available_evidence_categories": available_evidence_categories,
+        "covered_evidence_categories": covered_evidence_categories,
+        "missing_evidence_categories": missing_evidence_categories,
         "message": (
             "Answer quality gate completed with warnings."
             if warnings

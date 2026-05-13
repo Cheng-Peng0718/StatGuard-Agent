@@ -774,7 +774,15 @@ def deliverable_gate_node(state: GraphState):
         analysis_runs=analysis_runs,
         observations=observations,
         active_data_version_id=state.get("active_data_version_id"),
+        analysis_coverage_brief=state.get("analysis_coverage_brief"),
     )
+
+    continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
+
+    if check.get("continuation_recommended"):
+        continuation_attempts += 1
+    else:
+        continuation_attempts = 0
 
     gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
 
@@ -786,6 +794,7 @@ def deliverable_gate_node(state: GraphState):
     return {
         "deliverable_check": check,
         "deliverable_gate_attempts": gate_attempts,
+        "answer_quality_continuation_attempts": continuation_attempts,
     }
 
 def route_after_deliverable_gate(state: GraphState):
@@ -804,6 +813,17 @@ def route_after_deliverable_gate(state: GraphState):
     print(f"[ROUTE AFTER ANSWER QUALITY GATE] status = {status}, gate_type = {gate_type}")
 
     if gate_type == "answer_quality_gate":
+        continuation_recommended = bool(check.get("continuation_recommended"))
+        continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
+        max_continuation_attempts = 6
+
+        if continuation_recommended and continuation_attempts <= max_continuation_attempts:
+            print(
+                "[ROUTE AFTER ANSWER QUALITY GATE] continuation recommended; "
+                f"attempt {continuation_attempts}/{max_continuation_attempts} -> build_context"
+            )
+            return "build_context"
+
         return "end"
 
     if status == "ok":
