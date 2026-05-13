@@ -105,13 +105,54 @@ def _is_intercept_term(term: Any) -> bool:
     lower = str(term).strip().lower()
     return lower in {"const", "intercept", "(intercept)"}
 
+def _build_encoded_term_metadata(used_features: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    metadata = {}
+
+    for feature in used_features or []:
+        if feature.get("type") != "categorical_encoded":
+            continue
+
+        column = feature.get("column")
+        reference_level = feature.get("reference_level")
+        encoded_level_map = feature.get("encoded_level_map") or {}
+
+        for encoded_col in feature.get("encoded_columns", []) or []:
+            encoded_col_str = str(encoded_col)
+            level = encoded_level_map.get(encoded_col)
+
+            if level is None:
+                prefix = f"{column}_"
+                if encoded_col_str.startswith(prefix):
+                    level = encoded_col_str[len(prefix):]
+                else:
+                    level = encoded_col_str
+
+            metadata[encoded_col_str] = {
+                "feature": column,
+                "level": level,
+                "reference_level": reference_level,
+                "variable_type": "categorical_dummy",
+            }
+
+    return metadata
+
+
+def _format_abs_estimate(value: Any) -> str:
+    numeric = _safe_float(value)
+
+    if numeric is None:
+        return "an unavailable amount"
+
+    return f"{abs(numeric):.4g}"
 
 def _build_coefficient_interpretations(
     coef_table: list[dict[str, Any]],
     target_col: str,
     alpha: float,
+    used_features: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     rows = []
+    encoded_term_metadata = _build_encoded_term_metadata(used_features or [])
 
     for row in coef_table:
         term = row.get("term")
@@ -119,32 +160,81 @@ def _build_coefficient_interpretations(
         if _is_intercept_term(term):
             continue
 
+        term_str = str(term)
         coef = row.get("coef")
         p_value = row.get("p_value")
         direction = _coefficient_direction(coef)
         significance = _p_value_interpretation(p_value, alpha)
-
         coef_value = _safe_float(coef)
+        abs_estimate = _format_abs_estimate(coef)
 
-        if coef_value is None:
-            interpretation = (
-                f"The coefficient for `{term}` could not be interpreted numerically."
-            )
-        elif direction == "positive":
-            interpretation = (
-                f"Holding other predictors fixed, higher `{term}` is associated with higher `{target_col}`."
-            )
-        elif direction == "negative":
-            interpretation = (
-                f"Holding other predictors fixed, higher `{term}` is associated with lower `{target_col}`."
-            )
+        term_metadata = encoded_term_metadata.get(term_str)
+
+        variable_type = "numeric_or_continuous"
+        source_feature = term_str
+        level = None
+        reference_level = None
+
+        if term_metadata:
+            variable_type = "categorical_dummy"
+            source_feature = term_metadata.get("feature") or term_str
+            level = term_metadata.get("level")
+            reference_level = term_metadata.get("reference_level")
+
+            if coef_value is None:
+                interpretation = (
+                    f"The coefficient for `{source_feature} = {level}` could not be interpreted numerically."
+                )
+            else:
+                comparison_text = (
+                    f"Compared with the reference category"
+                )
+                if reference_level is not None:
+                    comparison_text += f" `{source_feature} = {reference_level}`"
+                comparison_text += f", `{source_feature} = {level}`"
+
+                if direction == "positive":
+                    interpretation = (
+                        f"{comparison_text} is associated with an estimated {abs_estimate} higher "
+                        f"`{target_col}`, holding other predictors fixed. This difference is {significance}."
+                    )
+                elif direction == "negative":
+                    interpretation = (
+                        f"{comparison_text} is associated with an estimated {abs_estimate} lower "
+                        f"`{target_col}`, holding other predictors fixed. This difference is {significance}."
+                    )
+                else:
+                    interpretation = (
+                        f"{comparison_text} has an estimated coefficient near zero for `{target_col}`, "
+                        f"holding other predictors fixed. This difference is {significance}."
+                    )
         else:
-            interpretation = (
-                f"Holding other predictors fixed, `{term}` has an estimated coefficient near zero for `{target_col}`."
-            )
+            if coef_value is None:
+                interpretation = (
+                    f"The coefficient for `{term_str}` could not be interpreted numerically."
+                )
+            elif direction == "positive":
+                interpretation = (
+                    f"For a one-unit increase in `{term_str}`, `{target_col}` is estimated to increase by "
+                    f"{abs_estimate}, holding other predictors fixed. This association is {significance}."
+                )
+            elif direction == "negative":
+                interpretation = (
+                    f"For a one-unit increase in `{term_str}`, `{target_col}` is estimated to decrease by "
+                    f"{abs_estimate}, holding other predictors fixed. This association is {significance}."
+                )
+            else:
+                interpretation = (
+                    f"For a one-unit increase in `{term_str}`, `{target_col}` has an estimated change near zero, "
+                    f"holding other predictors fixed. This association is {significance}."
+                )
 
         rows.append({
-            "term": str(term),
+            "term": term_str,
+            "source_feature": source_feature,
+            "variable_type": variable_type,
+            "level": level,
+            "reference_level": reference_level,
             "estimate": _round_or_none(coef),
             "direction": direction,
             "p_value": _round_or_none(p_value),
@@ -250,6 +340,7 @@ def execute_linear_model(context) -> Dict[str, Any]:
             coef_table=coef_table,
             target_col=target_col,
             alpha=alpha,
+            used_features=prep["details"].get("used_features", []),
         )
 
         significant_predictor_count = sum(
@@ -431,6 +522,10 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
         "coefficient_interpretations": TableDisplayConfig(
             column_labels={
                 "term": "Term",
+                "source_feature": "Source feature",
+                "variable_type": "Variable type",
+                "level": "Level",
+                "reference_level": "Reference level",
                 "estimate": "Estimate",
                 "direction": "Direction",
                 "p_value": "p-value",
@@ -441,6 +536,10 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             },
             column_order=[
                 "term",
+                "source_feature",
+                "variable_type",
+                "level",
+                "reference_level",
                 "estimate",
                 "direction",
                 "p_value",

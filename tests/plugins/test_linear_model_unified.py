@@ -135,3 +135,80 @@ def test_linear_model_blocks_missing_feature_column():
 
     assert raw["status"] == "blocked"
     assert raw["error_code"] == "COLUMNS_NOT_FOUND"
+
+def test_linear_model_interprets_categorical_dummy_terms_relative_to_reference(tmp_path):
+    import pandas as pd
+
+    from core.analysis_tool_plugins import get_plugin
+
+    class DummyContext:
+        def __init__(self, df, args):
+            self.df = df
+            self.arguments = args
+            self.args = args
+
+        def load_df(self):
+            return self.df
+
+        def get_arg(self, name, default=None):
+            return self.arguments.get(name, default)
+
+    df = pd.DataFrame({
+        "total_revenue": [
+            100, 120, 130, 150,
+            180, 200, 210, 220,
+            90, 95, 105, 110,
+            160, 170, 175, 185,
+        ],
+        "number_of_orders": [
+            1, 2, 2, 3,
+            3, 4, 4, 5,
+            1, 1, 2, 2,
+            2, 3, 3, 4,
+        ],
+        "region": [
+            "East", "East", "East", "East",
+            "North", "North", "North", "North",
+            "South", "South", "South", "South",
+            "West", "West", "West", "West",
+        ],
+    })
+
+    plugin = get_plugin("run_multiple_regression")
+    assert plugin is not None
+
+    raw = plugin.run(
+        DummyContext(
+            df,
+            {
+                "target_col": "total_revenue",
+                "feature_cols": ["number_of_orders", "region"],
+            },
+        )
+    )
+
+    assert raw["status"] in {"ok", "warning"}
+
+    interpretations = raw["details"]["coefficient_interpretations"]
+
+    north_row = next(
+        row for row in interpretations
+        if row["term"] == "region_North"
+    )
+
+    assert north_row["variable_type"] == "categorical_dummy"
+    assert north_row["source_feature"] == "region"
+    assert north_row["level"] == "North"
+    assert north_row["reference_level"] == "East"
+    assert "Compared with the reference category" in north_row["interpretation"]
+    assert "`region = East`" in north_row["interpretation"]
+    assert "`region = North`" in north_row["interpretation"]
+    assert "higher `region_North`" not in north_row["interpretation"]
+
+    numeric_row = next(
+        row for row in interpretations
+        if row["term"] == "number_of_orders"
+    )
+
+    assert numeric_row["variable_type"] == "numeric_or_continuous"
+    assert "For a one-unit increase" in numeric_row["interpretation"]

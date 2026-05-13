@@ -182,11 +182,46 @@ def prepare_regression_data(
 
         dummies = pd.get_dummies(s, prefix=str(col), drop_first=True, dummy_na=False, dtype=float)
         dummies = dummies.reindex(index=work.index)
+
         if dummies.shape[1] == 0:
-            excluded_features.append({"column": col, "reason": "categorical_encoding_produced_no_columns", "n_levels": n_levels})
+            excluded_features.append({
+                "column": col,
+                "reason": "categorical_encoding_produced_no_columns",
+                "n_levels": n_levels,
+            })
             continue
+
+        encoded_columns = dummies.columns.tolist()
+        prefix = f"{col}_"
+
+        encoded_levels = []
+        for encoded_col in encoded_columns:
+            encoded_col_str = str(encoded_col)
+            if encoded_col_str.startswith(prefix):
+                encoded_levels.append(encoded_col_str[len(prefix):])
+            else:
+                encoded_levels.append(encoded_col_str)
+
+        observed_levels = sorted([str(x) for x in non_missing.unique()])
+        reference_candidates = [
+            level for level in observed_levels
+            if level not in encoded_levels
+        ]
+        reference_level = reference_candidates[0] if reference_candidates else None
+
         X_parts.append(dummies)
-        used_features.append({"column": col, "type": "categorical_encoded", "n_levels": n_levels, "encoded_columns": dummies.columns.tolist()})
+        used_features.append({
+            "column": col,
+            "type": "categorical_encoded",
+            "n_levels": n_levels,
+            "levels": observed_levels,
+            "reference_level": reference_level,
+            "encoded_columns": encoded_columns,
+            "encoded_level_map": {
+                encoded_col: encoded_level
+                for encoded_col, encoded_level in zip(encoded_columns, encoded_levels)
+            },
+        })
 
     if not X_parts:
         return _blocked(
