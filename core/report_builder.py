@@ -291,6 +291,110 @@ def _format_report_block_markdown(block: Dict[str, Any]) -> str:
 
     return "\n".join(lines)
 
+def _single_line_text(text: Any) -> str:
+    """
+    Convert arbitrary text into one safe Markdown paragraph/bullet line.
+    """
+    return " ".join(_safe_str(text).split())
+
+
+def _clip_text(text: Any, max_chars: int = 420) -> str:
+    text = _single_line_text(text)
+
+    if len(text) <= max_chars:
+        return text
+
+    return text[: max_chars - 1].rstrip() + "…"
+
+
+def _run_has_executive_signal(run: Dict[str, Any]) -> bool:
+    """
+    Decide whether a run should contribute to the executive summary.
+
+    This remains method-agnostic:
+    - no statistical method names
+    - no dataset column names
+    - no concrete analysis tool names
+    """
+    status = run.get("status")
+
+    if status == "blocked":
+        return True
+
+    if status not in {"ok", "warning"}:
+        return False
+
+    metadata = run.get("metadata", {}) or {}
+    if metadata.get("include_in_executive_summary") is True:
+        return True
+
+    if run.get("metrics"):
+        return True
+
+    if run.get("guardrails"):
+        return True
+
+    return False
+
+
+def _build_executive_finding_lines(
+    analysis_runs: List[Dict[str, Any]],
+    *,
+    limit: int = 5,
+) -> List[str]:
+    findings: List[str] = []
+
+    for run in analysis_runs or []:
+        if not _run_has_executive_signal(run):
+            continue
+
+        summary = _single_line_text(run.get("summary"))
+        if not summary:
+            continue
+
+        title = run.get("title") or run.get("tool_name") or "Analysis result"
+        status = run.get("status", "unknown")
+
+        label = f"**{title}**"
+        if status in {"blocked", "failed"}:
+            label += f" ({status})"
+
+        findings.append(f"{label}: {_clip_text(summary)}")
+
+        if len(findings) >= limit:
+            break
+
+    return findings
+
+
+def _build_executive_attention_lines(
+    analysis_runs: List[Dict[str, Any]],
+    *,
+    limit: int = 4,
+) -> List[str]:
+    attention: List[str] = []
+
+    for run in analysis_runs or []:
+        status = run.get("status")
+
+        if status in {"blocked", "failed"}:
+            title = run.get("title") or run.get("tool_name") or "Analysis result"
+            summary = run.get("summary") or "The requested analysis could not be completed."
+            attention.append(f"**{title}**: {_clip_text(summary, max_chars=300)}")
+
+        for finding in run.get("guardrails", []) or []:
+            if finding.get("severity") not in {"warning", "critical"}:
+                continue
+
+            title = finding.get("title") or "Guardrail finding"
+            message = finding.get("message") or ""
+            attention.append(f"**{title}**: {_clip_text(message, max_chars=300)}")
+
+        if len(attention) >= limit:
+            break
+
+    return attention[:limit]
+
 def _extract_payload_from_run(run: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extract canonical payload from an AnalysisRun.
@@ -624,7 +728,31 @@ def build_markdown_report(
             elif severity == "warning":
                 warning_count += 1
 
-    lines.append("Key summary:")
+    executive_findings = _build_executive_finding_lines(analysis_runs or [])
+
+    lines.append("Key findings:")
+    lines.append("")
+
+    if executive_findings:
+        for finding in executive_findings:
+            lines.append(f"- {finding}")
+    else:
+        lines.append("- No substantive analysis findings were recorded yet.")
+
+    lines.append("")
+
+    attention_items = _build_executive_attention_lines(analysis_runs or [])
+
+    if attention_items:
+        lines.append("Needs attention:")
+        lines.append("")
+
+        for item in attention_items:
+            lines.append(f"- {item}")
+
+        lines.append("")
+
+    lines.append("Execution summary:")
     lines.append("")
     lines.append(f"- Completed analysis runs: **{len(completed_runs)}**.")
     lines.append(
