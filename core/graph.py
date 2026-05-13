@@ -17,6 +17,7 @@ import hashlib
 import json
 from core.deliverables import check_deliverables, check_answer_quality
 from core.analysis_runs import build_analysis_run_from_observation
+from agents.coverage_brief import call_coverage_brief
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):
@@ -92,6 +93,7 @@ def build_context_node(state: GraphState):
         data_versions=state.get("data_versions", []),
         active_data_version_id=state.get("active_data_version_id"),
         data_audit_log=state.get("data_audit_log", []),
+        analysis_coverage_brief=state.get("analysis_coverage_brief"),
     )
 
     return {
@@ -100,6 +102,52 @@ def build_context_node(state: GraphState):
         "dataset_profile": new_profile
     }
 
+def coverage_brief_node(state: GraphState):
+    """
+    Build or reuse an LLM-generated Analysis Coverage Brief.
+
+    The brief says which evidence categories should be covered.
+    It is not a workflow plan and does not choose exact tools.
+    """
+    user_request = state.get("user_request", "") or ""
+    request_hash = hashlib.md5(user_request.encode("utf-8")).hexdigest()
+
+    existing_hash = state.get("analysis_coverage_request_hash")
+    existing_brief = state.get("analysis_coverage_brief")
+
+    if existing_brief and existing_hash == request_hash:
+        return {}
+
+    context_text = state.get("current_context_text", "") or ""
+
+    try:
+        brief = call_coverage_brief(
+            user_request=user_request,
+            context_text=context_text,
+        )
+    except Exception as exc:
+        print(f"[COVERAGE BRIEF] failed: {type(exc).__name__}: {exc}")
+        brief = {
+            "analysis_goal": "coverage_brief_unavailable",
+            "required_evidence_categories": [],
+            "required_evidence_counts": {},
+            "optional_evidence_categories": [],
+            "autonomy_level": "answer_now",
+            "reasoning_summary": (
+                "Coverage brief generation failed; supervisor should proceed with normal one-action reasoning."
+            ),
+        }
+
+    print("\n" + "=" * 40)
+    print("[ANALYSIS COVERAGE BRIEF]")
+    print(json.dumps(brief, ensure_ascii=False, indent=2))
+    print("=" * 40 + "\n")
+
+    return {
+        "analysis_coverage_brief": brief,
+        "analysis_coverage_request_hash": request_hash,
+        "answer_quality_continuation_attempts": 0,
+    }
 
 def supervisor_node(state: GraphState):
     current_workspace = state.get("workspace_dir", "./")
@@ -116,6 +164,7 @@ def supervisor_node(state: GraphState):
         data_versions=state.get("data_versions", []),
         active_data_version_id=state.get("active_data_version_id"),
         data_audit_log=state.get("data_audit_log", []),
+        analysis_coverage_brief=state.get("analysis_coverage_brief"),
     )
 
     action = call_supervisor(context_pkg)
@@ -429,6 +478,7 @@ def execute_node(state: GraphState):
         data_versions=state.get("data_versions", []),
         active_data_version_id=state.get("active_data_version_id"),
         data_audit_log=state.get("data_audit_log", []),
+        analysis_coverage_brief=state.get("analysis_coverage_brief"),
     )
 
     exec_result = execute_tool(action, context_pkg)
@@ -723,7 +773,7 @@ def router_gate(state: GraphState):
     We keep the node in the graph for compatibility, but the active route is
     always build_context -> supervisor.
     """
-    return "supervisor"
+    return "coverage_brief"
 
 def sanitize_results(obj):
     """
@@ -777,14 +827,14 @@ def deliverable_gate_node(state: GraphState):
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
     )
 
+    gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
+
     continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
 
     if check.get("continuation_recommended"):
         continuation_attempts += 1
     else:
         continuation_attempts = 0
-
-    gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
 
     print("\n" + "=" * 40)
     print("[ANSWER QUALITY GATE]")
@@ -815,7 +865,7 @@ def route_after_deliverable_gate(state: GraphState):
     if gate_type == "answer_quality_gate":
         continuation_recommended = bool(check.get("continuation_recommended"))
         continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
-        max_continuation_attempts = 6
+        max_continuation_attempts = 10
 
         if continuation_recommended and continuation_attempts <= max_continuation_attempts:
             print(
@@ -844,6 +894,7 @@ workflow.add_node("verify", verify_node)
 workflow.add_node("human_review", human_review_node)
 workflow.add_node("execute", execute_node)
 workflow.add_node("summarize", summarize_node)
+workflow.add_node("coverage_brief", coverage_brief_node)
 workflow.add_node("deliverable_gate", deliverable_gate_node)
 
 workflow.set_entry_point("build_context")
@@ -883,10 +934,13 @@ workflow.add_conditional_edges(
     "build_context",
     router_gate,
     {
+        "coverage_brief": "coverage_brief",
         "planner": "planner",
-        "supervisor": "supervisor"
+        "supervisor": "supervisor",
     }
 )
+
+workflow.add_edge("coverage_brief", "supervisor")
 
 # Planner hands off to supervisor
 workflow.add_edge("planner", "supervisor")

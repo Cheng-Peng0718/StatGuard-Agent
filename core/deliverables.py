@@ -3,6 +3,7 @@ from core.analysis_coverage import (
     available_evidence_categories_from_plugins,
     covered_evidence_categories_from_runs,
     missing_required_evidence_categories,
+    missing_required_evidence_requirements,
     normalize_coverage_brief,
 )
 
@@ -377,11 +378,16 @@ def check_answer_quality(
         analysis_runs or []
     )
 
-    missing_evidence_categories = missing_required_evidence_categories(
+    missing_evidence_requirements = missing_required_evidence_requirements(
         coverage_brief=coverage_brief,
         analysis_runs=analysis_runs or [],
         allowed_categories=available_evidence_categories,
     )
+
+    missing_evidence_categories = [
+        item["evidence_category"]
+        for item in missing_evidence_requirements
+    ]
 
     if recorded_runs:
         checks.append(_quality_check(
@@ -474,15 +480,19 @@ def check_answer_quality(
         checks.append(warning)
         warnings.append(warning)
 
-    if coverage_brief and missing_evidence_categories:
+    if coverage_brief and missing_evidence_requirements:
         warning = _quality_check(
             "requested_evidence_coverage",
             "warn",
-            "The final answer does not yet cover all evidence categories required by the analysis coverage brief.",
+            "The final answer does not yet cover all evidence requirements in the analysis coverage brief.",
             (
                     "Continue analysis by calling an appropriate tool whose plugin-declared "
-                    "evidence_categories cover: "
-                    + ", ".join(missing_evidence_categories)
+                    "evidence_categories cover missing requirements: "
+                    + ", ".join(
+                f"{item['evidence_category']} "
+                f"({item['covered_count']}/{item['required_count']})"
+                for item in missing_evidence_requirements
+            )
             ),
         )
         checks.append(warning)
@@ -499,6 +509,7 @@ def check_answer_quality(
         "available_evidence_categories": available_evidence_categories,
         "covered_evidence_categories": covered_evidence_categories,
         "missing_evidence_categories": missing_evidence_categories,
+        "missing_evidence_requirements": missing_evidence_requirements,
         "message": (
             "Answer quality gate completed with warnings."
             if warnings

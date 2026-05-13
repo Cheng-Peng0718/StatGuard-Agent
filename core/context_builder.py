@@ -248,6 +248,7 @@ def build_context(step,
                   data_versions=None,
                   active_data_version_id=None,
                   data_audit_log=None,
+                  analysis_coverage_brief=None,
                   ):
     """
     Build the full context text sent to the LLM.
@@ -285,10 +286,21 @@ def build_context(step,
         if gate_type == "answer_quality_gate":
             deliverable_log += f"- quality_status: {deliverable_check.get('quality_status')}\n"
 
-            continuation_recommended = bool(deliverable_check.get("continuation_recommended"))
-            missing_evidence_categories = deliverable_check.get("missing_evidence_categories", []) or []
-            covered_evidence_categories = deliverable_check.get("covered_evidence_categories", []) or []
-            available_evidence_categories = deliverable_check.get("available_evidence_categories", []) or []
+            continuation_recommended = bool(
+                deliverable_check.get("continuation_recommended")
+            )
+            available_evidence_categories = (
+                    deliverable_check.get("available_evidence_categories", []) or []
+            )
+            covered_evidence_categories = (
+                    deliverable_check.get("covered_evidence_categories", []) or []
+            )
+            missing_evidence_categories = (
+                    deliverable_check.get("missing_evidence_categories", []) or []
+            )
+            missing_evidence_requirements = (
+                    deliverable_check.get("missing_evidence_requirements", []) or []
+            )
 
             if available_evidence_categories:
                 deliverable_log += (
@@ -311,13 +323,24 @@ def build_context(step,
                         + "\n"
                 )
 
+            if missing_evidence_requirements:
+                deliverable_log += "- missing_evidence_requirements:\n"
+
+                for item in missing_evidence_requirements:
+                    deliverable_log += (
+                        f"  - category: {item.get('evidence_category')}, "
+                        f"required: {item.get('required_count')}, "
+                        f"covered: {item.get('covered_count')}, "
+                        f"missing: {item.get('missing_count')}\n"
+                    )
+
             if continuation_recommended:
                 deliverable_log += "\nCONTINUE_ANALYSIS_RECOMMENDED: true\n"
                 deliverable_log += (
                     "The previous final answer did not yet satisfy the required evidence coverage. "
                     "Do not produce another final_answer unless the missing evidence is impossible to obtain. "
-                    "Call exactly one appropriate analysis tool next. Use the tool metadata evidence_categories "
-                    "to choose a tool that covers one missing evidence category.\n"
+                    "Call exactly one appropriate analysis tool next. Use the available tool cards and their "
+                    "plugin-declared evidence_categories to choose a tool that covers one missing evidence category.\n"
                 )
 
             warnings = deliverable_check.get("warnings", []) or []
@@ -384,10 +407,37 @@ def build_context(step,
             data_version_log += f"- operation: {active_version.get('operation')}\n"
             data_version_log += f"- parent_version_id: {active_version.get('parent_version_id')}\n"
 
+    coverage_log = ""
+
+    if analysis_coverage_brief:
+        coverage_log += "\n### Analysis Coverage Brief\n"
+        coverage_log += f"- analysis_goal: {analysis_coverage_brief.get('analysis_goal')}\n"
+        coverage_log += (
+                "- required_evidence_categories: "
+                + ", ".join(analysis_coverage_brief.get("required_evidence_categories", []) or [])
+                + "\n"
+        )
+
+        counts = analysis_coverage_brief.get("required_evidence_counts", {}) or {}
+        if counts:
+            coverage_log += f"- required_evidence_counts: {counts}\n"
+
+        optional = analysis_coverage_brief.get("optional_evidence_categories", []) or []
+        if optional:
+            coverage_log += (
+                    "- optional_evidence_categories: "
+                    + ", ".join(optional)
+                    + "\n"
+            )
+
+        coverage_log += f"- autonomy_level: {analysis_coverage_brief.get('autonomy_level')}\n"
+        coverage_log += f"- reasoning_summary: {analysis_coverage_brief.get('reasoning_summary')}\n"
+
     context_text = (
         f"User request:\n{user_request}\n\n"
         f"Dataset overview:\n- rows: {rows}\n- columns: {cols}\n\n"
         f"{data_version_log}\n"
+        f"{coverage_log}\n"
         f"History of actions and results:\n{history_log}\n\n"
         "Evidence reuse policy:\n"
         "- A previous observation may be reused for a numeric answer only if its "

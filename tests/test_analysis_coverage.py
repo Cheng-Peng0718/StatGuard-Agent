@@ -4,6 +4,8 @@ from core.analysis_coverage import (
     covered_evidence_categories_from_runs,
     missing_required_evidence_categories,
     normalize_coverage_brief,
+    coverage_count_by_category_from_runs,
+    missing_required_evidence_requirements,
 )
 
 
@@ -97,3 +99,97 @@ def test_missing_required_evidence_categories_compares_required_to_covered():
     )
 
     assert missing == ["group_comparison"]
+
+def test_missing_required_evidence_requirements_support_counts():
+    categories = available_evidence_categories_from_plugins()
+
+    missing = missing_required_evidence_requirements(
+        coverage_brief={
+            "required_evidence_counts": {
+                "kpi_summary": 1,
+                "group_comparison": 2,
+                "regression_model": 1,
+            }
+        },
+        analysis_runs=[
+            {
+                "status": "ok",
+                "evidence_categories": ["kpi_summary"],
+            },
+            {
+                "status": "ok",
+                "evidence_categories": ["group_comparison"],
+            },
+        ],
+        allowed_categories=categories,
+    )
+
+    assert missing == [
+        {
+            "evidence_category": "group_comparison",
+            "required_count": 2,
+            "covered_count": 1,
+            "missing_count": 1,
+        },
+        {
+            "evidence_category": "regression_model",
+            "required_count": 1,
+            "covered_count": 0,
+            "missing_count": 1,
+        },
+    ]
+
+def test_required_counts_merge_with_required_categories():
+    categories = available_evidence_categories_from_plugins()
+
+    missing = missing_required_evidence_requirements(
+        coverage_brief={
+            "required_evidence_categories": [
+                "sql_schema",
+                "data_preparation",
+                "kpi_summary",
+                "group_comparison",
+                "regression_model",
+                "regression_diagnostics",
+            ],
+            "required_evidence_counts": {
+                "group_comparison": 2,
+            },
+        },
+        analysis_runs=[
+            {
+                "status": "ok",
+                "evidence_categories": ["sql_schema"],
+            },
+            {
+                "status": "ok",
+                "evidence_categories": ["data_preparation"],
+            },
+            {
+                "status": "ok",
+                "evidence_categories": ["kpi_summary"],
+            },
+            {
+                "status": "ok",
+                "evidence_categories": ["group_comparison"],
+            },
+            {
+                "status": "ok",
+                "evidence_categories": ["group_comparison"],
+            },
+            {
+                "status": "ok",
+                "evidence_categories": ["regression_model"],
+            },
+        ],
+        allowed_categories=categories,
+    )
+
+    assert missing == [
+        {
+            "evidence_category": "regression_diagnostics",
+            "required_count": 1,
+            "covered_count": 0,
+            "missing_count": 1,
+        }
+    ]

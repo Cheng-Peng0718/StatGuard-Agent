@@ -27,3 +27,6 @@ class GraphState(TypedDict):
     analysis_runs: Optional[List[Dict[str, Any]]]
     analysis_coverage_brief: Optional[Dict[str, Any]]
     answer_quality_continuation_attempts: int
+    analysis_coverage_brief: Optional[Dict[str, Any]]
+    analysis_coverage_request_hash: Optional[str]
+    answer_quality_continuation_attempts: int
