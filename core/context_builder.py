@@ -272,9 +272,38 @@ def build_context(step,
     deliverable_log = ""
 
     if deliverable_check:
-        deliverable_log += "Deliverable Gate Feedback:\n"
+        gate_type = deliverable_check.get("gate_type")
+
+        if gate_type == "answer_quality_gate":
+            deliverable_log += "Answer Quality Gate Feedback:\n"
+        else:
+            deliverable_log += "Deliverable Gate Feedback:\n"
+
         deliverable_log += f"- status: {deliverable_check.get('status')}\n"
         deliverable_log += f"- message: {deliverable_check.get('message')}\n"
+
+        if gate_type == "answer_quality_gate":
+            deliverable_log += f"- quality_status: {deliverable_check.get('quality_status')}\n"
+
+            warnings = deliverable_check.get("warnings", []) or []
+            if warnings:
+                deliverable_log += "\nAnswer quality warnings:\n"
+                for item in warnings:
+                    deliverable_log += (
+                        f"- check_id: {item.get('check_id')}\n"
+                        f"  message: {item.get('message')}\n"
+                        f"  recommendation: {item.get('recommendation')}\n"
+                    )
+        else:
+            deliverable_log += f"- missing: {deliverable_check.get('missing')}\n"
+            deliverable_log += f"- blocked: {deliverable_check.get('blocked')}\n"
+
+            if deliverable_check.get("status") in {"missing", "blocked"}:
+                deliverable_log += (
+                    "\nCRITICAL: A previous final_answer was blocked by the DeliverableGate. "
+                    "Do not produce final_answer yet. Call the tools needed to satisfy the missing deliverables, "
+                    "unless the missing deliverable is truly unrecoverable.\n"
+                )
 
         missing = deliverable_check.get("missing", []) or []
         if missing:

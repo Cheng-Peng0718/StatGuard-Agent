@@ -186,3 +186,279 @@ def check_deliverables(task_contract: Dict[str, Any], observations: List[Dict[st
         "missing": missing,
         "blocked": blocked,
     }
+
+DATA_PREP_TOOL_NAMES = {
+    "inspect_sql_schema",
+    "materialize_sql_query_result",
+    "inspect_dataset",
+    "clean_data",
+}
+
+
+def _get_action_type(action: Any) -> str | None:
+    if action is None:
+        return None
+
+    if isinstance(action, dict):
+        return action.get("action_type")
+
+    return getattr(action, "action_type", None)
+
+
+def _run_status(run: Dict[str, Any]) -> str | None:
+    return run.get("status")
+
+
+def _run_tool_name(run: Dict[str, Any]) -> str | None:
+    return run.get("tool_name")
+
+
+def _run_data_version_id(run: Dict[str, Any]) -> str | None:
+    return (
+        run.get("data_version_id")
+        or run.get("input_data_version_id")
+        or run.get("produced_data_version_id")
+    )
+
+
+def _is_recorded_analysis_run(run: Dict[str, Any]) -> bool:
+    return _run_status(run) in {"ok", "warning", "blocked"}
+
+
+def _is_substantive_analysis_run(run: Dict[str, Any]) -> bool:
+    tool_name = _run_tool_name(run)
+
+    if tool_name in DATA_PREP_TOOL_NAMES:
+        return False
+
+    return _is_recorded_analysis_run(run)
+
+
+def _has_summary(run: Dict[str, Any]) -> bool:
+    summary = run.get("summary")
+    return isinstance(summary, str) and bool(summary.strip())
+
+
+def _has_assumption_or_limitation_evidence(run: Dict[str, Any]) -> bool:
+    tables = run.get("tables", {}) or {}
+    metadata = run.get("metadata", {}) or {}
+    guardrails = run.get("guardrails", []) or []
+
+    table_keys = {str(key).lower() for key in tables.keys()}
+
+    if any("assumption" in key or "limitation" in key for key in table_keys):
+        return True
+
+    if metadata.get("assumptions_and_limitations"):
+        return True
+
+    if guardrails:
+        return True
+
+    return False
+
+
+def _looks_statistical_run(run: Dict[str, Any]) -> bool:
+    metrics = run.get("metrics", {}) or {}
+    tables = run.get("tables", {}) or {}
+
+    metric_keys = {str(key).lower() for key in metrics.keys()}
+    table_keys = {str(key).lower() for key in tables.keys()}
+
+    statistical_metric_signals = {
+        "p_value",
+        "f_p_value",
+        "r_squared",
+        "adj_r_squared",
+        "effect_size",
+        "f_statistic",
+        "t_statistic",
+        "model_significant_at_alpha",
+    }
+
+    if metric_keys.intersection(statistical_metric_signals):
+        return True
+
+    if any("coef" in key or "coefficient" in key for key in table_keys):
+        return True
+
+    return False
+
+
+def _quality_check(check_id: str, status: str, message: str, recommendation: str | None = None) -> Dict[str, Any]:
+    item = {
+        "check_id": check_id,
+        "status": status,
+        "message": message,
+    }
+
+    if recommendation:
+        item["recommendation"] = recommendation
+
+    return item
+
+
+def check_answer_quality(
+    *,
+    user_request: str,
+    current_action: Any,
+    analysis_runs: List[Dict[str, Any]],
+    observations: List[Dict[str, Any]],
+    active_data_version_id: str | None = None,
+) -> Dict[str, Any]:
+    """
+    Soft final-answer quality gate for the workbench-style analyst loop.
+
+    This does not depend on task_contract or pending plan steps.
+    It checks whether the final answer is grounded in recorded analysis evidence.
+    The first version is intentionally soft: it records warnings but does not
+    force the graph back into a workflow loop.
+    """
+    action_type = _get_action_type(current_action)
+
+    checks: List[Dict[str, Any]] = []
+
+    if action_type == "ask_user":
+        checks.append(_quality_check(
+            "ask_user_allowed",
+            "pass",
+            "The assistant is asking the user for clarification or missing information.",
+        ))
+
+        return {
+            "status": "ok",
+            "gate_type": "answer_quality_gate",
+            "quality_status": "pass",
+            "message": "Answer quality gate passed for an ask_user action.",
+            "checks": checks,
+            "warnings": [],
+            "satisfied": [],
+            "missing": [],
+            "blocked": [],
+        }
+
+    recorded_runs = [
+        run for run in analysis_runs or []
+        if _is_recorded_analysis_run(run)
+    ]
+
+    substantive_runs = [
+        run for run in recorded_runs
+        if _is_substantive_analysis_run(run)
+    ]
+
+    blocked_runs = [
+        run for run in recorded_runs
+        if _run_status(run) == "blocked"
+    ]
+
+    warnings: List[Dict[str, Any]] = []
+
+    if recorded_runs:
+        checks.append(_quality_check(
+            "analysis_runs_recorded",
+            "pass",
+            f"{len(recorded_runs)} recorded analysis run(s) are available for the final answer.",
+        ))
+    else:
+        warning = _quality_check(
+            "analysis_runs_recorded",
+            "warn",
+            "No recorded analysis runs are available for the final answer.",
+            "Final answers for data analysis requests should be grounded in tool observations or analysis runs.",
+        )
+        checks.append(warning)
+        warnings.append(warning)
+
+    if substantive_runs:
+        checks.append(_quality_check(
+            "substantive_analysis_present",
+            "pass",
+            f"{len(substantive_runs)} substantive analysis run(s) are available.",
+        ))
+    else:
+        warning = _quality_check(
+            "substantive_analysis_present",
+            "warn",
+            "Only data-preparation or schema-inspection runs were found; no substantive analysis result was recorded.",
+            "If the user asked for analysis, run an appropriate analysis tool before finalizing.",
+        )
+        checks.append(warning)
+        warnings.append(warning)
+
+    if active_data_version_id and substantive_runs:
+        matching_version_runs = [
+            run for run in substantive_runs
+            if _run_data_version_id(run) in {active_data_version_id, None, "N/A"}
+        ]
+
+        if matching_version_runs:
+            checks.append(_quality_check(
+                "active_data_version_alignment",
+                "pass",
+                f"At least one substantive analysis run is aligned with the active data version `{active_data_version_id}`.",
+            ))
+        else:
+            warning = _quality_check(
+                "active_data_version_alignment",
+                "warn",
+                f"No substantive analysis run clearly matches the active data version `{active_data_version_id}`.",
+                "Recompute stale results or make the data-version limitation explicit.",
+            )
+            checks.append(warning)
+            warnings.append(warning)
+
+    for run in substantive_runs:
+        if not _has_summary(run):
+            warning = _quality_check(
+                "analysis_summary_present",
+                "warn",
+                f"Analysis run `{run.get('title') or run.get('tool_name')}` has no human-readable summary.",
+                "Each substantive analysis run should provide a concise summary for the final answer and report.",
+            )
+            checks.append(warning)
+            warnings.append(warning)
+
+    statistical_runs = [
+        run for run in substantive_runs
+        if _looks_statistical_run(run)
+    ]
+
+    for run in statistical_runs:
+        if not _has_assumption_or_limitation_evidence(run):
+            warning = _quality_check(
+                "statistical_limitations_present",
+                "warn",
+                f"Statistical run `{run.get('title') or run.get('tool_name')}` does not expose assumptions, limitations, or guardrails.",
+                "Statistical conclusions should include assumptions, limitations, or guardrail findings.",
+            )
+            checks.append(warning)
+            warnings.append(warning)
+
+    if blocked_runs:
+        warning = _quality_check(
+            "blocked_attempts_visible",
+            "warn",
+            f"{len(blocked_runs)} blocked analysis attempt(s) are recorded.",
+            "The final answer should explain why the requested analysis was blocked and suggest a next step.",
+        )
+        checks.append(warning)
+        warnings.append(warning)
+
+    quality_status = "needs_attention" if warnings else "pass"
+
+    return {
+        "status": "ok",
+        "gate_type": "answer_quality_gate",
+        "quality_status": quality_status,
+        "message": (
+            "Answer quality gate completed with warnings."
+            if warnings
+            else "Answer quality gate passed."
+        ),
+        "checks": checks,
+        "warnings": warnings,
+        "satisfied": [],
+        "missing": [],
+        "blocked": [],
+    }

@@ -15,7 +15,7 @@ from agents.supervisor import call_supervisor
 from core.analysis_tool_plugins.execution import execute_tool
 import hashlib
 import json
-from core.deliverables import check_deliverables
+from core.deliverables import check_deliverables, check_answer_quality
 from core.analysis_runs import build_analysis_run_from_observation
 
 # --- Graph nodes ---
@@ -586,7 +586,7 @@ def route_after_supervisor(state: GraphState):
     action = state.get("current_action")
 
     if action and hasattr(action, "action_type") and action.action_type in ["final_answer", "ask_user"]:
-        print("[ROUTE AFTER SUPERVISOR] final_answer -> deliverable_gate")
+        print("[ROUTE AFTER SUPERVISOR] final_answer -> answer_quality_gate")
         return "deliverable_gate"
 
     if state.get("current_step", 0) >= state.get("max_steps", 12):
@@ -757,38 +757,29 @@ def get_action_hash(tool_name: str, arguments: dict):
 
 def deliverable_gate_node(state: GraphState):
     """
-    Gate final_answer based on the declared task_contract.
+    Soft answer-quality gate for the workbench-style analyst loop.
 
-    This node checks whether required deliverables have been satisfied by observations.
-    It does not call tools. It only writes deliverable_check into state.
+    This replaces the old task_contract-centered deliverable behavior on the
+    active path. It checks whether the final answer is grounded in recorded
+    analysis evidence, current data version, and visible limitations.
+
+    It intentionally does not force rigid plan/workflow completion.
     """
-    # print(">>> ENTERED DELIVERABLE GATE NODE <<<")
+    observations = state.get("observations", []) or []
+    analysis_runs = state.get("analysis_runs", []) or []
 
-    contract = state.get("task_contract")
-    observations = state.get("observations", [])
-
-    check = check_deliverables(contract, observations)
+    check = check_answer_quality(
+        user_request=state.get("user_request", ""),
+        current_action=state.get("current_action"),
+        analysis_runs=analysis_runs,
+        observations=observations,
+        active_data_version_id=state.get("active_data_version_id"),
+    )
 
     gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
 
-    if check.get("status") == "missing" and gate_attempts >= 3:
-        check = {
-            **check,
-            "status": "blocked",
-            "message": (
-                "DeliverableGate retry limit reached. "
-                "Remaining missing deliverables are treated as blocked."
-            ),
-            "blocked": (check.get("blocked", []) or []) + [
-                {
-                    "reason": "deliverable_gate_retry_limit_reached",
-                    "missing": check.get("missing", []),
-                }
-            ],
-        }
-
     print("\n" + "=" * 40)
-    print("[DELIVERABLE GATE]")
+    print("[ANSWER QUALITY GATE]")
     print(json.dumps(check, ensure_ascii=False, indent=2)[:4000])
     print("=" * 40 + "\n")
 
@@ -799,19 +790,25 @@ def deliverable_gate_node(state: GraphState):
 
 def route_after_deliverable_gate(state: GraphState):
     """
-    If deliverables are satisfied, allow final_answer to end.
-    If deliverables are missing, go back to build_context so Supervisor can continue.
+    Route after the soft answer-quality gate.
+
+    The active architecture uses this gate as a final quality check, not as a
+    rigid workflow loop. The gate records warnings but normally lets the answer
+    finish. Legacy task-contract checks can still use missing/blocked if they
+    are reintroduced explicitly in the future.
     """
     check = state.get("deliverable_check") or {}
     status = check.get("status")
+    gate_type = check.get("gate_type")
 
-    print(f"[ROUTE AFTER DELIVERABLE GATE] status = {status}")
+    print(f"[ROUTE AFTER ANSWER QUALITY GATE] status = {status}, gate_type = {gate_type}")
+
+    if gate_type == "answer_quality_gate":
+        return "end"
 
     if status == "ok":
         return "end"
 
-    # If a deliverable is explicitly blocked/unrecoverable,
-    # allow the final answer to end with limitations.
     if status == "blocked":
         return "end"
 
