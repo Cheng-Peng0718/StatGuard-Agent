@@ -382,6 +382,10 @@ class AnalysisToolPlugin:
     # Lightweight examples shown to the Supervisor.
     examples: List[Dict[str, Any]] = field(default_factory=list)
 
+    # High-level evidence categories produced by this tool.
+    # These are used by the answer quality gate and coverage brief.
+    evidence_categories: List[str] = field(default_factory=list)
+
     def run(self, context) -> Dict[str, Any]:
         if self.execute is None:
             return {
@@ -503,6 +507,7 @@ class AnalysisToolPlugin:
         analysis_run = {
             "run_id": f"run_{uuid.uuid4().hex[:8]}",
             "tool_name": self.tool_name,
+            "evidence_categories": list(self.evidence_categories or []),
             "action_id": action_id,
             "data_version_id": data_version_id,
             "status": status,

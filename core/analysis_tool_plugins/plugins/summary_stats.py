@@ -137,6 +137,7 @@ SUMMARY_STATS_DISPLAY = DisplayConfig()
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="get_summary_stats",
     display_name="Summary Statistics",
+    evidence_categories=["dataset_overview", "summary_statistics"],
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={},

@@ -604,6 +604,7 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_multiple_regression",
     display_name="Linear Model",
+    evidence_categories=["regression_model", "statistical_inference"],
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={

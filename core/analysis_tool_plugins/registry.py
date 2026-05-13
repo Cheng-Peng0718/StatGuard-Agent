@@ -71,6 +71,7 @@ def get_tool_specs_for_llm() -> Dict[str, Dict[str, Any]]:
             "name": plugin.tool_name,
             "display_name": plugin.display_name,
             "description": plugin.description or plugin.display_name,
+            "evidence_categories": list(plugin.evidence_categories or []),
             "usage_guidance": plugin.usage_guidance,
             "use_when": list(plugin.use_when or []),
             "do_not_use_when": list(plugin.do_not_use_when or []),

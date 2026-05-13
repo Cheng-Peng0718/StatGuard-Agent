@@ -292,6 +292,7 @@ MODEL_DIAGNOSTICS_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="regression_diagnostics",
     display_name="Model Diagnostics",
+    evidence_categories=["regression_diagnostics", "model_diagnostics"],
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={

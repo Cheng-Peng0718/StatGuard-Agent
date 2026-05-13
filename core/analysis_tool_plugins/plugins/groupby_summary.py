@@ -279,9 +279,10 @@ def _execute(context) -> dict[str, Any]:
         }
 
 
-groupby_summary_plugin = AnalysisToolPlugin(
+PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="groupby_summary",
     display_name="Groupby Summary",
+    evidence_categories=["group_summary", "descriptive_comparison"],
     description="Compare a numeric metric across one or more grouping columns in the active DataFrame dataset.",
     usage_guidance=(
         "Use this for business comparisons such as revenue by region, revenue by segment, "
@@ -336,6 +337,4 @@ groupby_summary_plugin = AnalysisToolPlugin(
         column_list_args=["group_cols"],
     ),
     requires_confirmation=False,
-)
-
-register_plugin(groupby_summary_plugin)
+))

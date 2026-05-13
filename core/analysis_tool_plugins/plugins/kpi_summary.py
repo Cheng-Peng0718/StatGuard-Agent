@@ -431,6 +431,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="kpi_summary",
     display_name="KPI Summary",
     description="Compute high-level business KPI summaries for numeric metrics in the active DataFrame dataset.",
+    evidence_categories=["kpi_summary", "dataset_overview"],
     usage_guidance=(
         "Use this near the beginning of a business or data analysis task to summarize key metrics such as "
         "revenue, sales, orders, quantity, cost, profit, or customer value. If metric_columns are not provided, "

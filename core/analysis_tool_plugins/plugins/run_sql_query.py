@@ -98,9 +98,10 @@ def _execute(context) -> dict[str, Any]:
         }
 
 
-run_sql_query_plugin = AnalysisToolPlugin(
+PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_sql_query",
     display_name="Run Safe SQL Query",
+    evidence_categories=["sql_query_result"],
     description="Run a read-only SQL SELECT/WITH query against a DuckDB database and return a preview-style result.",
     usage_guidance=(
         "Use this for SQL previews, KPI summaries, trend summaries, top-N results, "
@@ -139,6 +140,4 @@ run_sql_query_plugin = AnalysisToolPlugin(
         },
     ),
     requires_confirmation=False,
-)
-
-register_plugin(run_sql_query_plugin)
+))

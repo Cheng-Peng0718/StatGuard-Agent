@@ -229,6 +229,7 @@ INSPECT_DATASET_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="inspect_dataset",
     display_name="Dataset Inspection",
+    evidence_categories=["dataset_overview", "data_profile"],
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={},

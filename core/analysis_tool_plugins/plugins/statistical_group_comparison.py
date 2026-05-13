@@ -662,6 +662,7 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="statistical_group_comparison",
     display_name="Statistical Group Comparison",
+    evidence_categories=["group_comparison", "statistical_inference"],
     description=(
         "Compare a numeric outcome across a categorical grouping variable using Welch's t-test "
         "for two groups or one-way ANOVA for three or more groups."

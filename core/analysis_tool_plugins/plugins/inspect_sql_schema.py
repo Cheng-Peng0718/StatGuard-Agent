@@ -115,7 +115,7 @@ def _execute(context) -> dict[str, Any]:
         }
 
 
-inspect_sql_schema_plugin = AnalysisToolPlugin(
+PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="inspect_sql_schema",
     display_name="Inspect SQL Database Schema",
     description="Inspect a DuckDB database and return tables, columns, data types, and row counts.",
@@ -123,6 +123,7 @@ inspect_sql_schema_plugin = AnalysisToolPlugin(
         "Use this before writing SQL when the database schema is unknown. "
         "Reuse prior schema observations for the same database path instead of calling this repeatedly."
     ),
+    evidence_categories=["sql_schema"],
     use_when=[
         "The user provides a SQL database path and asks what tables or columns are available.",
         "The user asks to analyze a SQL database but the schema has not been inspected yet.",
@@ -146,6 +147,4 @@ inspect_sql_schema_plugin = AnalysisToolPlugin(
         optional={},
     ),
     requires_confirmation=False,
-)
-
-register_plugin(inspect_sql_schema_plugin)
+))

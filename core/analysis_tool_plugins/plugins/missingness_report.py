@@ -279,6 +279,7 @@ MISSINGNESS_REPORT_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="missingness_report",
     display_name="Missingness Report",
+    evidence_categories=["data_quality", "missingness"],
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={},
