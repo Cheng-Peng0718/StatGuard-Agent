@@ -3,8 +3,38 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
-from core.analysis_tool_plugins.registry import get_available_evidence_categories
+from core.analysis_tool_plugins.registry import (
+    get_available_evidence_categories,
+    get_available_evidence_category_roles,
+)
 
+def available_evidence_category_roles_from_plugins() -> Dict[str, str]:
+    raw_roles = get_available_evidence_category_roles()
+    roles: Dict[str, str] = {}
+
+    for category, role in raw_roles.items():
+        normalized_category = normalize_evidence_category(category)
+        normalized_role = str(role or "substantive").strip().lower()
+
+        if not normalized_category:
+            continue
+
+        if normalized_role not in {
+            "substantive",
+            "pre_analysis_check",
+            "provenance",
+            "optional_context",
+        }:
+            normalized_role = "substantive"
+
+        roles[normalized_category] = normalized_role
+
+    return roles
+
+
+def _append_unique(items: List[str], value: str) -> None:
+    if value and value not in items:
+        items.append(value)
 
 def normalize_evidence_category(value: Any) -> str | None:
     """
@@ -65,33 +95,79 @@ def normalize_coverage_brief(
     """
     Normalize an LLM- or user-provided coverage brief.
 
-    If allowed_categories is provided, required/optional categories are filtered
-    to categories currently declared by registered plugins.
+    Only categories with role='substantive' remain in required_evidence_categories.
+    Pre-analysis checks and provenance categories are demoted so they do not
+    hard-block final answers.
     """
     if not isinstance(brief, dict):
         return {}
 
     allowed = set(normalize_evidence_categories(allowed_categories or []))
+    category_roles = available_evidence_category_roles_from_plugins()
 
-    required = normalize_evidence_categories(
+    raw_required = normalize_evidence_categories(
         brief.get("required_evidence_categories")
     )
-    optional = normalize_evidence_categories(
+    raw_prechecks = normalize_evidence_categories(
+        brief.get("pre_analysis_check_categories")
+    )
+    raw_provenance = normalize_evidence_categories(
+        brief.get("provenance_categories")
+    )
+    raw_optional = normalize_evidence_categories(
         brief.get("optional_evidence_categories")
     )
 
     if drop_unknown and allowed:
-        required = [item for item in required if item in allowed]
-        optional = [item for item in optional if item in allowed]
+        raw_required = [item for item in raw_required if item in allowed]
+        raw_prechecks = [item for item in raw_prechecks if item in allowed]
+        raw_provenance = [item for item in raw_provenance if item in allowed]
+        raw_optional = [item for item in raw_optional if item in allowed]
+
+    required: List[str] = []
+    prechecks: List[str] = list(raw_prechecks)
+    provenance: List[str] = list(raw_provenance)
+    optional: List[str] = list(raw_optional)
+
+    # Demote non-substantive categories even if the LLM put them in required.
+    for category in raw_required:
+        role = category_roles.get(category, "substantive")
+
+        if role == "substantive":
+            _append_unique(required, category)
+        elif role == "pre_analysis_check":
+            _append_unique(prechecks, category)
+        elif role == "provenance":
+            _append_unique(provenance, category)
+        else:
+            _append_unique(optional, category)
+
+    raw_counts = normalize_required_evidence_counts(
+        brief.get("required_evidence_counts"),
+        allowed_categories=allowed_categories,
+        drop_unknown=drop_unknown,
+    )
+
+    required_counts: Dict[str, int] = {}
+
+    for category, count in raw_counts.items():
+        role = category_roles.get(category, "substantive")
+
+        if role == "substantive":
+            required_counts[category] = count
+        elif role == "pre_analysis_check":
+            _append_unique(prechecks, category)
+        elif role == "provenance":
+            _append_unique(provenance, category)
+        else:
+            _append_unique(optional, category)
 
     return {
         "analysis_goal": str(brief.get("analysis_goal") or "").strip(),
         "required_evidence_categories": required,
-        "required_evidence_counts": normalize_required_evidence_counts(
-            brief.get("required_evidence_counts"),
-            allowed_categories=allowed_categories,
-            drop_unknown=drop_unknown,
-        ),
+        "required_evidence_counts": required_counts,
+        "pre_analysis_check_categories": prechecks,
+        "provenance_categories": provenance,
         "optional_evidence_categories": optional,
         "autonomy_level": str(brief.get("autonomy_level") or "").strip(),
         "reasoning_summary": str(brief.get("reasoning_summary") or "").strip(),

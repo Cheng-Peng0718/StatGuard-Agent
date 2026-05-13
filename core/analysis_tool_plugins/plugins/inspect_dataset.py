@@ -230,6 +230,10 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="inspect_dataset",
     display_name="Dataset Inspection",
     evidence_categories=["dataset_overview", "data_profile"],
+    evidence_category_roles={
+        "dataset_overview": "optional_context",
+        "data_profile": "optional_context",
+    },
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={},

@@ -280,6 +280,10 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="missingness_report",
     display_name="Missingness Report",
     evidence_categories=["data_quality", "missingness"],
+    evidence_category_roles={
+        "data_quality": "pre_analysis_check",
+        "missingness": "pre_analysis_check",
+    },
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={},

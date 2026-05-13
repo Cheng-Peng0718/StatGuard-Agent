@@ -72,6 +72,7 @@ def get_tool_specs_for_llm() -> Dict[str, Dict[str, Any]]:
             "display_name": plugin.display_name,
             "description": plugin.description or plugin.display_name,
             "evidence_categories": list(plugin.evidence_categories or []),
+            "evidence_category_roles": dict(plugin.evidence_category_roles or {}),
             "usage_guidance": plugin.usage_guidance,
             "use_when": list(plugin.use_when or []),
             "do_not_use_when": list(plugin.do_not_use_when or []),
@@ -105,6 +106,40 @@ def get_available_evidence_categories() -> list[str]:
 
             if value not in categories:
                 categories.append(value)
+
+    return categories
+
+def get_available_evidence_category_roles() -> dict[str, str]:
+    """
+    Return plugin-declared evidence category roles.
+
+    Evidence category semantics are plugin-owned, not centrally hardcoded.
+    If multiple tools declare the same category, substantive wins because it
+    means the category can support final answer coverage.
+    """
+    categories: dict[str, str] = {}
+
+    for plugin in list_plugins(executable_only=True).values():
+        role_map = getattr(plugin, "evidence_category_roles", None) or {}
+
+        for category in plugin.evidence_categories or []:
+            if not isinstance(category, str):
+                continue
+
+            category_name = category.strip()
+
+            if not category_name:
+                continue
+
+            role = str(role_map.get(category_name, "substantive")).strip() or "substantive"
+
+            if category_name not in categories:
+                categories[category_name] = role
+                continue
+
+            # If any plugin says this category is substantive, let substantive win.
+            if categories[category_name] != "substantive" and role == "substantive":
+                categories[category_name] = "substantive"
 
     return categories
 

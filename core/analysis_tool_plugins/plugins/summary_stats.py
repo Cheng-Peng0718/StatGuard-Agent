@@ -138,6 +138,10 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="get_summary_stats",
     display_name="Summary Statistics",
     evidence_categories=["dataset_overview", "summary_statistics"],
+    evidence_category_roles={
+        "dataset_overview": "optional_context",
+        "summary_statistics": "optional_context",
+    },
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={},

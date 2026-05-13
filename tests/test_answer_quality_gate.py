@@ -192,3 +192,43 @@ def test_answer_quality_gate_uses_plugin_scanned_coverage_brief():
     assert "regression_model" in check["missing_evidence_categories"]
     assert "kpi_summary" in check["covered_evidence_categories"]
     assert "regression_model" in check["available_evidence_categories"]
+
+def test_answer_quality_gate_does_not_continue_for_missing_pre_analysis_check_only():
+    check = check_answer_quality(
+        user_request="Analyze the ecommerce database end-to-end.",
+        current_action=DummyAction("final_answer"),
+        active_data_version_id="data_v_1",
+        observations=[],
+        analysis_coverage_brief={
+            "analysis_goal": "end_to_end",
+            "required_evidence_categories": [
+                "data_quality",
+                "kpi_summary",
+            ],
+            "required_evidence_counts": {
+                "data_quality": 1,
+                "kpi_summary": 1,
+            },
+            "optional_evidence_categories": [],
+            "autonomy_level": "continue_until_covered",
+            "reasoning_summary": "Need data quality and KPI.",
+        },
+        analysis_runs=[
+            {
+                "tool_name": "kpi_summary",
+                "title": "KPI Summary",
+                "status": "ok",
+                "data_version_id": "data_v_1",
+                "summary": "Computed KPI summary.",
+                "metrics": {"n_rows": 98},
+                "tables": {"kpi_rows": []},
+                "guardrails": [],
+                "evidence_categories": ["kpi_summary"],
+            },
+        ],
+    )
+
+    assert check["quality_status"] == "needs_attention"
+    assert check["continuation_recommended"] is False
+    assert check["missing_evidence_categories"] == []
+    assert "data_quality" in check["missing_pre_analysis_checks"]

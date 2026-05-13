@@ -6,8 +6,9 @@ from core.analysis_coverage import (
     normalize_coverage_brief,
     coverage_count_by_category_from_runs,
     missing_required_evidence_requirements,
-)
 
+)
+from core.analysis_tool_plugins.registry import get_available_evidence_categories
 
 def test_available_evidence_categories_are_scanned_from_plugins():
     categories = available_evidence_categories_from_plugins()
@@ -193,3 +194,49 @@ def test_required_counts_merge_with_required_categories():
             "missing_count": 1,
         }
     ]
+
+def test_normalize_coverage_brief_demotes_precheck_and_provenance_categories():
+    allowed = get_available_evidence_categories()
+
+    brief = normalize_coverage_brief(
+        {
+            "analysis_goal": "end_to_end",
+            "required_evidence_categories": [
+                "sql_schema",
+                "data_quality",
+                "data_preparation",
+                "kpi_summary",
+                "group_comparison",
+                "regression_model",
+                "regression_diagnostics",
+            ],
+            "required_evidence_counts": {
+                "sql_schema": 1,
+                "data_quality": 1,
+                "data_preparation": 1,
+                "group_comparison": 2,
+                "regression_model": 1,
+            },
+            "optional_evidence_categories": [],
+            "autonomy_level": "continue_until_covered",
+            "reasoning_summary": "Need end-to-end evidence.",
+        },
+        allowed_categories=allowed,
+        drop_unknown=True,
+    )
+
+    assert brief["required_evidence_categories"] == [
+        "kpi_summary",
+        "group_comparison",
+        "regression_model",
+        "regression_diagnostics",
+    ]
+
+    assert brief["required_evidence_counts"] == {
+        "group_comparison": 2,
+        "regression_model": 1,
+    }
+
+    assert "data_quality" in brief["pre_analysis_check_categories"]
+    assert "sql_schema" in brief["provenance_categories"]
+    assert "data_preparation" in brief["provenance_categories"]

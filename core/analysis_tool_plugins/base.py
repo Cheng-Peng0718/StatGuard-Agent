@@ -386,6 +386,14 @@ class AnalysisToolPlugin:
     # These are used by the answer quality gate and coverage brief.
     evidence_categories: List[str] = field(default_factory=list)
 
+    # Role of each evidence category produced by this tool.
+    # Allowed roles:
+    # - substantive: final answer-supporting analysis evidence
+    # - pre_analysis_check: readiness/data-quality check; warning source, not hard final coverage
+    # - provenance: data source / materialization evidence; report provenance, not hard final coverage
+    # - optional_context: useful context, not hard final coverage
+    evidence_category_roles: Dict[str, str] = field(default_factory=dict)
+
     def run(self, context) -> Dict[str, Any]:
         if self.execute is None:
             return {
@@ -508,6 +516,7 @@ class AnalysisToolPlugin:
             "run_id": f"run_{uuid.uuid4().hex[:8]}",
             "tool_name": self.tool_name,
             "evidence_categories": list(self.evidence_categories or []),
+            "evidence_category_roles": dict(self.evidence_category_roles or {}),
             "action_id": action_id,
             "data_version_id": data_version_id,
             "status": status,

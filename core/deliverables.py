@@ -389,6 +389,16 @@ def check_answer_quality(
         for item in missing_evidence_requirements
     ]
 
+    pre_analysis_check_categories = (
+            coverage_brief.get("pre_analysis_check_categories", []) or []
+    )
+
+    missing_pre_analysis_checks = [
+        category
+        for category in pre_analysis_check_categories
+        if category not in covered_evidence_categories
+    ]
+
     if recorded_runs:
         checks.append(_quality_check(
             "analysis_runs_recorded",
@@ -498,6 +508,19 @@ def check_answer_quality(
         checks.append(warning)
         warnings.append(warning)
 
+    if coverage_brief and missing_pre_analysis_checks:
+        warning = _quality_check(
+            "pre_analysis_checks_missing",
+            "warn",
+            "Some recommended pre-analysis checks were not run.",
+            (
+                    "These checks should be considered report-quality warnings, not hard blockers: "
+                    + ", ".join(missing_pre_analysis_checks)
+            ),
+        )
+        checks.append(warning)
+        warnings.append(warning)
+
     quality_status = "needs_attention" if warnings else "pass"
 
     return {
@@ -505,6 +528,8 @@ def check_answer_quality(
         "gate_type": "answer_quality_gate",
         "quality_status": quality_status,
         "continuation_recommended": bool(missing_evidence_categories),
+        "pre_analysis_check_categories": pre_analysis_check_categories,
+        "missing_pre_analysis_checks": missing_pre_analysis_checks,
         "coverage_brief": coverage_brief,
         "available_evidence_categories": available_evidence_categories,
         "covered_evidence_categories": covered_evidence_categories,

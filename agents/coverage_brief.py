@@ -40,6 +40,8 @@ Output strictly valid JSON with this schema:
   "required_evidence_counts": {
     "category_from_available_list": 1
   },
+  "pre_analysis_check_categories": ["category_from_available_list"],
+  "provenance_categories": ["category_from_available_list"],
   "optional_evidence_categories": ["category_from_available_list"],
   "autonomy_level": "answer_now | continue_until_covered | ask_user",
   "reasoning_summary": "one or two sentences explaining why these evidence categories are needed"
@@ -57,6 +59,12 @@ Rules:
 - Choose autonomy_level = continue_until_covered for broad analysis requests where the agent should keep calling tools until the required evidence is covered.
 - Choose autonomy_level = answer_now for simple requests where one answer is enough.
 - Choose autonomy_level = ask_user only when the request cannot be interpreted or required inputs are missing.
+Evidence category role rules:
+- required_evidence_categories should contain only substantive final-answer evidence.
+- Do NOT put data_quality, missingness, data_profile, dataset_overview, sql_schema, or data_preparation in required_evidence_categories unless the user explicitly asks for that item as the final deliverable.
+- For broad analysis requests, put data_quality or missingness in pre_analysis_check_categories.
+- Put sql_schema and data_preparation in provenance_categories when relevant.
+- pre_analysis_check_categories and provenance_categories are useful for report quality, but they should not block final_answer if missing.
 """
 
 

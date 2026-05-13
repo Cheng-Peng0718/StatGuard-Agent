@@ -290,40 +290,64 @@ def build_context(step,
             continuation_recommended = bool(
                 deliverable_check.get("continuation_recommended")
             )
+
             available_evidence_categories = (
-                    deliverable_check.get("available_evidence_categories", []) or []
+                deliverable_check.get("available_evidence_categories", []) or []
             )
             covered_evidence_categories = (
-                    deliverable_check.get("covered_evidence_categories", []) or []
+                deliverable_check.get("covered_evidence_categories", []) or []
             )
             missing_evidence_categories = (
-                    deliverable_check.get("missing_evidence_categories", []) or []
+                deliverable_check.get("missing_evidence_categories", []) or []
             )
             missing_evidence_requirements = (
-                    deliverable_check.get("missing_evidence_requirements", []) or []
+                deliverable_check.get("missing_evidence_requirements", []) or []
+            )
+
+            pre_analysis_check_categories = (
+                deliverable_check.get("pre_analysis_check_categories", []) or []
+            )
+            missing_pre_analysis_checks = (
+                deliverable_check.get("missing_pre_analysis_checks", []) or []
             )
 
             if available_evidence_categories:
                 deliverable_log += (
-                        "- available_evidence_categories: "
-                        + ", ".join(str(item) for item in available_evidence_categories)
-                        + "\n"
+                    "- available_evidence_categories: "
+                    + ", ".join(str(item) for item in available_evidence_categories)
+                    + "\n"
                 )
 
             if covered_evidence_categories:
                 deliverable_log += (
-                        "- covered_evidence_categories: "
-                        + ", ".join(str(item) for item in covered_evidence_categories)
-                        + "\n"
+                    "- covered_evidence_categories: "
+                    + ", ".join(str(item) for item in covered_evidence_categories)
+                    + "\n"
                 )
 
             if missing_evidence_categories:
                 deliverable_log += (
-                        "- missing_evidence_categories: "
-                        + ", ".join(str(item) for item in missing_evidence_categories)
-                        + "\n"
+                    "- missing_evidence_categories: "
+                    + ", ".join(str(item) for item in missing_evidence_categories)
+                    + "\n"
                 )
 
+            if pre_analysis_check_categories:
+                deliverable_log += (
+                    "- pre_analysis_check_categories: "
+                    + ", ".join(str(item) for item in pre_analysis_check_categories)
+                    + "\n"
+                )
+
+            if missing_pre_analysis_checks:
+                deliverable_log += (
+                    "- missing_pre_analysis_checks: "
+                    + ", ".join(str(item) for item in missing_pre_analysis_checks)
+                    + "\n"
+                )
+
+            # Candidate tools are only listed for hard missing evidence.
+            # Pre-analysis checks are report-quality warnings, not hard blockers.
             if missing_evidence_categories:
                 candidate_tools_by_category = get_tool_specs_for_evidence_categories(
                     missing_evidence_categories
@@ -365,6 +389,9 @@ def build_context(step,
                         f"missing: {item.get('missing_count')}\n"
                     )
 
+            # Important:
+            # Only hard missing evidence should trigger this flag.
+            # Missing pre-analysis checks must not trigger continuation.
             if continuation_recommended:
                 deliverable_log += "\nCONTINUE_ANALYSIS_RECOMMENDED: true\n"
                 deliverable_log += (
@@ -384,6 +411,7 @@ def build_context(step,
                         f"  message: {item.get('message')}\n"
                         f"  recommendation: {item.get('recommendation')}\n"
                     )
+
         else:
             deliverable_log += f"- missing: {deliverable_check.get('missing')}\n"
             deliverable_log += f"- blocked: {deliverable_check.get('blocked')}\n"
@@ -395,31 +423,24 @@ def build_context(step,
                     "unless the missing deliverable is truly unrecoverable.\n"
                 )
 
-        missing = deliverable_check.get("missing", []) or []
-        if missing:
-            deliverable_log += "\nMissing deliverables:\n"
-            for item in missing:
-                deliverable_log += (
-                    f"- deliverable_id: {item.get('deliverable_id')}\n"
-                    f"  description: {item.get('description')}\n"
-                    f"  reason: {item.get('reason')}\n"
-                    f"  satisfied_by: {item.get('satisfied_by')}\n"
-                    f"  required_evidence: {item.get('required_evidence')}\n"
-                    f"  missing_evidence: {item.get('missing_evidence')}\n"
-                )
+            missing = deliverable_check.get("missing", []) or []
+            if missing:
+                deliverable_log += "\nMissing deliverables:\n"
+                for item in missing:
+                    deliverable_log += (
+                        f"- deliverable_id: {item.get('deliverable_id')}\n"
+                        f"  description: {item.get('description')}\n"
+                        f"  reason: {item.get('reason')}\n"
+                        f"  satisfied_by: {item.get('satisfied_by')}\n"
+                        f"  required_evidence: {item.get('required_evidence')}\n"
+                        f"  missing_evidence: {item.get('missing_evidence')}\n"
+                    )
 
-        blocked = deliverable_check.get("blocked", []) or []
-        if blocked:
-            deliverable_log += "\nBlocked deliverables:\n"
-            for item in blocked:
-                deliverable_log += f"- {item}\n"
-
-        if deliverable_check.get("status") in {"missing", "blocked"}:
-            deliverable_log += (
-                "\nCRITICAL: A previous final_answer was blocked by the DeliverableGate. "
-                "Do not produce final_answer yet. Call the tools needed to satisfy the missing deliverables, "
-                "unless the missing deliverable is truly unrecoverable.\n"
-            )
+            blocked = deliverable_check.get("blocked", []) or []
+            if blocked:
+                deliverable_log += "\nBlocked deliverables:\n"
+                for item in blocked:
+                    deliverable_log += f"- {item}\n"
 
     data_version_log = ""
 
@@ -444,22 +465,41 @@ def build_context(step,
     if analysis_coverage_brief:
         coverage_log += "\n### Analysis Coverage Brief\n"
         coverage_log += f"- analysis_goal: {analysis_coverage_brief.get('analysis_goal')}\n"
-        coverage_log += (
+
+        required = analysis_coverage_brief.get("required_evidence_categories", []) or []
+        if required:
+            coverage_log += (
                 "- required_evidence_categories: "
-                + ", ".join(analysis_coverage_brief.get("required_evidence_categories", []) or [])
+                + ", ".join(required)
                 + "\n"
-        )
+            )
 
         counts = analysis_coverage_brief.get("required_evidence_counts", {}) or {}
         if counts:
             coverage_log += f"- required_evidence_counts: {counts}\n"
 
+        prechecks = analysis_coverage_brief.get("pre_analysis_check_categories", []) or []
+        if prechecks:
+            coverage_log += (
+                "- pre_analysis_check_categories: "
+                + ", ".join(prechecks)
+                + "\n"
+            )
+
+        provenance = analysis_coverage_brief.get("provenance_categories", []) or []
+        if provenance:
+            coverage_log += (
+                "- provenance_categories: "
+                + ", ".join(provenance)
+                + "\n"
+            )
+
         optional = analysis_coverage_brief.get("optional_evidence_categories", []) or []
         if optional:
             coverage_log += (
-                    "- optional_evidence_categories: "
-                    + ", ".join(optional)
-                    + "\n"
+                "- optional_evidence_categories: "
+                + ", ".join(optional)
+                + "\n"
             )
 
         coverage_log += f"- autonomy_level: {analysis_coverage_brief.get('autonomy_level')}\n"
@@ -491,9 +531,7 @@ def build_context(step,
         analysis_runs=analysis_runs or [],
         workspace_dir=workspace_dir,
         deliverable_check=deliverable_check,
-
         data_versions=data_versions or [],
         active_data_version_id=active_data_version_id,
         data_audit_log=data_audit_log or [],
-
     )

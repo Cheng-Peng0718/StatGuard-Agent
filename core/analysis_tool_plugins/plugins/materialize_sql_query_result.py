@@ -195,6 +195,9 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     display_name="Materialize SQL Query Result",
     description="Run a safe SQL SELECT/WITH query and save the result as a workspace DataFrame data version.",
     evidence_categories=["data_preparation"],
+    evidence_category_roles={
+        "data_preparation": "provenance",
+    },
     usage_guidance=(
         "Use this when a SQL query result should become the active dataset for downstream "
         "DataFrame tools such as groupby_summary, summary statistics, regression, or plotting."

@@ -124,6 +124,9 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         "Reuse prior schema observations for the same database path instead of calling this repeatedly."
     ),
     evidence_categories=["sql_schema"],
+    evidence_category_roles={
+        "sql_schema": "provenance",
+    },
     use_when=[
         "The user provides a SQL database path and asks what tables or columns are available.",
         "The user asks to analyze a SQL database but the schema has not been inspected yet.",
