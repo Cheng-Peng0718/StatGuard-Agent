@@ -38,6 +38,10 @@ def test_linear_model_unified_execute_and_analysis_run():
     assert raw["status"] in {"ok", "warning"}
     assert "r_squared" in raw["details"]
     assert "coef_table" in raw["details"]
+    assert "coefficient_interpretations" in raw["details"]
+    assert "assumptions_and_limitations" in raw["details"]
+    assert "significant_predictor_count" in raw["details"]
+    assert "model_significant_at_alpha" in raw["details"]
     assert raw["details"]["nobs"] == 8
     assert raw["details"]["p_eff"] == 1
 
@@ -63,6 +67,10 @@ def test_linear_model_unified_execute_and_analysis_run():
     assert "nobs" in run["metrics"]
     assert "r_squared" in run["metrics"]
     assert "coef_table" in run["tables"]
+    assert "coefficient_interpretations" in run["tables"]
+    assert "assumptions_and_limitations" in run["tables"]
+    assert "significant_predictor_count" in run["metrics"]
+    assert "model_significant_at_alpha" in run["metrics"]
 
     # Technical fields should be metadata, not user-facing metrics.
     assert "aic" not in run["metrics"]
@@ -84,11 +92,22 @@ def test_linear_model_unified_execute_and_analysis_run():
     assert "R-squared" in labels
     assert "Adjusted R-squared" in labels
     assert "Model p-value" in labels
+    assert "Overall model significant" in labels
+    assert "Significant non-intercept predictors" in labels
 
     table_block = next(
         block for block in run["report_blocks"]
         if block["type"] == "table"
     )
+
+    table_titles = [
+        block.get("title")
+        for block in run["report_blocks"]
+        if block["type"] == "table"
+    ]
+
+    assert "Coefficient interpretations" in table_titles
+    assert "Assumptions and limitations" in table_titles
 
     table_labels = [col["label"] for col in table_block["columns"]]
     first_term_value = table_block["rows"][0][0]

@@ -11,6 +11,7 @@ from core.analysis_tool_plugins.base import (
     MetricDisplayConfig,
     TableDisplayConfig,
     compact_dict,
+    format_bool_yes_no,
     format_number,
     format_p_value,
     safe_join_list,
@@ -63,6 +64,111 @@ def _round_or_none(x: Any, digits: int = 6):
     except Exception:
         return None
 
+def _safe_float(value: Any) -> float | None:
+    try:
+        v = float(value)
+        if not math.isfinite(v):
+            return None
+        return v
+    except Exception:
+        return None
+
+
+def _p_value_interpretation(p_value: Any, alpha: float) -> str:
+    p = _safe_float(p_value)
+
+    if p is None:
+        return "p-value not available"
+
+    if p < alpha:
+        return f"statistically significant at alpha={alpha}"
+
+    return f"not statistically significant at alpha={alpha}"
+
+
+def _coefficient_direction(coef: Any) -> str:
+    value = _safe_float(coef)
+
+    if value is None:
+        return "unknown"
+
+    if value > 0:
+        return "positive"
+
+    if value < 0:
+        return "negative"
+
+    return "zero"
+
+
+def _is_intercept_term(term: Any) -> bool:
+    lower = str(term).strip().lower()
+    return lower in {"const", "intercept", "(intercept)"}
+
+
+def _build_coefficient_interpretations(
+    coef_table: list[dict[str, Any]],
+    target_col: str,
+    alpha: float,
+) -> list[dict[str, Any]]:
+    rows = []
+
+    for row in coef_table:
+        term = row.get("term")
+
+        if _is_intercept_term(term):
+            continue
+
+        coef = row.get("coef")
+        p_value = row.get("p_value")
+        direction = _coefficient_direction(coef)
+        significance = _p_value_interpretation(p_value, alpha)
+
+        coef_value = _safe_float(coef)
+
+        if coef_value is None:
+            interpretation = (
+                f"The coefficient for `{term}` could not be interpreted numerically."
+            )
+        elif direction == "positive":
+            interpretation = (
+                f"Holding other predictors fixed, higher `{term}` is associated with higher `{target_col}`."
+            )
+        elif direction == "negative":
+            interpretation = (
+                f"Holding other predictors fixed, higher `{term}` is associated with lower `{target_col}`."
+            )
+        else:
+            interpretation = (
+                f"Holding other predictors fixed, `{term}` has an estimated coefficient near zero for `{target_col}`."
+            )
+
+        rows.append({
+            "term": str(term),
+            "estimate": _round_or_none(coef),
+            "direction": direction,
+            "p_value": _round_or_none(p_value),
+            "significance": significance,
+            "ci_lower": row.get("ci_lower"),
+            "ci_upper": row.get("ci_upper"),
+            "interpretation": interpretation,
+        })
+
+    return rows
+
+
+def _build_regression_assumptions_and_limitations() -> list[dict[str, str]]:
+    items = [
+        "The model describes association, not causation, unless the data come from a randomized or otherwise causal design.",
+        "OLS assumes an approximately linear and additive relationship between predictors and the numeric outcome.",
+        "OLS assumes independent observations.",
+        "Standard errors, confidence intervals, and p-values rely on residual assumptions such as approximately constant variance and appropriate error behavior.",
+        "Categorical predictors are interpreted relative to an omitted reference category after encoding.",
+        "Multicollinearity and influential observations should be checked with regression diagnostics when making formal conclusions.",
+    ]
+
+    return [{"item": item} for item in items]
+
 
 def _get_arg(context, name: str, default: Any = None) -> Any:
     try:
@@ -94,6 +200,14 @@ def execute_linear_model(context) -> Dict[str, Any]:
 
         target_col = _get_arg(context, "target_col")
         feature_cols = _get_arg(context, "feature_cols", [])
+
+        try:
+            alpha = float(_get_arg(context, "alpha", 0.05))
+        except Exception:
+            alpha = 0.05
+
+        if not (0 < alpha < 1):
+            alpha = 0.05
 
         prep = prepare_regression_data(
             df,
@@ -132,6 +246,25 @@ def execute_linear_model(context) -> Dict[str, Any]:
                 "ci_upper": _round_or_none(conf.loc[term, 1]) if term in conf.index else None,
             })
 
+        coefficient_interpretations = _build_coefficient_interpretations(
+            coef_table=coef_table,
+            target_col=target_col,
+            alpha=alpha,
+        )
+
+        significant_predictor_count = sum(
+            1
+            for row in coef_table
+            if not _is_intercept_term(row.get("term"))
+            and _safe_float(row.get("p_value")) is not None
+            and _safe_float(row.get("p_value")) < alpha
+        )
+
+        model_p_value = _safe_float(model.f_pvalue)
+        model_significant_at_alpha = (
+                model_p_value is not None and model_p_value < alpha
+        )
+
         details = {
             **prep["details"],
             "model_type": "OLS multiple linear regression",
@@ -145,6 +278,11 @@ def execute_linear_model(context) -> Dict[str, Any]:
             "df_model": _round_or_none(model.df_model),
             "df_resid": _round_or_none(model.df_resid),
             "coef_table": coef_table,
+            "alpha": alpha,
+            "model_significant_at_alpha": bool(model_significant_at_alpha),
+            "significant_predictor_count": int(significant_predictor_count),
+            "coefficient_interpretations": coefficient_interpretations,
+            "assumptions_and_limitations": _build_regression_assumptions_and_limitations(),
         }
 
         status = "ok"
@@ -196,6 +334,9 @@ def extract_linear_model(
         "adj_r_squared": payload.get("adj_r_squared"),
         "f_statistic": payload.get("f_statistic"),
         "f_p_value": payload.get("f_p_value"),
+        "alpha": payload.get("alpha"),
+        "model_significant_at_alpha": payload.get("model_significant_at_alpha"),
+        "significant_predictor_count": payload.get("significant_predictor_count"),
     })
 
     tables: Dict[str, Any] = {}
@@ -203,6 +344,14 @@ def extract_linear_model(
     coef_table = payload.get("coef_table", [])
     if coef_table:
         tables["coef_table"] = coef_table
+
+    coefficient_interpretations = payload.get("coefficient_interpretations", [])
+    if coefficient_interpretations:
+        tables["coefficient_interpretations"] = coefficient_interpretations
+
+    assumptions_and_limitations = payload.get("assumptions_and_limitations", [])
+    if assumptions_and_limitations:
+        tables["assumptions_and_limitations"] = assumptions_and_limitations
 
     # Internal/system fields. These should not appear in the main report.
     metadata = compact_dict({
@@ -236,6 +385,14 @@ def extract_linear_model(
     if payload.get("r_squared") is not None:
         summary += f" R²={payload.get('r_squared')}."
 
+    if payload.get("model_significant_at_alpha") is True:
+        summary += " The overall model is statistically significant at the selected alpha level."
+    elif payload.get("model_significant_at_alpha") is False:
+        summary += " The overall model is not statistically significant at the selected alpha level."
+
+    if payload.get("significant_predictor_count") is not None:
+        summary += f" Significant non-intercept predictors: {payload.get('significant_predictor_count')}."
+
     return title, summary, metrics, tables, metadata
 
 
@@ -247,12 +404,17 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             "adj_r_squared": "Adjusted R-squared",
             "f_statistic": "F statistic",
             "f_p_value": "Model p-value",
+            "alpha": "Alpha",
+            "model_significant_at_alpha": "Overall model significant",
+            "significant_predictor_count": "Significant non-intercept predictors",
         },
         formatters={
             "r_squared": lambda x: format_number(x, digits=4),
             "adj_r_squared": lambda x: format_number(x, digits=4),
             "f_statistic": lambda x: format_number(x, digits=4),
             "f_p_value": format_p_value,
+            "alpha": lambda x: format_number(x, digits=4),
+            "model_significant_at_alpha": format_bool_yes_no,
         },
         order=[
             "nobs",
@@ -260,9 +422,47 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             "adj_r_squared",
             "f_statistic",
             "f_p_value",
+            "alpha",
+            "model_significant_at_alpha",
+            "significant_predictor_count",
         ],
     ),
     tables={
+        "coefficient_interpretations": TableDisplayConfig(
+            column_labels={
+                "term": "Term",
+                "estimate": "Estimate",
+                "direction": "Direction",
+                "p_value": "p-value",
+                "significance": "Significance",
+                "ci_lower": "95% CI lower",
+                "ci_upper": "95% CI upper",
+                "interpretation": "Interpretation",
+            },
+            column_order=[
+                "term",
+                "estimate",
+                "direction",
+                "p_value",
+                "significance",
+                "ci_lower",
+                "ci_upper",
+                "interpretation",
+            ],
+            column_formatters={
+                "estimate": lambda x: format_number(x, digits=4),
+                "p_value": format_p_value,
+                "ci_lower": lambda x: format_number(x, digits=4),
+                "ci_upper": lambda x: format_number(x, digits=4),
+            },
+        ),
+        "assumptions_and_limitations": TableDisplayConfig(
+            column_labels={
+                "item": "Assumption / limitation",
+            },
+            column_order=["item"],
+        ),
+
         "coef_table": TableDisplayConfig(
             column_labels={
                 "term": "Term",
@@ -316,6 +516,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
             "max_categorical_levels": int,
             "numeric_parse_threshold": float,
             "min_n_per_parameter": int,
+            "alpha": float,
         },
         column_args=[
             "target_col",
