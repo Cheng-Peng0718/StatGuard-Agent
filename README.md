@@ -1,3 +1,5 @@
+<img width="1448" height="1086" alt="Structure" src="https://github.com/user-attachments/assets/27b80f08-30a1-42bb-98c9-3615d8b21c3c" />
+
 # SQL-Connected AI Data Analyst Agent
 
 An AI data analyst agent that turns natural-language analysis requests into end-to-end statistical analysis reports.
