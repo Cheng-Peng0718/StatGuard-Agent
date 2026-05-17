@@ -1,316 +1,49 @@
 import os
 os.environ["LANGGRAPH_ALLOWED_MSGPACK_MODULES"] = "core.schema"
-import streamlit as st
-import uuid
-from core.graph import app
-import pandas as pd
+
 import time
-from core.data_versions import create_initial_data_version, make_audit_event
-from core.report_builder import (
-    build_markdown_report,
-    build_html_report_from_state,
+import uuid
+
+import streamlit as st
+
+from core.graph import app as graph_app
+
+from ui.app_config import configure_page
+from ui.session_state import (
+    init_session_state,
+    build_graph_config,
 )
+from ui.rendering import typewriter_effect
+from ui.chat_history import render_chat_history
+from ui.data_import_panel import render_data_import_panel
+from ui.data_version_panel import render_data_version_panel
+from ui.analysis_results_panel import render_analysis_results_panel
+from ui.report_export_panel import render_report_export_panel
+from ui.dataset_overview_panel import render_dataset_overview_panel
 
-def typewriter_effect(text, speed=0.015):
-    """Character-by-character typewriter streaming."""
-    for char in text:
-        yield char
-        time.sleep(speed)
 
-if "thread_id" not in st.session_state:
-    st.session_state.thread_id = str(uuid.uuid4())
+configure_page()
+init_session_state()
+config = build_graph_config()
 
-st.set_page_config(page_title="SQL-connected AI Data Analyst", layout="wide")
-st.title("SQL-connected AI Data Analyst")
-st.caption(
-    "From SQL databases and uploaded datasets to EDA, KPI analysis, statistical modeling, visualization, and evidence-based reports."
-)
-
-if "session_id" not in st.session_state:
-    st.session_state.session_id = f"web_{uuid.uuid4().hex[:8]}"
-    st.session_state.workspace = os.path.join("workspaces", st.session_state.session_id)
-    os.makedirs(st.session_state.workspace, exist_ok=True)
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Data-related session defaults.
-# Chat should work even before a CSV/DataFrame dataset is uploaded,
-# because SQL tools may operate directly on a database path.
-if "data_versions" not in st.session_state:
-    st.session_state.data_versions = []
-
-if "active_data_version_id" not in st.session_state:
-    st.session_state.active_data_version_id = None
-
-if "data_audit_log" not in st.session_state:
-    st.session_state.data_audit_log = []
-
-if "analysis_runs" not in st.session_state:
-    st.session_state.analysis_runs = []
-
-if "dataset_profile" not in st.session_state:
-    st.session_state.dataset_profile = None
-
-config = {
-    "configurable": {
-        "thread_id": st.session_state.thread_id
-    }
-}
 
 with st.sidebar:
-    st.header("Data import")
-    uploaded_file = st.file_uploader("Upload data", type=['csv', 'xls', 'xlsx'])
-    if uploaded_file:
-        file_signature = f"{uploaded_file.name}:{uploaded_file.size}"
-
-        # Only process a newly uploaded file once.
-        if st.session_state.get("uploaded_file_signature") != file_signature:
-            st.session_state.uploaded_file_signature = file_signature
-
-            # New dataset = new graph thread, new messages, new workspace state.
-            st.session_state.thread_id = str(uuid.uuid4())
-            st.session_state.messages = []
-            st.session_state.resume_stream = False
-            st.session_state.analysis_runs = []
-            st.session_state.thread_id = str(uuid.uuid4())
-
-            config = {
-                "configurable": {
-                    "thread_id": st.session_state.thread_id
-                }
-            }
-
-            parquet_path = os.path.join(st.session_state.workspace, "working_data.parquet")
-
-            try:
-                if uploaded_file.name.endswith(('.xls', '.xlsx')):
-                    df_temp = pd.read_excel(uploaded_file)
-                elif uploaded_file.name.endswith('.csv'):
-                    df_temp = pd.read_csv(uploaded_file)
-                else:
-                    st.error("Unsupported file format")
-                    st.stop()
-
-                df_temp.to_parquet(parquet_path, engine='pyarrow', index=False)
-
-                initial_version = create_initial_data_version(
-                    df=df_temp,
-                    workspace_dir=st.session_state.workspace,
-                    created_by="upload",
-                    description=f"Initial uploaded dataset: {uploaded_file.name}",
-                )
-
-                st.session_state.data_versions = [initial_version]
-                st.session_state.active_data_version_id = initial_version["version_id"]
-                st.session_state.data_audit_log = [
-                    make_audit_event(
-                        event_type="data_loaded",
-                        version_id=initial_version["version_id"],
-                        description=f"Uploaded dataset {uploaded_file.name}",
-                        details={
-                            "filename": uploaded_file.name,
-                            "n_rows": int(df_temp.shape[0]),
-                            "n_cols": int(df_temp.shape[1]),
-                        },
-                    )
-                ]
-
-                st.success("✅ Data converted to Parquet and mounted in the sandbox")
-
-            except Exception as e:
-                st.error(f"Data processing failed: {str(e)}")
-
-        else:
-            st.success("✅ Data already mounted in the sandbox")
-
-    if st.session_state.get("active_data_version_id"):
-        st.divider()
-        st.subheader("Data version")
-        st.caption(f"Active version: `{st.session_state.active_data_version_id}`")
-
-        versions = st.session_state.get("data_versions", [])
-        if versions:
-            latest = versions[-1]
-            st.write(f"Rows: {latest.get('n_rows')}, Columns: {latest.get('n_cols')}")
-            st.write(f"Operation: {latest.get('operation')}")
-
-        audit_log = st.session_state.get("data_audit_log", [])
-
-        if audit_log:
-            with st.expander("Data audit trail"):
-                for event in audit_log:
-                    event_type = event.get("event_type", "unknown_event")
-                    version_id = event.get("version_id")
-                    parent_version_id = event.get("parent_version_id")
-                    created_at = event.get("created_at", "")
-
-                    st.markdown(f"**{event_type}**")
-                    if version_id:
-                        st.caption(f"version: `{version_id}`")
-                    if parent_version_id:
-                        st.caption(f"parent: `{parent_version_id}`")
-                    if created_at:
-                        st.caption(created_at)
-
-                    st.write(event.get("description", ""))
-
-                    details = event.get("details", {})
-                    if details:
-                        st.json(details)
-
-                    st.divider()
-
-        analysis_runs = st.session_state.get("analysis_runs", [])
-
-        if analysis_runs:
-            st.divider()
-            st.subheader("Analysis Results")
-
-            for run in analysis_runs[-10:]:
-                title = run.get("title") or run.get("tool_name", "Analysis")
-                status = run.get("status", "unknown")
-                data_version_id = run.get("data_version_id")
-
-                with st.expander(f"{title} · {status}"):
-                    if data_version_id:
-                        st.caption(f"data version: `{data_version_id}`")
-
-                    summary_text = run.get("summary", "")
-                    if summary_text:
-                        st.write(summary_text)
-
-                    guardrails = run.get("guardrails", [])
-                    if guardrails:
-                        st.markdown("**Guardrails**")
-
-                        for finding in guardrails:
-                            severity = finding.get("severity", "info")
-                            title = finding.get("title", "Guardrail finding")
-                            message = finding.get("message", "")
-                            recommendation = finding.get("recommendation")
-
-                            if severity == "critical":
-                                st.error(f"**{title}** — {message}")
-                            elif severity == "warning":
-                                st.warning(f"**{title}** — {message}")
-                            else:
-                                st.info(f"**{title}** — {message}")
-
-                            if recommendation:
-                                st.caption(f"Recommendation: {recommendation}")
-
-                    metrics = run.get("metrics", {})
-                    if metrics:
-                        st.markdown("**Metrics**")
-                        st.json(metrics)
-
-                    tables = run.get("tables", {})
-                    if tables:
-                        st.markdown("**Tables**")
-                        for table_name, table_data in tables.items():
-                            st.caption(table_name)
-                            st.json(table_data)
-
-                    args = run.get("arguments", {})
-                    if args:
-                        st.markdown("**Arguments**")
-                        st.json(args)
-
-                    artifacts = run.get("artifacts", [])
-                    if artifacts:
-                        st.markdown("**Artifacts**")
-                        for artifact in artifacts:
-                            artifact_type = artifact.get("type")
-                            path = artifact.get("path")
-                            name = artifact.get("name", path)
-
-                            if artifact_type == "png" and path:
-                                st.caption(name)
-                                st.image(path)
-                            else:
-                                st.json(artifact)
-
-            st.divider()
-            st.subheader("Export Report")
-
-            report_user_request = ""
-            if st.session_state.get("messages"):
-                user_messages = [
-                    m.get("content", "")
-                    for m in st.session_state.messages
-                    if m.get("role") == "user"
-                ]
-                report_user_request = user_messages[-1] if user_messages else ""
-
-            markdown_report = build_markdown_report(
-                user_request=report_user_request,
-                active_data_version_id=st.session_state.get("active_data_version_id"),
-                data_versions=st.session_state.get("data_versions", []),
-                data_audit_log=st.session_state.get("data_audit_log", []),
-                analysis_runs=st.session_state.get("analysis_runs", []),
-                title="Data Analysis Report",
-            )
-
-            html_report = build_html_report_from_state(
-                user_request=report_user_request,
-                active_data_version_id=st.session_state.get("active_data_version_id"),
-                data_versions=st.session_state.get("data_versions", []),
-                data_audit_log=st.session_state.get("data_audit_log", []),
-                analysis_runs=st.session_state.get("analysis_runs", []),
-                title="Data Analysis Report",
-            )
-
-            st.download_button(
-                label="Download Markdown Report",
-                data=markdown_report,
-                file_name="analysis_report.md",
-                mime="text/markdown",
-                key="download_markdown_report_main",
-            )
-
-            st.download_button(
-                label="Download HTML Report",
-                data=html_report,
-                file_name="analysis_report.html",
-                mime="text/html",
-                key="download_html_report_main",
-            )
-
-    else:
-        st.divider()
-        st.info(
-            "No active analysis dataset loaded yet. You can upload a CSV/Excel file, "
-            "or start from a SQL database and let the agent build an analysis-ready dataset."
-        )
-        st.caption(
-            "Try: `Analyze the ecommerce database in demo_data/ecommerce_demo.duckdb and identify what drives revenue.`"
-        )
+    config = render_data_import_panel(config)
+    render_data_version_panel()
+    render_dataset_overview_panel()
+    render_analysis_results_panel()
+    render_report_export_panel()
 
     # Old workflow-style plan display is intentionally disabled.
     # The active architecture is a workbench-style analyst loop:
     # context -> supervisor -> verify -> execute -> summarize -> evidence -> answer.
-    #
-    # state_snapshot = app.get_state(config)
-    # plan = state_snapshot.values.get("analysis_plan")
-    # if plan:
-    #     st.divider()
-    #     st.subheader("Current analysis plan")
-    #     for i, step in enumerate(plan):
-    #         st.info(f"{i + 1}. {step}")
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+render_chat_history()
 
-        image_path = msg.get("image_path")
-        if image_path and os.path.exists(image_path):
-            st.image(image_path)
-        if "image" in msg:
-            st.image(msg["image"])
 
-state_snapshot = app.get_state(config)
+state_snapshot = graph_app.get_state(config)
 is_interrupted = bool(state_snapshot.next and "human_review" in state_snapshot.next)
+
 
 if is_interrupted:
     values = state_snapshot.values
@@ -364,7 +97,7 @@ if is_interrupted:
             else:
                 vr.status = "allowed"
 
-            app.update_state(config, {
+            graph_app.update_state(config, {
                 "current_verification": vr,
 
                 # Preserve data version state across human-review resume.
@@ -393,12 +126,12 @@ if is_interrupted:
             if hasattr(vr, "model_copy"):
                 vr = vr.model_copy(update={
                     "status": "rejected_recoverable",
-                    "feedback": feedback
+                    "feedback": feedback,
                 })
             elif hasattr(vr, "copy"):
                 vr = vr.copy(update={
                     "status": "rejected_recoverable",
-                    "feedback": feedback
+                    "feedback": feedback,
                 })
             elif isinstance(vr, dict):
                 vr = {
@@ -420,7 +153,11 @@ if is_interrupted:
 
                 tool_name = action_dump.get("tool_name") or getattr(action, "tool_name", None)
                 arguments = action_dump.get("arguments") or getattr(action, "arguments", {}) or {}
-                action_id = action_dump.get("action_id") or getattr(action, "action_id", f"act_{uuid.uuid4().hex[:8]}")
+                action_id = action_dump.get("action_id") or getattr(
+                    action,
+                    "action_id",
+                    f"act_{uuid.uuid4().hex[:8]}",
+                )
 
                 rejection_observation = {
                     "observation_id": f"obs_{uuid.uuid4().hex[:8]}",
@@ -450,7 +187,7 @@ if is_interrupted:
                     },
                 }
 
-                app.update_state(config, {
+                graph_app.update_state(config, {
                     "current_verification": vr,
                     "observations": [rejection_observation],
                     "human_review_required": False,
@@ -458,7 +195,7 @@ if is_interrupted:
                 })
 
             else:
-                app.update_state(config, {
+                graph_app.update_state(config, {
                     "current_verification": vr,
                     "human_review_required": False,
                     "pending_action": None,
@@ -467,17 +204,23 @@ if is_interrupted:
             st.session_state.resume_stream = True
             st.rerun()
 
+
 elif prompt := st.chat_input("Ask for an analysis."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.rerun()
 
-is_new_task = (st.session_state.messages and st.session_state.messages[-1]["role"] == "user")
+
+is_new_task = (
+    st.session_state.messages
+    and st.session_state.messages[-1]["role"] == "user"
+)
 is_resuming = st.session_state.get("resume_stream", False)
+
 
 if (is_new_task or is_resuming) and not is_interrupted:
     with st.chat_message("assistant"):
-
         state_input = None
+
         if is_new_task and not is_resuming:
             real_profile = st.session_state.get("dataset_profile")
 
@@ -506,9 +249,13 @@ if (is_new_task or is_resuming) and not is_interrupted:
             }
 
         st.session_state.resume_stream = False
+
         workspace_path = st.session_state.get("workspace", "./")
-        existing_imgs = set([f for f in os.listdir(workspace_path) if f.endswith('.png')]) if os.path.exists(
-            workspace_path) else set()
+        existing_imgs = (
+            set(f for f in os.listdir(workspace_path) if f.endswith(".png"))
+            if os.path.exists(workspace_path)
+            else set()
+        )
 
         live_display = st.empty()
 
@@ -516,9 +263,8 @@ if (is_new_task or is_resuming) and not is_interrupted:
         deliverable_gate_status = None
         deliverable_gate_allows_final = False
 
-        for event in app.stream(state_input, config):
+        for event in graph_app.stream(state_input, config):
             for node_name, state_data in event.items():
-
                 if not isinstance(state_data, dict):
                     continue
 
@@ -534,18 +280,18 @@ if (is_new_task or is_resuming) and not is_interrupted:
                 if state_data.get("analysis_runs") is not None:
                     st.session_state.analysis_runs = state_data.get("analysis_runs")
 
-                deliverable_check = state_data.get("deliverable_check") if isinstance(state_data, dict) else None
+                deliverable_check = state_data.get("deliverable_check")
 
                 if deliverable_check:
                     deliverable_gate_status = deliverable_check.get("status")
                     deliverable_gate_allows_final = deliverable_gate_status in {"ok", "blocked"}
 
-                if node_name == "supervisor_node" or node_name == "supervisor":
+                if node_name in {"supervisor_node", "supervisor"}:
                     action = state_data.get("current_action")
                     if action:
-                        reasoning = getattr(action, 'reasoning_summary', '')
-                        action_type = getattr(action, 'action_type', '')
-                        tool_name = getattr(action, 'tool_name', '')
+                        reasoning = getattr(action, "reasoning_summary", "")
+                        action_type = getattr(action, "action_type", "")
+                        tool_name = getattr(action, "tool_name", "")
 
                         with live_display.container():
                             if reasoning:
@@ -557,33 +303,23 @@ if (is_new_task or is_resuming) and not is_interrupted:
                             elif action_type == "final_answer":
                                 st.success("Reasoning complete, preparing report.")
 
-
                 elif node_name == "execute_node":
-
                     execution = state_data.get("current_execution")
 
                     with live_display.container():
-
                         if isinstance(execution, dict):
-
                             status = execution.get("status")
-
                             message = execution.get("message", "")
 
                             if status in {"blocked", "failed"}:
-
                                 st.warning(f"Tool returned `{status}`: {message}", icon="⚠️")
-
                             else:
-
                                 st.success("✅ Tool finished; syncing to memory...")
 
                         elif isinstance(execution, str):
-
                             st.warning(f"System message: {execution}", icon="⚠️")
 
                         else:
-
                             st.success("✅ Tool finished; syncing to memory...")
 
                         time.sleep(0.5)
@@ -591,22 +327,21 @@ if (is_new_task or is_resuming) and not is_interrupted:
                 current_action = state_data.get("current_action")
 
                 if current_action and hasattr(current_action, "action_type"):
-
                     if current_action.action_type == "final_answer":
                         pending_final_answer = current_action.reasoning_summary
                         continue
 
-                    elif current_action.action_type == "ask_user":
+                    if current_action.action_type == "ask_user":
                         live_display.empty()
                         st.warning(f"Agent asks for input: {current_action.reasoning_summary}")
 
                         st.session_state.messages.append({
                             "role": "assistant",
-                            "content": f"Agent asks for input: {current_action.reasoning_summary}"
+                            "content": f"Agent asks for input: {current_action.reasoning_summary}",
                         })
                         st.rerun()
 
-        post_stream_state = app.get_state(config)
+        post_stream_state = graph_app.get_state(config)
 
         if post_stream_state and post_stream_state.values:
             values = post_stream_state.values
@@ -623,7 +358,7 @@ if (is_new_task or is_resuming) and not is_interrupted:
             if values.get("analysis_runs") is not None:
                 st.session_state.analysis_runs = values.get("analysis_runs")
 
-        if post_stream_state.next and "human_review" in post_stream_state.next:
+        if post_stream_state and post_stream_state.next and "human_review" in post_stream_state.next:
             live_display.empty()
             st.session_state.resume_stream = False
             st.rerun()
@@ -638,7 +373,11 @@ if (is_new_task or is_resuming) and not is_interrupted:
 
             st.markdown(pending_final_answer)
 
-            current_imgs = set([f for f in os.listdir(workspace_path) if f.endswith(".png")])
+            current_imgs = (
+                set(f for f in os.listdir(workspace_path) if f.endswith(".png"))
+                if os.path.exists(workspace_path)
+                else set()
+            )
             new_imgs = current_imgs - existing_imgs
 
             for img in new_imgs:
@@ -665,7 +404,6 @@ if (is_new_task or is_resuming) and not is_interrupted:
             })
 
             st.rerun()
-
 
         elif pending_final_answer and not deliverable_gate_allows_final:
             live_display.empty()
