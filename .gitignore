@@ -44,7 +44,7 @@ reports/
 *.db
 
 # DuckDB demo outputs
-demo_data/*.duckdb
+*.duckdb
 !demo_data/.gitkeep
 
 # Logs
@@ -62,3 +62,7 @@ logs/
 # Keep intentional documentation assets
 !docs/
 !screenshots/
+
+.env.txt
+.env.local
+.env.*.local

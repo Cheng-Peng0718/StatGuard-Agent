@@ -273,81 +273,51 @@ analysis_agent_mvp/
 └── README.md
 ```
 
-## Quick Start
-
-### 1. Clone the repository
+## Local Setup
 
 ```Bash
-git clone https://github.com/Cheng-Peng0718/Analysis_Agent_MVP.git
-cd Analysis_Agent_MVP
-```
-
-### 2. Create a virtual environment
-
-```Bash
-python -m venv venv
-```
-
-On Windows:
-
-```Bash
-venv\Scripts\activate
-```
-
-On macOS/Linux:
-
-```Bash
-source venv/bin/activate
-```
-
-### 3. Install dependencies
-
-```Bash
+python -m venv .venv
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
+Create a local environment file outside the repo or use `.env` locally:
 
-### 4. Set environment variables
-
-Create a `.env` file or set your environment variables manually:
-
-```Bash
-OPENAI_API_KEY=your_api_key_here
+```text
+OPENAI_API_KEY=...
+LANGCHAIN_TRACING_V2=false
+LANGSMITH_API_KEY=...
+LANGCHAIN_PROJECT=analysis-agent-dev
+OPENAI_MODEL=gpt-4o
 ```
 
-Optional:
-
-```Bash
-LANGCHAIN_API_KEY=your_langsmith_key_here
-LANGCHAIN_TRACING_V2=true
-```
-
-### 5. Run the app
+Run:
 
 ```Bash
 streamlit run app.py
 ```
 
-## Demo Prompt
-
-Use this prompt in the app:
-
-```text
-Inspect the SQL data in demo_data/ecommerce_demo.duckdb, then analyze the ecommerce database end-to-end. Build an analysis-ready customer-level dataset, summarize business KPIs, compare whether revenue differs across customer segments and regions, model the drivers of customer revenue, diagnose the model, and generate an executive report with key findings, limitations, and recommended next steps.
-```
-
-## Testing
-
-Run the main test suite:
+## Run Tests
 
 ```Bash
 python -m pytest -q
 ```
 
-Run core showcase-related tests:
+## Generate Demo Database
 
 ```Bash
-python -m pytest tests/test_analysis_coverage.py tests/test_answer_quality_gate.py tests/test_coverage_brief_agent.py tests/plugins/test_evidence_categories.py tests/plugins/test_regression_diagnostics_unified.py tests/plugins/test_linear_model_unified.py -q
+python scripts/create_demo_ecommerce_db.py
 ```
+
+## Docker
+
+```Bash
+docker build -t analysis-agent-mvp .
+docker run --rm -p 8501:8501 --env-file ../.env.analysis_agent.local analysis-agent-mvp
+```
+
+
+**This repository does not include user-uploaded data, workspace artifacts, generated reports, or API keys.**
+
 
 ## Current Status
 
