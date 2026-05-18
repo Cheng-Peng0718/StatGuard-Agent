@@ -1088,6 +1088,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     display_name="Linear Model",
     evidence_categories=["regression_model", "statistical_inference"],
     requires_confirmation=False,
+    is_inferential=True,
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,

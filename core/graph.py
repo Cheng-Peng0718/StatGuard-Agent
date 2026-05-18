@@ -820,7 +820,8 @@ def deliverable_gate_node(state: GraphState):
     It intentionally does not force rigid plan/workflow completion.
     """
     observations = state.get("observations", []) or []
-    analysis_runs = state.get("analysis_runs", []) or []
+    analysis_runs = state.get("analysis_runs", []) or []\
+
 
     check = check_answer_quality(
         user_request=state.get("user_request", ""),
@@ -830,6 +831,13 @@ def deliverable_gate_node(state: GraphState):
         active_data_version_id=state.get("active_data_version_id"),
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
     )
+    # Session-level guardrails run here because they span multiple plugins
+    # and cannot be expressed by any single plugin's evaluator. Attachment
+    # logic is encapsulated in the evaluator itself.
+    session_findings = evaluate_multiple_comparison_guardrails(analysis_runs)
+
+    if session_findings:
+        print(f"[SESSION GUARDRAIL] {len(session_findings)} session-level finding(s)")
 
     gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
 

@@ -557,6 +557,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_correlation_test",
     display_name="Correlation Test",
     requires_confirmation=False,
+    is_inferential=True,
     argument_schema=ArgumentSchema(
         required={
             "x_col": str,

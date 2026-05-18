@@ -363,6 +363,7 @@ class AnalysisToolPlugin:
     extractor: Optional[ExtractorFn] = None
 
     requires_confirmation: bool = False
+    is_inferential: bool = False
     argument_schema: ArgumentSchema = field(default_factory=ArgumentSchema)
 
     guardrail_evaluators: List[GuardrailFn] = field(default_factory=list)

@@ -564,6 +564,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_independent_t_test",
     display_name="Independent t-test",
     requires_confirmation=False,
+    is_inferential=True,
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,

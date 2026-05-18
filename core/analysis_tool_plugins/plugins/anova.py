@@ -97,6 +97,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         "t-test), prefer `statistical_group_comparison`."
     ),
     requires_confirmation=False,
+    is_inferential=True,
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,

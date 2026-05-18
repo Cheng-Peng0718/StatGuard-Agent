@@ -632,6 +632,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_chi_square",
     display_name="Chi-square Test",
     requires_confirmation=False,
+    is_inferential=True,
     argument_schema=ArgumentSchema(
         required={
             "row_col": str,

@@ -1273,6 +1273,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         "The user wants a multivariable model; use run_multiple_regression or a regression tool instead.",
         "The active dataset has already been aggregated to one row per group; materialize an observation-level dataset first.",
     ],
+    is_inferential=True,
     requires_data_source="dataframe",
     produces_active_dataset=False,
     requires_confirmation=False,

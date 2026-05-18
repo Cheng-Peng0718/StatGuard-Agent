@@ -139,24 +139,24 @@ _INFERENTIAL_EVIDENCE_CATEGORIES = {
 
 
 def _is_inferential_run(run: Dict[str, Any]) -> bool:
+    """
+    A run is inferential if its source plugin declared so at registration.
+
+    Falls back to the legacy evidence_category heuristic only when the flag
+    is absent (e.g. older runs persisted before the flag was introduced).
+    """
     if not isinstance(run, dict):
         return False
 
     if run.get("status") not in {"ok", "warning"}:
         return False
 
+    if "is_inferential" in run:
+        return bool(run.get("is_inferential"))
+
+    # Legacy fallback for runs created before is_inferential was wired up.
     categories = set(run.get("evidence_categories", []) or [])
-
-    if categories & _INFERENTIAL_EVIDENCE_CATEGORIES:
-        return True
-
-    # Fallback: if a p_value is present in metrics, treat as inferential.
-    metrics = run.get("metrics", {}) or {}
-
-    if "p_value" in metrics and metrics.get("p_value") is not None:
-        return True
-
-    return False
+    return bool(categories & _INFERENTIAL_EVIDENCE_CATEGORIES)
 
 
 def _count_inferential_runs(analysis_runs: List[Dict[str, Any]]) -> int:
@@ -226,16 +226,25 @@ def evaluate_multiple_comparison_guardrails(
             ),
         },
         recommendation=(
-            f"For strict family-wise error control, compare each p-value against "
-            f"alpha/k = 0.05/{k}"
-            + (
-                f" ≈ {round(bonferroni_alpha, 4)}"
-                if bonferroni_alpha is not None else ""
-            )
-            + ". For discovery-oriented analysis with many tests, prefer the Benjamini-Hochberg "
-              "FDR procedure. State the chosen correction explicitly in the report."
+                f"For strict family-wise error control, compare each p-value against "
+                f"alpha/k = 0.05/{k}"
+                + (
+                    f" ≈ {round(bonferroni_alpha, 4)}"
+                    if bonferroni_alpha is not None else ""
+                )
+                + ". For discovery-oriented analysis with many tests, prefer the Benjamini-Hochberg "
+                  "FDR procedure. State the chosen correction explicitly in the report."
         ),
     ))
 
-    return findings
+    # Attach the session-level finding to every inferential run that
+    # participated in inflating the family-wise error rate. This is done
+    # inside the guardrail (not in graph) so orchestration code does not
+    # need to know which evidence_categories count as inferential.
+    for run in runs:
+        if not _is_inferential_run(run):
+            continue
+        existing = run.get("guardrail_findings", []) or []
+        run["guardrail_findings"] = existing + list(findings)
 
+    return findings

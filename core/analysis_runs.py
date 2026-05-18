@@ -43,7 +43,7 @@ def build_analysis_run_from_observation(
     if plugin is None:
         plugin = _generic_unified_fallback_plugin(tool_name)
 
-    return plugin.build_analysis_run(
+    run = plugin.build_analysis_run(
         action_id=action_id,
         arguments=arguments or {},
         data_version_id=data_version_id,
@@ -54,3 +54,10 @@ def build_analysis_run_from_observation(
         artifacts=artifacts or [],
         observation_id=observation_id,
     )
+
+    # Surface plugin-declared inference flag on the run so session-level
+    # guardrails (e.g. multiple-comparison correction) can introspect runs
+    # without hard-coding evidence_category strings in orchestration code.
+    run["is_inferential"] = bool(getattr(plugin, "is_inferential", False))
+
+    return run
