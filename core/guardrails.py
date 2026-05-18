@@ -1,3 +1,4 @@
+import math
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -21,322 +22,9 @@ def _new_finding(
         "recommendation": recommendation,
     }
 
-
-def evaluate_regression_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Guardrails for a fitted linear/regression-type model.
-
-    Uses:
-    - run["metrics"] for user-facing model metrics
-    - run["metadata"] for internal fields such as p_eff / n_eff
-    """
-    findings: List[Dict[str, Any]] = []
-
-    metrics = run.get("metrics", {}) or {}
-    metadata = run.get("metadata", {}) or {}
-    tables = run.get("tables", {}) or {}
-    arguments = run.get("arguments", {}) or {}
-
-    nobs = metrics.get("nobs", metadata.get("nobs"))
-    r2 = metrics.get("r_squared")
-    adj_r2 = metrics.get("adj_r_squared")
-    f_p = metrics.get("f_p_value")
-
-    # Important after Plugin Quality Layer:
-    # p_eff should live in metadata, not user-facing metrics.
-    p_eff = metadata.get("p_eff", metrics.get("p_eff"))
-    n_eff = metadata.get("n_eff", metrics.get("n_eff"))
-
-    target = arguments.get("target_col")
-    features = arguments.get("feature_cols", [])
-
-    # ------------------------------------------------------------
-    # Sample size / model complexity
-    # ------------------------------------------------------------
-    if nobs is not None and p_eff is not None:
-        try:
-            nobs_f = float(nobs)
-            p_eff_f = float(p_eff)
-
-            if p_eff_f > 0:
-                ratio = nobs_f / p_eff_f
-
-                if ratio < 10:
-                    findings.append(_new_finding(
-                        category="sample_size",
-                        severity="warning",
-                        title="Low observations-per-parameter ratio",
-                        message=(
-                            "The model may be underpowered or unstable because the number "
-                            "of observations per effective predictor is low."
-                        ),
-                        evidence={
-                            "nobs": nobs,
-                            "n_eff": n_eff,
-                            "p_eff": p_eff,
-                            "nobs_per_parameter": ratio,
-                        },
-                        recommendation=(
-                            "Consider reducing model complexity, collecting more data, "
-                            "or using regularized methods."
-                        ),
-                    ))
-                else:
-                    findings.append(_new_finding(
-                        category="sample_size",
-                        severity="info",
-                        title="Sample size appears adequate for model size",
-                        message=(
-                            "The observations-per-parameter ratio does not raise an immediate "
-                            "sample-size warning."
-                        ),
-                        evidence={
-                            "nobs": nobs,
-                            "n_eff": n_eff,
-                            "p_eff": p_eff,
-                            "nobs_per_parameter": ratio,
-                        },
-                    ))
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------
-    # Explanatory power
-    # ------------------------------------------------------------
-    if r2 is not None:
-        try:
-            r2_f = float(r2)
-
-            if r2_f < 0.10:
-                findings.append(_new_finding(
-                    category="model_fit",
-                    severity="warning",
-                    title="Low explanatory power",
-                    message=(
-                        "The model explains only a small fraction of outcome variation. "
-                        "A statistically significant predictor may still have limited "
-                        "practical predictive value."
-                    ),
-                    evidence={
-                        "r_squared": r2,
-                        "adj_r_squared": adj_r2,
-                    },
-                    recommendation=(
-                        "Consider adding theoretically relevant predictors, checking nonlinear "
-                        "relationships, or evaluating prediction error."
-                    ),
-                ))
-            elif r2_f < 0.30:
-                findings.append(_new_finding(
-                    category="model_fit",
-                    severity="info",
-                    title="Moderate-to-low explanatory power",
-                    message=(
-                        "The model explains some variation, but substantial unexplained "
-                        "variation remains."
-                    ),
-                    evidence={
-                        "r_squared": r2,
-                        "adj_r_squared": adj_r2,
-                    },
-                ))
-            else:
-                findings.append(_new_finding(
-                    category="model_fit",
-                    severity="info",
-                    title="Model explains a nontrivial share of variation",
-                    message=(
-                        "The R-squared value suggests the model captures a meaningful share "
-                        "of variation in the outcome."
-                    ),
-                    evidence={
-                        "r_squared": r2,
-                        "adj_r_squared": adj_r2,
-                    },
-                ))
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------
-    # Significance vs causality
-    # ------------------------------------------------------------
-    if f_p is not None:
-        try:
-            f_p_f = float(f_p)
-
-            if f_p_f < 0.05:
-                findings.append(_new_finding(
-                    category="interpretation",
-                    severity="info",
-                    title="Statistically significant association",
-                    message=(
-                        "The overall model is statistically significant. This supports an "
-                        "association between the predictor set and the outcome, but does not "
-                        "establish causality."
-                    ),
-                    evidence={
-                        "f_p_value": f_p,
-                        "target_col": target,
-                        "feature_cols": features,
-                    },
-                    recommendation=(
-                        "Avoid causal language unless the study design supports causal inference."
-                    ),
-                ))
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------
-    # Coefficient table interpretation
-    # ------------------------------------------------------------
-    coef_table = tables.get("coef_table", []) or []
-
-    if coef_table:
-        for row in coef_table:
-            if not isinstance(row, dict):
-                continue
-
-            term = row.get("term")
-
-            # Do not interpret intercept as a predictor.
-            if term in {"const", "intercept", "Intercept"}:
-                continue
-
-            p_value = row.get("p_value")
-            coef = row.get("coef")
-
-            try:
-                p_f = float(p_value)
-                coef_f = float(coef)
-
-                if p_f < 0.05:
-                    direction = "positive" if coef_f > 0 else "negative"
-
-                    findings.append(_new_finding(
-                        category="coefficient_interpretation",
-                        severity="info",
-                        title=f"Significant {direction} coefficient: {term}",
-                        message=(
-                            f"The coefficient for `{term}` is statistically significant "
-                            f"and {direction}. Interpret this as an association conditional "
-                            "on the model specification."
-                        ),
-                        evidence={
-                            "term": term,
-                            "coef": coef,
-                            "p_value": p_value,
-                            "ci_lower": row.get("ci_lower"),
-                            "ci_upper": row.get("ci_upper"),
-                        },
-                    ))
-            except Exception:
-                pass
-
-    return findings
-
-
-def evaluate_diagnostics_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """
-    Guardrails for model diagnostics.
-    """
-    findings: List[Dict[str, Any]] = []
-
-    metrics = run.get("metrics", {}) or {}
-
-    max_vif = metrics.get("max_vif")
-    bp_p = metrics.get("breusch_pagan_lm_p_value")
-    hetero_flag = metrics.get("heteroscedasticity_flag_0_05")
-
-    # ------------------------------------------------------------
-    # Multicollinearity / VIF
-    # ------------------------------------------------------------
-    if max_vif is not None:
-        try:
-            v = float(max_vif)
-
-            if v >= 10:
-                findings.append(_new_finding(
-                    category="multicollinearity",
-                    severity="critical",
-                    title="Severe multicollinearity possible",
-                    message=(
-                        "The maximum VIF is very high, suggesting severe multicollinearity."
-                    ),
-                    evidence={"max_vif": max_vif},
-                    recommendation=(
-                        "Inspect correlated predictors, remove redundant variables, "
-                        "or use regularization/dimension reduction."
-                    ),
-                ))
-            elif v >= 5:
-                findings.append(_new_finding(
-                    category="multicollinearity",
-                    severity="warning",
-                    title="Moderate multicollinearity possible",
-                    message=(
-                        "The maximum VIF is elevated, suggesting possible multicollinearity."
-                    ),
-                    evidence={"max_vif": max_vif},
-                    recommendation=(
-                        "Inspect pairwise correlations and consider removing redundant predictors."
-                    ),
-                ))
-            else:
-                findings.append(_new_finding(
-                    category="multicollinearity",
-                    severity="info",
-                    title="No apparent multicollinearity issue",
-                    message=(
-                        "The maximum VIF does not indicate a multicollinearity problem."
-                    ),
-                    evidence={"max_vif": max_vif},
-                ))
-        except Exception:
-            pass
-
-    # ------------------------------------------------------------
-    # Heteroscedasticity
-    # ------------------------------------------------------------
-    if bp_p is not None:
-        try:
-            p = float(bp_p)
-
-            if p < 0.05 or hetero_flag is True:
-                findings.append(_new_finding(
-                    category="heteroscedasticity",
-                    severity="warning",
-                    title="Possible heteroscedasticity",
-                    message=(
-                        "The Breusch-Pagan test suggests non-constant error variance. "
-                        "Standard model standard errors may be unreliable."
-                    ),
-                    evidence={
-                        "breusch_pagan_lm_p_value": bp_p,
-                        "heteroscedasticity_flag_0_05": hetero_flag,
-                    },
-                    recommendation=(
-                        "Consider robust standard errors, transformation, or model respecification."
-                    ),
-                ))
-            else:
-                findings.append(_new_finding(
-                    category="heteroscedasticity",
-                    severity="info",
-                    title="No strong evidence of heteroscedasticity",
-                    message=(
-                        "The Breusch-Pagan test does not suggest strong evidence of "
-                        "heteroscedasticity."
-                    ),
-                    evidence={
-                        "breusch_pagan_lm_p_value": bp_p,
-                        "heteroscedasticity_flag_0_05": hetero_flag,
-                    },
-                ))
-        except Exception:
-            pass
-
-    return findings
-
+# ============================================================
+# Residual histogram guardrails (existing, retained)
+# ============================================================
 
 def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
@@ -351,9 +39,6 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
     outliers_3sd = metrics.get("outliers_abs_3sd")
     flags = metrics.get("diagnostic_flags") or []
 
-    # ------------------------------------------------------------
-    # Residual skewness
-    # ------------------------------------------------------------
     if skew is not None:
         try:
             s = float(skew)
@@ -386,9 +71,6 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
         except Exception:
             pass
 
-    # ------------------------------------------------------------
-    # Residual kurtosis / heavy tails
-    # ------------------------------------------------------------
     if kurt is not None:
         try:
             k = float(kurt)
@@ -409,9 +91,6 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
         except Exception:
             pass
 
-    # ------------------------------------------------------------
-    # Extreme residual outliers
-    # ------------------------------------------------------------
     if outliers_3sd is not None:
         try:
             n = int(outliers_3sd)
@@ -432,9 +111,6 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
         except Exception:
             pass
 
-    # ------------------------------------------------------------
-    # Recorded screening flags
-    # ------------------------------------------------------------
     if flags:
         findings.append(_new_finding(
             category="diagnostic_flags",
@@ -447,3 +123,119 @@ def evaluate_residual_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
         ))
 
     return findings
+
+
+# ============================================================
+# Multiple comparison correction (session-level)
+# ============================================================
+
+# These categories indicate the run produced an inferential p-value test.
+# Used to count tests against family-wise error rate.
+_INFERENTIAL_EVIDENCE_CATEGORIES = {
+    "statistical_inference",
+    "group_comparison",
+    "regression_model",
+}
+
+
+def _is_inferential_run(run: Dict[str, Any]) -> bool:
+    if not isinstance(run, dict):
+        return False
+
+    if run.get("status") not in {"ok", "warning"}:
+        return False
+
+    categories = set(run.get("evidence_categories", []) or [])
+
+    if categories & _INFERENTIAL_EVIDENCE_CATEGORIES:
+        return True
+
+    # Fallback: if a p_value is present in metrics, treat as inferential.
+    metrics = run.get("metrics", {}) or {}
+
+    if "p_value" in metrics and metrics.get("p_value") is not None:
+        return True
+
+    return False
+
+
+def _count_inferential_runs(analysis_runs: List[Dict[str, Any]]) -> int:
+    if not analysis_runs:
+        return 0
+
+    return sum(1 for r in analysis_runs if _is_inferential_run(r))
+
+
+def evaluate_multiple_comparison_guardrails(
+    context_or_run: Any,
+    analysis_runs: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Session-level guardrail. Recommends multiple-comparison correction when more
+    than one inferential test has been run in the session.
+
+    Accepts either:
+      - A context-like object exposing `.analysis_runs` (list of run dicts), or
+      - A run dict whose `metadata.analysis_runs` carries the list, or
+      - A run dict plus an explicit analysis_runs list (for plugin use).
+
+    Returns findings that recommend a Bonferroni-corrected alpha = 0.05/K when
+    K >= 2 inferential tests have been performed, and notes that BH-FDR control
+    is preferable when many tests are run and discoveries (not strict FWER) are
+    the goal.
+    """
+    runs: List[Dict[str, Any]] = []
+
+    if analysis_runs is not None:
+        runs = analysis_runs or []
+    elif isinstance(context_or_run, dict):
+        metadata = context_or_run.get("metadata", {}) or {}
+        runs = (
+            metadata.get("analysis_runs")
+            or context_or_run.get("analysis_runs")
+            or []
+        )
+    else:
+        runs = list(getattr(context_or_run, "analysis_runs", []) or [])
+
+    k = _count_inferential_runs(runs)
+
+    findings: List[Dict[str, Any]] = []
+
+    if k <= 1:
+        return findings
+
+    try:
+        bonferroni_alpha = 0.05 / k
+    except Exception:
+        bonferroni_alpha = None
+
+    findings.append(_new_finding(
+        category="multiple_comparisons",
+        severity="warning",
+        title=f"{k} inferential tests in this session; consider multiple-comparison correction",
+        message=(
+            f"This session has produced {k} inferential test results at a nominal alpha of "
+            f"0.05. The family-wise error rate is no longer 5% when multiple tests are "
+            f"interpreted together."
+        ),
+        evidence={
+            "k_inferential_tests": k,
+            "bonferroni_alpha_per_test": (
+                round(bonferroni_alpha, 6) if bonferroni_alpha is not None else None
+            ),
+        },
+        recommendation=(
+            f"For strict family-wise error control, compare each p-value against "
+            f"alpha/k = 0.05/{k}"
+            + (
+                f" ≈ {round(bonferroni_alpha, 4)}"
+                if bonferroni_alpha is not None else ""
+            )
+            + ". For discovery-oriented analysis with many tests, prefer the Benjamini-Hochberg "
+              "FDR procedure. State the chosen correction explicitly in the report."
+        ),
+    ))
+
+    return findings
+

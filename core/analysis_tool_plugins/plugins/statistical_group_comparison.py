@@ -3,10 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Tuple
 import math
+import itertools
 
 import numpy as np
 import pandas as pd
 from scipy import stats
+
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
@@ -20,6 +23,9 @@ from core.analysis_tool_plugins.base import (
     format_p_value,
 )
 from core.analysis_tool_plugins.registry import register_plugin
+from core.analysis_tool_plugins.shared.group_comparison_guardrails import (
+    evaluate_group_comparison_guardrails,
+)
 
 
 MISSING_TOKENS = {
@@ -28,6 +34,10 @@ MISSING_TOKENS = {
     "NA", "N/A", "NaN", "NULL", "None", "Missing", "Unknown",
 }
 
+
+# ==========================================================
+# Helpers
+# ==========================================================
 
 def _get_arguments(context) -> dict[str, Any]:
     return getattr(context, "arguments", None) or getattr(context, "args", None) or {}
@@ -224,6 +234,308 @@ def _mean_difference_ci(x1: np.ndarray, x2: np.ndarray, alpha: float) -> tuple[f
     return diff - t_crit * se, diff + t_crit * se
 
 
+def _interpret_cohens_d(d: float | None) -> str | None:
+    """Cohen 1988 rules of thumb."""
+    if d is None:
+        return None
+
+    a = abs(float(d))
+
+    if a < 0.2:
+        return "negligible"
+    if a < 0.5:
+        return "small"
+    if a < 0.8:
+        return "medium"
+
+    return "large"
+
+
+def _interpret_eta_squared(eta2: float | None) -> str | None:
+    """Cohen 1988 rules of thumb for eta-squared."""
+    if eta2 is None:
+        return None
+
+    a = float(eta2)
+
+    if a < 0.01:
+        return "negligible"
+    if a < 0.06:
+        return "small"
+    if a < 0.14:
+        return "medium"
+
+    return "large"
+
+
+# ==========================================================
+# Assumption checks
+# ==========================================================
+
+def _run_levene(groups: dict[str, np.ndarray], center: str = "median") -> dict[str, Any]:
+    """
+    Levene's test for homogeneity of variances.
+
+    Uses the Brown-Forsythe variant (center='median') by default, which is more
+    robust to non-normality than the classic Levene's test (center='mean').
+    """
+    arrays = list(groups.values())
+
+    if len(arrays) < 2 or any(len(arr) < 2 for arr in arrays):
+        return {
+            "statistic": None,
+            "p_value": None,
+            "method": f"Levene's test (center={center})",
+            "variances_equal_at_0_05": None,
+            "max_to_min_variance_ratio": None,
+        }
+
+    try:
+        statistic, p_value = stats.levene(*arrays, center=center)
+    except Exception:
+        statistic, p_value = (float("nan"), float("nan"))
+
+    variances = [float(np.var(arr, ddof=1)) for arr in arrays if len(arr) >= 2]
+    var_ratio = None
+
+    if variances and min(variances) > 0:
+        var_ratio = max(variances) / min(variances)
+
+    variances_equal = None
+
+    if math.isfinite(float(p_value)):
+        variances_equal = bool(p_value >= 0.05)
+
+    return {
+        "statistic": _round_or_none(statistic),
+        "p_value": _round_or_none(p_value),
+        "method": f"Levene's test (center={center}, Brown-Forsythe variant)",
+        "variances_equal_at_0_05": variances_equal,
+        "max_to_min_variance_ratio": _round_or_none(var_ratio),
+    }
+
+
+def _run_shapiro_per_group(groups: dict[str, np.ndarray]) -> list[dict[str, Any]]:
+    """
+    Shapiro-Wilk normality test per group.
+
+    Returns None p-value when n < 3 or n > 5000 (Shapiro-Wilk valid range).
+    """
+    rows = []
+
+    for name, arr in groups.items():
+        n = int(len(arr))
+
+        if n < 3 or n > 5000:
+            rows.append({
+                "group": str(name),
+                "n": n,
+                "statistic": None,
+                "p_value": None,
+                "normal_at_0_05": None,
+                "note": (
+                    "n < 3 (not enough)" if n < 3
+                    else "n > 5000 (Shapiro-Wilk not valid; consider Anderson-Darling)"
+                ),
+            })
+            continue
+
+        try:
+            stat, p = stats.shapiro(arr)
+        except Exception:
+            rows.append({
+                "group": str(name),
+                "n": n,
+                "statistic": None,
+                "p_value": None,
+                "normal_at_0_05": None,
+                "note": "Shapiro-Wilk failed",
+            })
+            continue
+
+        rows.append({
+            "group": str(name),
+            "n": n,
+            "statistic": _round_or_none(stat),
+            "p_value": _round_or_none(p),
+            "normal_at_0_05": bool(p >= 0.05) if math.isfinite(float(p)) else None,
+            "note": None,
+        })
+
+    return rows
+
+
+# ==========================================================
+# Pairwise post-hoc tests
+# ==========================================================
+
+def _run_tukey_hsd(work: pd.DataFrame, alpha: float) -> list[dict[str, Any]]:
+    """
+    Tukey HSD post-hoc test for one-way ANOVA when variances are equal.
+
+    Uses statsmodels pairwise_tukeyhsd which controls family-wise error rate.
+    """
+    try:
+        result = pairwise_tukeyhsd(
+            endog=work["target"].astype(float).to_numpy(),
+            groups=work["group"].astype(str).to_numpy(),
+            alpha=alpha,
+        )
+    except Exception:
+        return []
+
+    rows = []
+
+    # result._results_table.data has header + data rows
+    # columns: group1, group2, meandiff, p-adj, lower, upper, reject
+    try:
+        data = result._results_table.data
+        header = [str(h) for h in data[0]]
+        # Map header to index
+        idx = {h: i for i, h in enumerate(header)}
+
+        for raw_row in data[1:]:
+            g1 = str(raw_row[idx.get("group1", 0)])
+            g2 = str(raw_row[idx.get("group2", 1)])
+            mean_diff = float(raw_row[idx.get("meandiff", 2)])
+            p_adj = float(raw_row[idx.get("p-adj", 3)])
+            ci_lower = float(raw_row[idx.get("lower", 4)])
+            ci_upper = float(raw_row[idx.get("upper", 5)])
+            reject = bool(raw_row[idx.get("reject", 6)])
+
+            rows.append({
+                "group1": g1,
+                "group2": g2,
+                "mean_difference_g1_minus_g2": _round_or_none(mean_diff),
+                "p_value_adjusted": _round_or_none(p_adj),
+                "ci_lower": _round_or_none(ci_lower),
+                "ci_upper": _round_or_none(ci_upper),
+                "significant_at_alpha": reject,
+                "adjustment_method": "Tukey HSD",
+            })
+    except Exception:
+        return []
+
+    return rows
+
+
+def _run_games_howell(groups: dict[str, np.ndarray], alpha: float) -> list[dict[str, Any]]:
+    """
+    Games-Howell post-hoc test for one-way ANOVA when variances are unequal.
+
+    Uses Welch-Satterthwaite degrees of freedom per pair and the studentized
+    range distribution for p-value adjustment. Family-wise error rate is
+    controlled at alpha.
+    """
+    rows = []
+
+    labels = sorted(groups.keys())
+    k = len(labels)
+
+    if k < 2:
+        return rows
+
+    for g1, g2 in itertools.combinations(labels, 2):
+        x1 = groups[g1]
+        x2 = groups[g2]
+
+        n1 = len(x1)
+        n2 = len(x2)
+
+        if n1 < 2 or n2 < 2:
+            rows.append({
+                "group1": str(g1),
+                "group2": str(g2),
+                "mean_difference_g1_minus_g2": None,
+                "t_statistic": None,
+                "degrees_of_freedom": None,
+                "p_value_adjusted": None,
+                "ci_lower": None,
+                "ci_upper": None,
+                "significant_at_alpha": None,
+                "adjustment_method": "Games-Howell",
+            })
+            continue
+
+        mean_diff = float(np.mean(x1) - np.mean(x2))
+        s1 = float(np.var(x1, ddof=1))
+        s2 = float(np.var(x2, ddof=1))
+
+        se = math.sqrt(s1 / n1 + s2 / n2)
+
+        if se <= 0:
+            rows.append({
+                "group1": str(g1),
+                "group2": str(g2),
+                "mean_difference_g1_minus_g2": _round_or_none(mean_diff),
+                "t_statistic": None,
+                "degrees_of_freedom": None,
+                "p_value_adjusted": None,
+                "ci_lower": None,
+                "ci_upper": None,
+                "significant_at_alpha": None,
+                "adjustment_method": "Games-Howell",
+            })
+            continue
+
+        # Welch-Satterthwaite df
+        df_num = (s1 / n1 + s2 / n2) ** 2
+        df_den = (s1 / n1) ** 2 / (n1 - 1) + (s2 / n2) ** 2 / (n2 - 1)
+        df = _safe_divide(df_num, df_den)
+
+        if df is None or df <= 0:
+            rows.append({
+                "group1": str(g1),
+                "group2": str(g2),
+                "mean_difference_g1_minus_g2": _round_or_none(mean_diff),
+                "t_statistic": None,
+                "degrees_of_freedom": None,
+                "p_value_adjusted": None,
+                "ci_lower": None,
+                "ci_upper": None,
+                "significant_at_alpha": None,
+                "adjustment_method": "Games-Howell",
+            })
+            continue
+
+        # Games-Howell uses the studentized range distribution with statistic
+        # q = |mean_diff| / (se / sqrt(2))
+        q_stat = abs(mean_diff) / (se / math.sqrt(2))
+
+        try:
+            # studentized_range.sf gives upper-tail probability
+            p_adj = float(stats.studentized_range.sf(q_stat, k, df))
+            q_crit = float(stats.studentized_range.ppf(1 - alpha, k, df))
+            margin = q_crit * (se / math.sqrt(2))
+        except Exception:
+            p_adj = float("nan")
+            margin = float("nan")
+
+        ci_lower = mean_diff - margin if math.isfinite(margin) else None
+        ci_upper = mean_diff + margin if math.isfinite(margin) else None
+
+        rows.append({
+            "group1": str(g1),
+            "group2": str(g2),
+            "mean_difference_g1_minus_g2": _round_or_none(mean_diff),
+            "t_statistic": _round_or_none(mean_diff / se) if se > 0 else None,
+            "degrees_of_freedom": _round_or_none(df),
+            "p_value_adjusted": _round_or_none(p_adj) if math.isfinite(p_adj) else None,
+            "ci_lower": _round_or_none(ci_lower),
+            "ci_upper": _round_or_none(ci_upper),
+            "significant_at_alpha": (
+                bool(p_adj < alpha) if math.isfinite(p_adj) else None
+            ),
+            "adjustment_method": "Games-Howell",
+        })
+
+    return rows
+
+
+# ==========================================================
+# Main test routines
+# ==========================================================
+
 def _run_welch_t_test(groups: dict[str, np.ndarray], alpha: float) -> dict[str, Any]:
     labels = sorted(groups.keys())
 
@@ -253,12 +565,17 @@ def _run_welch_t_test(groups: dict[str, np.ndarray], alpha: float) -> dict[str, 
         "p_value": _round_or_none(p_value),
         "effect_size_name": "Hedges g",
         "effect_size": _round_or_none(g),
+        "effect_size_magnitude": _interpret_cohens_d(g),
         "cohens_d": _round_or_none(d),
         "significant_at_alpha": bool(p_value < alpha) if math.isfinite(float(p_value)) else None,
+        "significant_at_0_05": bool(p_value < 0.05) if math.isfinite(float(p_value)) else None,
     }
 
 
 def _run_one_way_anova(groups: dict[str, np.ndarray], alpha: float) -> dict[str, Any]:
+    """
+    Classic Fisher one-way ANOVA. Assumes equal variances.
+    """
     arrays = list(groups.values())
 
     f_stat, p_value = stats.f_oneway(*arrays)
@@ -299,11 +616,102 @@ def _run_one_way_anova(groups: dict[str, np.ndarray], alpha: float) -> dict[str,
         "p_value": _round_or_none(p_value),
         "effect_size_name": "eta squared",
         "effect_size": _round_or_none(eta_squared),
+        "effect_size_magnitude": _interpret_eta_squared(eta_squared),
         "eta_squared": _round_or_none(eta_squared),
         "omega_squared": _round_or_none(omega_squared),
         "significant_at_alpha": bool(p_value < alpha) if math.isfinite(float(p_value)) else None,
+        "significant_at_0_05": bool(p_value < 0.05) if math.isfinite(float(p_value)) else None,
     }
 
+
+def _run_welch_anova(groups: dict[str, np.ndarray], alpha: float) -> dict[str, Any]:
+    """
+    Welch's ANOVA (Alexander-Govern variant) for unequal variances.
+
+    Falls back to a manual Welch ANOVA computation if scipy.stats.alexandergovern
+    is not available. Returns same eta-squared computed from the underlying ANOVA
+    decomposition so effect size remains comparable.
+    """
+    arrays = list(groups.values())
+    k = len(arrays)
+
+    method = "Welch's ANOVA (does not assume equal variances)"
+
+    statistic = None
+    p_value = None
+
+    # Try scipy 1.10+ alexandergovern
+    try:
+        ag_result = stats.alexandergovern(*arrays)
+        statistic = float(ag_result.statistic)
+        p_value = float(ag_result.pvalue)
+        method = "Alexander-Govern ANOVA (does not assume equal variances)"
+    except Exception:
+        # Manual Welch's ANOVA fallback
+        try:
+            n_i = np.array([len(a) for a in arrays], dtype=float)
+            mean_i = np.array([np.mean(a) for a in arrays], dtype=float)
+            var_i = np.array([np.var(a, ddof=1) for a in arrays], dtype=float)
+
+            w_i = n_i / var_i
+            w_sum = float(np.sum(w_i))
+            grand_mean_w = float(np.sum(w_i * mean_i) / w_sum)
+
+            numerator = float(np.sum(w_i * (mean_i - grand_mean_w) ** 2)) / (k - 1)
+
+            denom_inner = float(np.sum(((1 - w_i / w_sum) ** 2) / (n_i - 1)))
+            denominator = 1 + (2 * (k - 2) / (k ** 2 - 1)) * denom_inner
+
+            f_stat = numerator / denominator
+
+            df_num = k - 1
+            df_den = (k ** 2 - 1) / (3 * denom_inner)
+
+            statistic = float(f_stat)
+            p_value = float(stats.f.sf(f_stat, df_num, df_den))
+        except Exception:
+            statistic = None
+            p_value = None
+
+    # Effect size: compute eta-squared from the overall data partition for
+    # comparability with classic ANOVA.
+    all_values = np.concatenate(arrays)
+    grand_mean = float(np.mean(all_values))
+
+    ss_between = sum(len(x) * (float(np.mean(x)) - grand_mean) ** 2 for x in arrays)
+    ss_within = sum(float(np.sum((x - float(np.mean(x))) ** 2)) for x in arrays)
+    ss_total = ss_between + ss_within
+
+    eta_squared = _safe_divide(ss_between, ss_total)
+
+    return {
+        "method": method,
+        "test_family": "multi_group_numeric_comparison",
+        "F_statistic": _round_or_none(statistic),
+        "degrees_of_freedom_between": int(k - 1),
+        "degrees_of_freedom_within": None,
+        "p_value": _round_or_none(p_value),
+        "effect_size_name": "eta squared",
+        "effect_size": _round_or_none(eta_squared),
+        "effect_size_magnitude": _interpret_eta_squared(eta_squared),
+        "eta_squared": _round_or_none(eta_squared),
+        "omega_squared": None,
+        "significant_at_alpha": (
+            bool(p_value < alpha)
+            if p_value is not None and math.isfinite(p_value)
+            else None
+        ),
+        "significant_at_0_05": (
+            bool(p_value < 0.05)
+            if p_value is not None and math.isfinite(p_value)
+            else None
+        ),
+    }
+
+
+# ==========================================================
+# Main execute
+# ==========================================================
 
 def execute_statistical_group_comparison(context) -> Dict[str, Any]:
     arguments = _get_arguments(context)
@@ -408,10 +816,48 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
                 },
             )
 
+        # ----------------------------------------------------
+        # Assumption check: equality of variances
+        # ----------------------------------------------------
+        levene = _run_levene(groups, center="median")
+
+        # ----------------------------------------------------
+        # Assumption check: normality per group (auxiliary)
+        # ----------------------------------------------------
+        shapiro_rows = _run_shapiro_per_group(groups)
+
+        any_group_non_normal = any(
+            row.get("normal_at_0_05") is False for row in shapiro_rows
+        )
+
+        # ----------------------------------------------------
+        # Pick primary test
+        # ----------------------------------------------------
+        post_hoc_rows: list[dict[str, Any]] = []
+        post_hoc_method = None
+
         if len(groups) == 2:
+            # Two-group case: Welch's t-test (does not require equal variances)
             test_details = _run_welch_t_test(groups, alpha)
+
         else:
-            test_details = _run_one_way_anova(groups, alpha)
+            # Three or more groups
+            variances_equal = levene.get("variances_equal_at_0_05")
+
+            if variances_equal is False:
+                test_details = _run_welch_anova(groups, alpha)
+            else:
+                # Includes True (equal) and None (could not be tested -> default to classic)
+                test_details = _run_one_way_anova(groups, alpha)
+
+            # Run post-hoc only when the omnibus is significant
+            if test_details.get("significant_at_alpha"):
+                if variances_equal is False:
+                    post_hoc_rows = _run_games_howell(groups, alpha)
+                    post_hoc_method = "Games-Howell (FWER-controlled, unequal variances)"
+                else:
+                    post_hoc_rows = _run_tukey_hsd(work, alpha)
+                    post_hoc_method = "Tukey HSD (FWER-controlled, equal variances)"
 
         valid_group_summaries = [
             row for row in group_summaries
@@ -433,6 +879,9 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
             else None
         )
 
+        # ----------------------------------------------------
+        # Build assumptions/limitations
+        # ----------------------------------------------------
         assumptions_and_limitations = [
             "This is an observational comparison unless the data came from a randomized experiment.",
             "The test assumes independent observations within and across groups.",
@@ -441,13 +890,36 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
 
         if len(groups) == 2:
             assumptions_and_limitations.append(
-                "Welch's t-test does not assume equal variances, but very small or highly skewed groups still require caution."
+                "Welch's t-test does not assume equal variances, but extremely small or highly skewed groups still require caution."
             )
         else:
+            if levene.get("variances_equal_at_0_05") is False:
+                assumptions_and_limitations.append(
+                    "Levene's test indicated unequal variances; Welch's ANOVA was used instead of the classic F-test."
+                )
+            elif levene.get("variances_equal_at_0_05") is True:
+                assumptions_and_limitations.append(
+                    "Levene's test did not flag unequal variances; the classic one-way ANOVA assumption appears acceptable."
+                )
+
+            if test_details.get("significant_at_alpha"):
+                assumptions_and_limitations.append(
+                    f"Significant omnibus test; pairwise post-hoc comparisons reported using {post_hoc_method}."
+                )
+            else:
+                assumptions_and_limitations.append(
+                    "Omnibus test not significant; no pairwise post-hoc comparisons were performed."
+                )
+
+        if any_group_non_normal:
             assumptions_and_limitations.append(
-                "One-way ANOVA compares group means; if significant, follow-up post-hoc comparisons are needed to identify which pairs differ."
+                "Shapiro-Wilk flagged possible non-normality in at least one group; "
+                "with small groups consider Mann-Whitney U (two groups) or Kruskal-Wallis (three or more groups) as a non-parametric alternative."
             )
 
+        # ----------------------------------------------------
+        # Compose result
+        # ----------------------------------------------------
         details = {
             "target_col": target_col,
             "group_col": group_col,
@@ -463,6 +935,10 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
             "top_minus_lowest_mean_difference": _round_or_none(top_bottom_diff),
             "top_vs_lowest_relative_lift": _round_or_none(relative_lift),
             "group_summaries": group_summaries,
+            "levene_test": levene,
+            "shapiro_per_group": shapiro_rows,
+            "post_hoc_method": post_hoc_method,
+            "post_hoc_pairwise": post_hoc_rows,
             "assumptions_and_limitations": assumptions_and_limitations,
             **test_details,
         }
@@ -489,6 +965,10 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
             "artifacts": [],
         }
 
+
+# ==========================================================
+# Extractor / Display
+# ==========================================================
 
 def extract_statistical_group_comparison(
     *,
@@ -521,6 +1001,15 @@ def extract_statistical_group_comparison(
         f"{significance_phrase}"
     )
 
+    if payload.get("post_hoc_pairwise"):
+        n_sig_pairs = sum(
+            1 for row in payload.get("post_hoc_pairwise", [])
+            if row.get("significant_at_alpha")
+        )
+        summary += f" Post-hoc ({payload.get('post_hoc_method')}): {n_sig_pairs} significant pair(s)."
+
+    levene = payload.get("levene_test", {}) or {}
+
     metrics = compact_dict({
         "method": method,
         "nobs": payload.get("nobs"),
@@ -528,8 +1017,10 @@ def extract_statistical_group_comparison(
         "alpha": payload.get("alpha"),
         "p_value": payload.get("p_value"),
         "significant_at_alpha": significant,
+        "significant_at_0_05": payload.get("significant_at_0_05"),
         "effect_size_name": payload.get("effect_size_name"),
         "effect_size": payload.get("effect_size"),
+        "effect_size_magnitude": payload.get("effect_size_magnitude"),
         "top_group": payload.get("top_group"),
         "top_group_mean": payload.get("top_group_mean"),
         "lowest_group": payload.get("lowest_group"),
@@ -541,12 +1032,26 @@ def extract_statistical_group_comparison(
         "degrees_of_freedom": payload.get("degrees_of_freedom"),
         "degrees_of_freedom_between": payload.get("degrees_of_freedom_between"),
         "degrees_of_freedom_within": payload.get("degrees_of_freedom_within"),
+        "levene_p_value": levene.get("p_value"),
+        "variances_equal_at_0_05": levene.get("variances_equal_at_0_05"),
+        "max_to_min_variance_ratio": levene.get("max_to_min_variance_ratio"),
     })
 
     tables: Dict[str, Any] = {}
 
     if payload.get("group_summaries"):
         tables["group_summaries"] = payload.get("group_summaries")
+
+    if payload.get("post_hoc_pairwise"):
+        tables["post_hoc_pairwise"] = payload.get("post_hoc_pairwise")
+
+    if payload.get("shapiro_per_group"):
+        # Only surface the table if at least one group could actually be tested
+        has_tested = any(
+            row.get("p_value") is not None for row in payload.get("shapiro_per_group", [])
+        )
+        if has_tested:
+            tables["shapiro_per_group"] = payload.get("shapiro_per_group")
 
     if payload.get("assumptions_and_limitations"):
         tables["assumptions_and_limitations"] = [
@@ -559,6 +1064,8 @@ def extract_statistical_group_comparison(
         "group_col": group_col,
         "test_family": payload.get("test_family"),
         "excluded_groups": payload.get("excluded_groups"),
+        "post_hoc_method": payload.get("post_hoc_method"),
+        "levene_test": payload.get("levene_test"),
     })
 
     return title, summary, metrics, tables, metadata
@@ -573,8 +1080,10 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
             "alpha": "Alpha",
             "p_value": "p-value",
             "significant_at_alpha": "Significant",
+            "significant_at_0_05": "Significant at 0.05",
             "effect_size_name": "Effect size",
             "effect_size": "Effect size value",
+            "effect_size_magnitude": "Effect size magnitude",
             "top_group": "Top group",
             "top_group_mean": "Top group mean",
             "lowest_group": "Lowest group",
@@ -586,10 +1095,14 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
             "degrees_of_freedom": "Degrees of freedom",
             "degrees_of_freedom_between": "DF between",
             "degrees_of_freedom_within": "DF within",
+            "levene_p_value": "Levene p-value",
+            "variances_equal_at_0_05": "Variances equal (Levene 0.05)",
+            "max_to_min_variance_ratio": "Max/min variance ratio",
         },
         formatters={
             "p_value": format_p_value,
             "significant_at_alpha": format_bool_yes_no,
+            "significant_at_0_05": format_bool_yes_no,
             "effect_size": format_number,
             "top_group_mean": format_number,
             "lowest_group_mean": format_number,
@@ -598,6 +1111,9 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
             "F_statistic": format_number,
             "t_statistic": format_number,
             "degrees_of_freedom": format_number,
+            "levene_p_value": format_p_value,
+            "variances_equal_at_0_05": format_bool_yes_no,
+            "max_to_min_variance_ratio": format_number,
         },
         order=[
             "method",
@@ -606,8 +1122,10 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
             "alpha",
             "p_value",
             "significant_at_alpha",
+            "significant_at_0_05",
             "effect_size_name",
             "effect_size",
+            "effect_size_magnitude",
             "top_group",
             "top_group_mean",
             "lowest_group",
@@ -619,6 +1137,9 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
             "degrees_of_freedom",
             "degrees_of_freedom_between",
             "degrees_of_freedom_within",
+            "levene_p_value",
+            "variances_equal_at_0_05",
+            "max_to_min_variance_ratio",
         ],
     ),
     tables={
@@ -627,7 +1148,7 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
                 "group": "Group",
                 "n": "N",
                 "mean": "Mean",
-                "std": "Std. dev.",
+                "std": "SD",
                 "median": "Median",
                 "min": "Min",
                 "max": "Max",
@@ -649,6 +1170,64 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
                 "max": format_number,
             },
         ),
+        "post_hoc_pairwise": TableDisplayConfig(
+            column_labels={
+                "group1": "Group 1",
+                "group2": "Group 2",
+                "mean_difference_g1_minus_g2": "Mean diff (g1-g2)",
+                "t_statistic": "t statistic",
+                "degrees_of_freedom": "DF",
+                "p_value_adjusted": "Adjusted p-value",
+                "ci_lower": "95% CI lower",
+                "ci_upper": "95% CI upper",
+                "significant_at_alpha": "Significant",
+                "adjustment_method": "Adjustment",
+            },
+            column_order=[
+                "group1",
+                "group2",
+                "mean_difference_g1_minus_g2",
+                "t_statistic",
+                "degrees_of_freedom",
+                "p_value_adjusted",
+                "ci_lower",
+                "ci_upper",
+                "significant_at_alpha",
+                "adjustment_method",
+            ],
+            column_formatters={
+                "mean_difference_g1_minus_g2": format_number,
+                "t_statistic": format_number,
+                "degrees_of_freedom": format_number,
+                "p_value_adjusted": format_p_value,
+                "ci_lower": format_number,
+                "ci_upper": format_number,
+                "significant_at_alpha": format_bool_yes_no,
+            },
+        ),
+        "shapiro_per_group": TableDisplayConfig(
+            column_labels={
+                "group": "Group",
+                "n": "N",
+                "statistic": "Shapiro W",
+                "p_value": "p-value",
+                "normal_at_0_05": "Normal at 0.05",
+                "note": "Note",
+            },
+            column_order=[
+                "group",
+                "n",
+                "statistic",
+                "p_value",
+                "normal_at_0_05",
+                "note",
+            ],
+            column_formatters={
+                "statistic": format_number,
+                "p_value": format_p_value,
+                "normal_at_0_05": format_bool_yes_no,
+            },
+        ),
         "assumptions_and_limitations": TableDisplayConfig(
             column_labels={
                 "item": "Assumption / limitation",
@@ -664,13 +1243,18 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     display_name="Statistical Group Comparison",
     evidence_categories=["group_comparison", "statistical_inference"],
     description=(
-        "Compare a numeric outcome across a categorical grouping variable using Welch's t-test "
-        "for two groups or one-way ANOVA for three or more groups."
+        "Compare a numeric outcome across a categorical grouping variable. "
+        "Two groups: Welch's t-test with Cohen's d and Hedges' g effect sizes. "
+        "Three or more groups: Levene's test for variance equality, then either classic ANOVA "
+        "(equal variances) or Welch's/Alexander-Govern ANOVA (unequal variances). "
+        "When the omnibus is significant, FWER-controlled pairwise comparisons follow "
+        "(Tukey HSD for equal variances or Games-Howell for unequal variances). "
+        "Shapiro-Wilk per-group normality is reported as a diagnostic."
     ),
     usage_guidance=(
         "Use this when the user asks whether a numeric metric differs across groups, segments, regions, "
         "classes, treatments, or categories. This is a statistical comparison tool, not just a grouped summary. "
-        "It reports p-values, effect sizes, group means, and assumptions/limitations. "
+        "It reports p-values, effect sizes, group means, post-hoc pairwise comparisons, and assumption checks. "
         "For inferential statistics, the active dataset must be observation-level, not one row per group. "
         "If the source is SQL, first materialize the natural observational unit, such as customer-level, "
         "order-level, subject-level, student-level, patient-level, transaction-level, or experimental-unit-level data. "
@@ -709,7 +1293,9 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ),
     execute=execute_statistical_group_comparison,
     extractor=extract_statistical_group_comparison,
-    guardrail_evaluators=[],
+    guardrail_evaluators=[
+        evaluate_group_comparison_guardrails,
+    ],
     display_config=STATISTICAL_GROUP_COMPARISON_DISPLAY,
     examples=[
         {

@@ -1,227 +1,55 @@
-from typing import Any, Dict, Tuple
-import math
+"""
+One-way ANOVA plugin.
 
-import numpy as np
-import pandas as pd
-from scipy import stats
+This module is now a thin wrapper that delegates to the higher-quality
+statistical_group_comparison plugin so that both `run_anova` and
+`statistical_group_comparison` produce consistent, rigorous output:
+Levene's test for variance homogeneity, automatic switch between classic
+ANOVA (equal variances) and Welch's/Alexander-Govern ANOVA (unequal variances),
+FWER-controlled post-hoc pairwise tests (Tukey HSD or Games-Howell),
+Shapiro-Wilk per-group normality, eta-squared and omega-squared effect sizes
+with magnitude interpretation, and assumption tables.
+
+The legacy `run_anova` tool name is preserved for backwards compatibility with
+existing supervisor selections, but the execute and extract functions now
+defer to statistical_group_comparison.
+"""
+
+from typing import Any, Dict, Tuple
 
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
     ArgumentSchema,
-    DisplayConfig,
-    MetricDisplayConfig,
-    TableDisplayConfig,
-    compact_dict,
-    format_bool_yes_no,
-    format_number,
-    format_p_value,
 )
 from core.analysis_tool_plugins.registry import register_plugin
+from core.analysis_tool_plugins.shared.group_comparison_guardrails import (
+    evaluate_group_comparison_guardrails,
+)
 
-
-MISSING_TOKENS = {
-    "", " ", "na", "n/a", "nan", "null", "none", "missing", "unknown", "unk",
-    "?", "-", "--", ".", "inf", "+inf", "-inf", "infinity", "+infinity", "-infinity",
-    "NA", "N/A", "NaN", "NULL", "None", "Missing", "Unknown",
-}
-
-
-def _ok(message: str, details: Dict[str, Any], artifacts=None):
-    return {
-        "status": "ok",
-        "message": message,
-        "recoverable": False,
-        "details": details or {},
-        "artifacts": artifacts or [],
-    }
-
-
-def _blocked(error_code: str, message: str, details=None, suggested_next_actions=None):
-    result = {
-        "status": "blocked",
-        "error_code": error_code,
-        "message": message,
-        "recoverable": True,
-        "details": details or {},
-        "artifacts": [],
-    }
-
-    if suggested_next_actions:
-        result["suggested_next_actions"] = suggested_next_actions
-
-    return result
-
-
-def _failed(error_code: str, message: str, exc: Exception):
-    return {
-        "status": "failed",
-        "error_code": error_code,
-        "message": message,
-        "recoverable": True,
-        "details": {
-            "exception_type": type(exc).__name__,
-            "exception_message": str(exc),
-        },
-        "artifacts": [],
-    }
-
-
-def _round_or_none(x: Any, digits: int = 6):
-    try:
-        v = float(x)
-        if not math.isfinite(v):
-            return None
-        return round(v, digits)
-    except Exception:
-        return None
-
-
-def _get_arg(context, name: str, default: Any = None) -> Any:
-    try:
-        return context.get_arg(name, default)
-    except TypeError:
-        try:
-            value = context.get_arg(name)
-            return default if value is None else value
-        except Exception:
-            return default
-    except Exception:
-        return default
-
-
-def _standardize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    lower_missing = {str(x).strip().lower() for x in MISSING_TOKENS}
-
-    for col in df.columns:
-        if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
-            def norm(x):
-                if isinstance(x, str):
-                    lx = x.strip().lower()
-                    if lx in lower_missing:
-                        return np.nan
-                    return x.strip()
-                return x
-
-            df[col] = df[col].map(norm)
-
-    return df.replace([np.inf, -np.inf], np.nan)
+from core.analysis_tool_plugins.plugins.statistical_group_comparison import (
+    execute_statistical_group_comparison,
+    extract_statistical_group_comparison,
+    STATISTICAL_GROUP_COMPARISON_DISPLAY,
+)
 
 
 def execute_anova(context) -> Dict[str, Any]:
     """
-    One-way ANOVA.
-
-    Args:
-        target_col: numeric outcome
-        group_col: categorical grouping column
+    Delegate to the upgraded statistical_group_comparison execute, then
+    translate the error code for backwards compatibility with the existing
+    run_anova contract.
     """
-    try:
-        df = context.load_df()
+    result = execute_statistical_group_comparison(context)
 
-        if df is None or not isinstance(df, pd.DataFrame):
-            return _blocked(
-                "INVALID_DATAFRAME",
-                "context.load_df() did not return a valid pandas DataFrame.",
-            )
+    # Translate error code (singular -> plural) to match the legacy run_anova
+    # contract that downstream tests and prompts may rely on.
+    if (
+        result.get("status") == "blocked"
+        and result.get("error_code") == "COLUMN_NOT_FOUND"
+    ):
+        result["error_code"] = "COLUMNS_NOT_FOUND"
 
-        df = _standardize_dataframe(df)
-
-        target_col = _get_arg(context, "target_col")
-        group_col = _get_arg(context, "group_col")
-
-        if not target_col or not group_col:
-            return _blocked(
-                "MISSING_ANOVA_ARGS",
-                "target_col and group_col are required.",
-                details={
-                    "target_col": target_col,
-                    "group_col": group_col,
-                },
-                suggested_next_actions=[
-                    "Specify a numeric target column and a categorical grouping column."
-                ],
-            )
-
-        missing_cols = [c for c in [target_col, group_col] if c not in df.columns]
-
-        if missing_cols:
-            return _blocked(
-                "COLUMNS_NOT_FOUND",
-                f"Columns not found: {missing_cols}",
-                details={
-                    "missing_cols": missing_cols,
-                    "available_columns": list(df.columns),
-                },
-                suggested_next_actions=[
-                    "Inspect dataset columns and retry with valid column names."
-                ],
-            )
-
-        work = pd.DataFrame({
-            "y": pd.to_numeric(df[target_col], errors="coerce"),
-            "g": df[group_col],
-        }).replace([np.inf, -np.inf], np.nan).dropna()
-
-        group_rows = []
-        groups = []
-
-        for group_value, values in work.groupby("g")["y"]:
-            clean_values = values.dropna().astype(float)
-
-            if len(clean_values) >= 2:
-                groups.append(clean_values.to_numpy(dtype=float))
-
-                group_rows.append({
-                    "group": str(group_value),
-                    "n": int(len(clean_values)),
-                    "mean": _round_or_none(clean_values.mean()),
-                    "std": _round_or_none(clean_values.std()),
-                    "min": _round_or_none(clean_values.min()),
-                    "max": _round_or_none(clean_values.max()),
-                })
-
-        if len(groups) < 2:
-            return _blocked(
-                "INSUFFICIENT_GROUPS",
-                "ANOVA requires at least two groups with at least two valid numeric observations each.",
-                details={
-                    "target_col": target_col,
-                    "group_col": group_col,
-                    "valid_group_count": int(len(groups)),
-                    "group_summaries": group_rows,
-                },
-                suggested_next_actions=[
-                    "Choose a grouping variable with at least two groups and enough numeric observations."
-                ],
-            )
-
-        f_statistic, p_value = stats.f_oneway(*groups)
-
-        details = {
-            "method": "One-way ANOVA",
-            "target_col": target_col,
-            "group_col": group_col,
-            "valid_group_count": int(len(groups)),
-            "nobs": int(sum(len(g) for g in groups)),
-            "F_statistic": _round_or_none(f_statistic),
-            "p_value": _round_or_none(p_value),
-            "significant_at_0_05": (
-                bool(p_value < 0.05)
-                if math.isfinite(float(p_value))
-                else None
-            ),
-            "group_summaries": group_rows,
-        }
-
-        return _ok("One-way ANOVA completed.", details)
-
-    except Exception as e:
-        return _failed(
-            "ANOVA_EXCEPTION",
-            "ANOVA failed.",
-            e,
-        )
+    return result
 
 
 def extract_anova(
@@ -231,103 +59,52 @@ def extract_anova(
     default_title: str,
     default_summary: str,
 ) -> Tuple[str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+    title, summary, metrics, tables, metadata = extract_statistical_group_comparison(
+        payload=payload,
+        arguments=arguments,
+        default_title=default_title,
+        default_summary=default_summary,
+    )
+
+    # Override title to preserve the run_anova display contract.
     target_col = payload.get("target_col") or arguments.get("target_col")
     group_col = payload.get("group_col") or arguments.get("group_col")
 
-    title = "One-way ANOVA"
     if target_col and group_col:
         title = f"One-way ANOVA: {target_col} by {group_col}"
-
-    metrics = compact_dict({
-        "method": payload.get("method"),
-        "nobs": payload.get("nobs"),
-        "valid_group_count": payload.get("valid_group_count"),
-        "F_statistic": payload.get("F_statistic"),
-        "p_value": payload.get("p_value"),
-        "significant_at_0_05": payload.get("significant_at_0_05"),
-    })
-
-    tables: Dict[str, Any] = {}
-
-    group_summaries = payload.get("group_summaries", [])
-    if group_summaries:
-        tables["group_summaries"] = group_summaries
-
-    metadata = compact_dict({
-        "target_col": target_col,
-        "group_col": group_col,
-    })
-
-    summary = "Completed one-way ANOVA."
-    if target_col and group_col:
-        summary += f" Compared `{target_col}` across groups of `{group_col}`."
+    else:
+        title = "One-way ANOVA"
 
     return title, summary, metrics, tables, metadata
-
-
-ANOVA_DISPLAY = DisplayConfig(
-    metrics=MetricDisplayConfig(
-        labels={
-            "method": "Method",
-            "nobs": "Observations used",
-            "valid_group_count": "Valid groups",
-            "F_statistic": "F statistic",
-            "p_value": "p-value",
-            "significant_at_0_05": "Significant at 0.05",
-        },
-        formatters={
-            "F_statistic": lambda x: format_number(x, digits=4),
-            "p_value": format_p_value,
-            "significant_at_0_05": format_bool_yes_no,
-        },
-        order=[
-            "method",
-            "nobs",
-            "valid_group_count",
-            "F_statistic",
-            "p_value",
-            "significant_at_0_05",
-        ],
-    ),
-    tables={
-        "group_summaries": TableDisplayConfig(
-            column_labels={
-                "group": "Group",
-                "n": "n",
-                "mean": "Mean",
-                "std": "SD",
-                "min": "Min",
-                "max": "Max",
-            },
-            column_formatters={
-                "mean": lambda x: format_number(x, digits=4),
-                "std": lambda x: format_number(x, digits=4),
-                "min": lambda x: format_number(x, digits=4),
-                "max": lambda x: format_number(x, digits=4),
-            },
-            column_order=[
-                "group",
-                "n",
-                "mean",
-                "std",
-                "min",
-                "max",
-            ],
-        )
-    },
-)
 
 
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_anova",
     display_name="One-way ANOVA",
+    description=(
+        "One-way ANOVA with Levene's test for variance homogeneity. "
+        "Automatically switches between classic ANOVA (equal variances) and "
+        "Welch's/Alexander-Govern ANOVA (unequal variances). When the omnibus "
+        "test is significant, FWER-controlled pairwise comparisons follow "
+        "(Tukey HSD for equal variances, Games-Howell otherwise). Reports "
+        "eta-squared and omega-squared effect sizes, magnitude interpretation, "
+        "and Shapiro-Wilk per-group normality."
+    ),
+    usage_guidance=(
+        "Use this when the user explicitly asks for a one-way ANOVA on a numeric "
+        "outcome across a categorical group. For a more general two-or-more-group "
+        "comparison entry point (which also handles the two-group case via Welch's "
+        "t-test), prefer `statistical_group_comparison`."
+    ),
     requires_confirmation=False,
     argument_schema=ArgumentSchema(
         required={
             "target_col": str,
             "group_col": str,
         },
-        optional={},
+        optional={
+            "alpha": float,
+        },
         column_args=[
             "target_col",
             "group_col",
@@ -337,6 +114,8 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ),
     execute=execute_anova,
     extractor=extract_anova,
-    guardrail_evaluators=[],
-    display_config=ANOVA_DISPLAY,
+    guardrail_evaluators=[
+        evaluate_group_comparison_guardrails,
+    ],
+    display_config=STATISTICAL_GROUP_COMPARISON_DISPLAY,
 ))

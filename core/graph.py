@@ -18,6 +18,7 @@ import json
 from core.deliverables import check_deliverables, check_answer_quality
 from core.analysis_runs import build_analysis_run_from_observation
 from agents.coverage_brief import call_coverage_brief
+from core.guardrails import evaluate_multiple_comparison_guardrails
 
 # --- Graph nodes ---
 def build_context_node(state: GraphState):

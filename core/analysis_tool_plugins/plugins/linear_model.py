@@ -3,6 +3,7 @@ import math
 import warnings
 
 import statsmodels.api as sm
+import statsmodels.stats.api as sms
 
 from core.analysis_tool_plugins.base import (
     AnalysisToolPlugin,
@@ -18,7 +19,7 @@ from core.analysis_tool_plugins.base import (
 )
 from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.regression_utils import prepare_regression_data
-from core.guardrails import evaluate_regression_guardrails
+from core.guardrails import _new_finding
 
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None):
@@ -64,6 +65,7 @@ def _round_or_none(x: Any, digits: int = 6):
     except Exception:
         return None
 
+
 def _safe_float(value: Any) -> float | None:
     try:
         v = float(value)
@@ -105,6 +107,7 @@ def _is_intercept_term(term: Any) -> bool:
     lower = str(term).strip().lower()
     return lower in {"const", "intercept", "(intercept)"}
 
+
 def _build_encoded_term_metadata(used_features: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     metadata = {}
 
@@ -144,6 +147,7 @@ def _format_abs_estimate(value: Any) -> str:
         return "an unavailable amount"
 
     return f"{abs(numeric):.4g}"
+
 
 def _build_coefficient_interpretations(
     coef_table: list[dict[str, Any]],
@@ -254,7 +258,8 @@ def _build_regression_assumptions_and_limitations() -> list[dict[str, str]]:
         "OLS assumes independent observations.",
         "Standard errors, confidence intervals, and p-values rely on residual assumptions such as approximately constant variance and appropriate error behavior.",
         "Categorical predictors are interpreted relative to an omitted reference category after encoding.",
-        "Multicollinearity and influential observations should be checked with regression diagnostics when making formal conclusions.",
+        "Multicollinearity, influential observations, autocorrelation, and residual normality should be checked with regression diagnostics when making formal conclusions.",
+        "Heteroscedasticity-consistent (HC3) robust standard errors are computed automatically alongside classical OLS standard errors so that inference can be compared.",
     ]
 
     return [{"item": item} for item in items]
@@ -273,6 +278,114 @@ def _get_arg(context, name: str, default: Any = None) -> Any:
         return default
 
 
+def _build_classical_coef_table(model, alpha: float) -> list[dict[str, Any]]:
+    """Coefficient table using classical (non-robust) OLS standard errors."""
+    conf = model.conf_int(alpha=alpha)
+
+    rows = []
+
+    for term in model.params.index:
+        rows.append({
+            "term": str(term),
+            "coef": _round_or_none(model.params[term]),
+            "std_err": _round_or_none(model.bse[term]),
+            "t": _round_or_none(model.tvalues[term]),
+            "p_value": _round_or_none(model.pvalues[term]),
+            "ci_lower": _round_or_none(conf.loc[term, 0]) if term in conf.index else None,
+            "ci_upper": _round_or_none(conf.loc[term, 1]) if term in conf.index else None,
+        })
+
+    return rows
+
+
+def _build_robust_coef_table(robust_model, alpha: float) -> list[dict[str, Any]]:
+    """Coefficient table using HC3 robust standard errors."""
+    try:
+        conf = robust_model.conf_int(alpha=alpha)
+    except Exception:
+        conf = None
+
+    rows = []
+
+    for term in robust_model.params.index:
+        ci_lower = None
+        ci_upper = None
+
+        if conf is not None and term in conf.index:
+            try:
+                ci_lower = _round_or_none(conf.loc[term, 0])
+                ci_upper = _round_or_none(conf.loc[term, 1])
+            except Exception:
+                ci_lower = None
+                ci_upper = None
+
+        rows.append({
+            "term": str(term),
+            "coef_robust": _round_or_none(robust_model.params[term]),
+            "std_err_robust": _round_or_none(robust_model.bse[term]),
+            "t_robust": _round_or_none(robust_model.tvalues[term]),
+            "p_value_robust": _round_or_none(robust_model.pvalues[term]),
+            "ci_lower_robust": ci_lower,
+            "ci_upper_robust": ci_upper,
+        })
+
+    return rows
+
+
+def _build_robust_comparison_table(
+    classical: list[dict[str, Any]],
+    robust: list[dict[str, Any]],
+    alpha: float,
+) -> list[dict[str, Any]]:
+    """
+    Side-by-side comparison of classical and robust SE results.
+
+    Useful when heteroscedasticity is suspected: differences in p-values or CIs
+    between classical and HC3 robust columns indicate inference is sensitive to
+    variance assumptions.
+    """
+    robust_by_term = {row["term"]: row for row in robust}
+
+    rows = []
+
+    for c in classical:
+        term = c["term"]
+        r = robust_by_term.get(term, {})
+
+        rows.append({
+            "term": term,
+            "estimate": c.get("coef"),
+            "std_err_classical": c.get("std_err"),
+            "std_err_robust_hc3": r.get("std_err_robust"),
+            "p_value_classical": c.get("p_value"),
+            "p_value_robust_hc3": r.get("p_value_robust"),
+            "ci_lower_classical": c.get("ci_lower"),
+            "ci_upper_classical": c.get("ci_upper"),
+            "ci_lower_robust_hc3": r.get("ci_lower_robust"),
+            "ci_upper_robust_hc3": r.get("ci_upper_robust"),
+            "inference_changed_at_alpha": _inference_changed(
+                c.get("p_value"),
+                r.get("p_value_robust"),
+                alpha,
+            ),
+        })
+
+    return rows
+
+
+def _inference_changed(p_classical, p_robust, alpha: float):
+    pc = _safe_float(p_classical)
+    pr = _safe_float(p_robust)
+
+    if pc is None or pr is None:
+        return None
+
+    sig_classical = pc < alpha
+    sig_robust = pr < alpha
+
+    return bool(sig_classical != sig_robust)
+
+
 def execute_linear_model(context) -> Dict[str, Any]:
     """
     Fit an OLS multiple linear regression model.
@@ -284,6 +397,7 @@ def execute_linear_model(context) -> Dict[str, Any]:
         max_categorical_levels: optional, default 10
         numeric_parse_threshold: optional, default 0.85
         min_n_per_parameter: optional, default 3
+        alpha: optional, default 0.05
     """
     try:
         df = context.load_df()
@@ -314,28 +428,56 @@ def execute_linear_model(context) -> Dict[str, Any]:
 
         y = prep["y"]
         X = prep["X"]
-
         X_const = sm.add_constant(X, has_constant="add")
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = sm.OLS(y, X_const).fit()
 
-        conf = model.conf_int()
+        # Classical (non-robust) coefficient table
+        coef_table = _build_classical_coef_table(model, alpha)
 
-        coef_table = []
+        # ----------------------------------------------------
+        # HC3 robust SE
+        # ----------------------------------------------------
+        robust_results_available = False
+        coef_table_robust: list[dict[str, Any]] = []
+        coef_table_compare: list[dict[str, Any]] = []
+        robust_summary: dict[str, Any] = {
+            "available": False,
+            "method": "HC3 (MacKinnon-White)",
+        }
 
-        for term in model.params.index:
-            coef_table.append({
-                "term": str(term),
-                "coef": _round_or_none(model.params[term]),
-                "std_err": _round_or_none(model.bse[term]),
-                "t": _round_or_none(model.tvalues[term]),
-                "p_value": _round_or_none(model.pvalues[term]),
-                "ci_lower": _round_or_none(conf.loc[term, 0]) if term in conf.index else None,
-                "ci_upper": _round_or_none(conf.loc[term, 1]) if term in conf.index else None,
-            })
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                robust_model = model.get_robustcov_results(cov_type="HC3")
 
+            coef_table_robust = _build_robust_coef_table(robust_model, alpha)
+            coef_table_compare = _build_robust_comparison_table(coef_table, coef_table_robust, alpha)
+
+            n_changed = sum(
+                1 for row in coef_table_compare
+                if row.get("inference_changed_at_alpha") is True
+                and not _is_intercept_term(row.get("term"))
+            )
+
+            robust_results_available = True
+            robust_summary = {
+                "available": True,
+                "method": "HC3 (MacKinnon-White) heteroscedasticity-consistent standard errors",
+                "n_predictors_with_changed_inference": int(n_changed),
+                "note": (
+                    "HC3 robust standard errors are reported alongside classical OLS standard errors. "
+                    "When heteroscedasticity is present, robust inference is preferred."
+                ),
+            }
+        except Exception:
+            robust_results_available = False
+
+        # ----------------------------------------------------
+        # Coefficient interpretations
+        # ----------------------------------------------------
         coefficient_interpretations = _build_coefficient_interpretations(
             coef_table=coef_table,
             target_col=target_col,
@@ -353,13 +495,29 @@ def execute_linear_model(context) -> Dict[str, Any]:
 
         model_p_value = _safe_float(model.f_pvalue)
         model_significant_at_alpha = (
-                model_p_value is not None and model_p_value < alpha
+            model_p_value is not None and model_p_value < alpha
         )
 
-        encoded_feature_cols = [
-            str(col)
-            for col in X.columns
-        ]
+        # ----------------------------------------------------
+        # Inline Breusch-Pagan as quick heteroscedasticity flag
+        # ----------------------------------------------------
+        bp_flag = None
+
+        try:
+            _bp_stat, bp_pvalue, _bp_f, _bp_fp = sms.het_breuschpagan(
+                model.resid,
+                model.model.exog,
+            )
+
+            if math.isfinite(float(bp_pvalue)):
+                bp_flag = bool(bp_pvalue < 0.05)
+        except Exception:
+            bp_flag = None
+
+        # ----------------------------------------------------
+        # Model spec for handoff to diagnostics
+        # ----------------------------------------------------
+        encoded_feature_cols = [str(col) for col in X.columns]
 
         model_spec = {
             "model_type": "ols",
@@ -388,10 +546,14 @@ def execute_linear_model(context) -> Dict[str, Any]:
             "df_model": _round_or_none(model.df_model),
             "df_resid": _round_or_none(model.df_resid),
             "coef_table": coef_table,
+            "coef_table_robust_hc3": coef_table_robust if robust_results_available else [],
+            "coef_table_classical_vs_robust": coef_table_compare if robust_results_available else [],
+            "robust_se_summary": robust_summary,
             "alpha": alpha,
             "model_significant_at_alpha": bool(model_significant_at_alpha),
             "significant_predictor_count": int(significant_predictor_count),
             "coefficient_interpretations": coefficient_interpretations,
+            "heteroscedasticity_flag_breusch_pagan_0_05": bp_flag,
             "assumptions_and_limitations": _build_regression_assumptions_and_limitations(),
         }
 
@@ -406,6 +568,13 @@ def execute_linear_model(context) -> Dict[str, Any]:
             message = (
                 "Multiple regression completed, but sample size is small relative "
                 "to the number of predictors. Interpret cautiously."
+            )
+
+        if bp_flag is True and status != "warning":
+            status = "warning"
+            message = (
+                "Multiple regression completed; Breusch-Pagan suggests heteroscedasticity. "
+                "Prefer the HC3 robust standard errors reported alongside classical OLS."
             )
 
         if status == "warning":
@@ -437,7 +606,8 @@ def extract_linear_model(
     else:
         title = "Linear Model"
 
-    # User-facing metrics only.
+    robust_summary = payload.get("robust_se_summary", {}) or {}
+
     metrics = compact_dict({
         "nobs": payload.get("nobs"),
         "r_squared": payload.get("r_squared"),
@@ -447,6 +617,9 @@ def extract_linear_model(
         "alpha": payload.get("alpha"),
         "model_significant_at_alpha": payload.get("model_significant_at_alpha"),
         "significant_predictor_count": payload.get("significant_predictor_count"),
+        "heteroscedasticity_flag_breusch_pagan_0_05": payload.get("heteroscedasticity_flag_breusch_pagan_0_05"),
+        "robust_se_available": robust_summary.get("available"),
+        "n_predictors_with_changed_inference": robust_summary.get("n_predictors_with_changed_inference"),
     })
 
     tables: Dict[str, Any] = {}
@@ -454,6 +627,10 @@ def extract_linear_model(
     coef_table = payload.get("coef_table", [])
     if coef_table:
         tables["coef_table"] = coef_table
+
+    coef_table_compare = payload.get("coef_table_classical_vs_robust", [])
+    if coef_table_compare:
+        tables["coef_table_classical_vs_robust"] = coef_table_compare
 
     coefficient_interpretations = payload.get("coefficient_interpretations", [])
     if coefficient_interpretations:
@@ -463,7 +640,6 @@ def extract_linear_model(
     if assumptions_and_limitations:
         tables["assumptions_and_limitations"] = assumptions_and_limitations
 
-    # Internal/system fields. These should not appear in the main report.
     metadata = compact_dict({
         "model_type": payload.get("model_type"),
         "model_spec": payload.get("model_spec"),
@@ -480,6 +656,8 @@ def extract_linear_model(
         "raw_feature_count": payload.get("raw_feature_count"),
         "encoded_column_count": payload.get("encoded_column_count"),
         "min_required": payload.get("min_required"),
+        "robust_se_summary": robust_summary,
+        "coef_table_robust_hc3": payload.get("coef_table_robust_hc3"),
     })
 
     summary = "Fitted a linear model."
@@ -504,6 +682,9 @@ def extract_linear_model(
     if payload.get("significant_predictor_count") is not None:
         summary += f" Significant non-intercept predictors: {payload.get('significant_predictor_count')}."
 
+    if payload.get("heteroscedasticity_flag_breusch_pagan_0_05") is True:
+        summary += " Breusch-Pagan suggests heteroscedasticity; HC3 robust standard errors are reported alongside classical OLS."
+
     return title, summary, metrics, tables, metadata
 
 
@@ -518,6 +699,9 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             "alpha": "Alpha",
             "model_significant_at_alpha": "Overall model significant",
             "significant_predictor_count": "Significant non-intercept predictors",
+            "heteroscedasticity_flag_breusch_pagan_0_05": "Heteroscedasticity flag (BP)",
+            "robust_se_available": "HC3 robust SE available",
+            "n_predictors_with_changed_inference": "Predictors with classical vs HC3 inference change",
         },
         formatters={
             "r_squared": lambda x: format_number(x, digits=4),
@@ -526,6 +710,8 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             "f_p_value": format_p_value,
             "alpha": lambda x: format_number(x, digits=4),
             "model_significant_at_alpha": format_bool_yes_no,
+            "heteroscedasticity_flag_breusch_pagan_0_05": format_bool_yes_no,
+            "robust_se_available": format_bool_yes_no,
         },
         order=[
             "nobs",
@@ -536,6 +722,9 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             "alpha",
             "model_significant_at_alpha",
             "significant_predictor_count",
+            "heteroscedasticity_flag_breusch_pagan_0_05",
+            "robust_se_available",
+            "n_predictors_with_changed_inference",
         ],
     ),
     tables={
@@ -581,7 +770,6 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
             },
             column_order=["item"],
         ),
-
         "coef_table": TableDisplayConfig(
             column_labels={
                 "term": "Term",
@@ -616,10 +804,284 @@ LINEAR_MODEL_DISPLAY = DisplayConfig(
                     "Intercept": "Intercept",
                 }
             },
-        )
+        ),
+        "coef_table_classical_vs_robust": TableDisplayConfig(
+            column_labels={
+                "term": "Term",
+                "estimate": "Estimate",
+                "std_err_classical": "SE (classical)",
+                "std_err_robust_hc3": "SE (HC3 robust)",
+                "p_value_classical": "p (classical)",
+                "p_value_robust_hc3": "p (HC3 robust)",
+                "ci_lower_classical": "CI lower (classical)",
+                "ci_upper_classical": "CI upper (classical)",
+                "ci_lower_robust_hc3": "CI lower (HC3)",
+                "ci_upper_robust_hc3": "CI upper (HC3)",
+                "inference_changed_at_alpha": "Inference changed",
+            },
+            column_formatters={
+                "estimate": lambda x: format_number(x, digits=4),
+                "std_err_classical": lambda x: format_number(x, digits=4),
+                "std_err_robust_hc3": lambda x: format_number(x, digits=4),
+                "p_value_classical": format_p_value,
+                "p_value_robust_hc3": format_p_value,
+                "ci_lower_classical": lambda x: format_number(x, digits=4),
+                "ci_upper_classical": lambda x: format_number(x, digits=4),
+                "ci_lower_robust_hc3": lambda x: format_number(x, digits=4),
+                "ci_upper_robust_hc3": lambda x: format_number(x, digits=4),
+                "inference_changed_at_alpha": format_bool_yes_no,
+            },
+            column_order=[
+                "term",
+                "estimate",
+                "std_err_classical",
+                "std_err_robust_hc3",
+                "p_value_classical",
+                "p_value_robust_hc3",
+                "ci_lower_classical",
+                "ci_upper_classical",
+                "ci_lower_robust_hc3",
+                "ci_upper_robust_hc3",
+                "inference_changed_at_alpha",
+            ],
+            value_mappers={
+                "term": {
+                    "const": "Intercept",
+                    "intercept": "Intercept",
+                    "Intercept": "Intercept",
+                }
+            },
+        ),
     },
 )
 
+# ==========================================================
+# Guardrails
+# ==========================================================
+
+def evaluate_regression_guardrails(run: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """
+    Guardrails for a fitted linear/regression-type model.
+
+    Uses:
+    - run["metrics"] for user-facing model metrics
+    - run["metadata"] for internal fields such as p_eff / n_eff
+    """
+    findings: list[Dict[str, Any]] = []
+
+    metrics = run.get("metrics", {}) or {}
+    metadata = run.get("metadata", {}) or {}
+    tables = run.get("tables", {}) or {}
+    arguments = run.get("arguments", {}) or {}
+
+    nobs = metrics.get("nobs", metadata.get("nobs"))
+    r2 = metrics.get("r_squared")
+    adj_r2 = metrics.get("adj_r_squared")
+    f_p = metrics.get("f_p_value")
+
+    p_eff = metadata.get("p_eff", metrics.get("p_eff"))
+    n_eff = metadata.get("n_eff", metrics.get("n_eff"))
+
+    target = arguments.get("target_col")
+    features = arguments.get("feature_cols", [])
+
+    # Sample size / model complexity
+    if nobs is not None and p_eff is not None:
+        try:
+            nobs_f = float(nobs)
+            p_eff_f = float(p_eff)
+
+            if p_eff_f > 0:
+                ratio = nobs_f / p_eff_f
+
+                if ratio < 10:
+                    findings.append(_new_finding(
+                        category="sample_size",
+                        severity="warning",
+                        title="Low observations-per-parameter ratio",
+                        message=(
+                            "The model may be underpowered or unstable because the number "
+                            "of observations per effective predictor is low."
+                        ),
+                        evidence={
+                            "nobs": nobs,
+                            "n_eff": n_eff,
+                            "p_eff": p_eff,
+                            "nobs_per_parameter": ratio,
+                        },
+                        recommendation=(
+                            "Consider reducing model complexity, collecting more data, "
+                            "or using regularized methods."
+                        ),
+                    ))
+                else:
+                    findings.append(_new_finding(
+                        category="sample_size",
+                        severity="info",
+                        title="Sample size appears adequate for model size",
+                        message=(
+                            "The observations-per-parameter ratio does not raise an immediate "
+                            "sample-size warning."
+                        ),
+                        evidence={
+                            "nobs": nobs,
+                            "n_eff": n_eff,
+                            "p_eff": p_eff,
+                            "nobs_per_parameter": ratio,
+                        },
+                    ))
+        except Exception:
+            pass
+
+    # Explanatory power
+    if r2 is not None:
+        try:
+            r2_f = float(r2)
+
+            if r2_f < 0.10:
+                findings.append(_new_finding(
+                    category="model_fit",
+                    severity="warning",
+                    title="Low explanatory power",
+                    message=(
+                        "The model explains only a small fraction of outcome variation. "
+                        "A statistically significant predictor may still have limited "
+                        "practical predictive value."
+                    ),
+                    evidence={"r_squared": r2, "adj_r_squared": adj_r2},
+                    recommendation=(
+                        "Consider adding theoretically relevant predictors, checking nonlinear "
+                        "relationships, or evaluating prediction error."
+                    ),
+                ))
+            elif r2_f < 0.30:
+                findings.append(_new_finding(
+                    category="model_fit",
+                    severity="info",
+                    title="Moderate-to-low explanatory power",
+                    message=(
+                        "The model explains some variation, but substantial unexplained "
+                        "variation remains."
+                    ),
+                    evidence={"r_squared": r2, "adj_r_squared": adj_r2},
+                ))
+            else:
+                findings.append(_new_finding(
+                    category="model_fit",
+                    severity="info",
+                    title="Model explains a nontrivial share of variation",
+                    message=(
+                        "The R-squared value suggests the model captures a meaningful share "
+                        "of variation in the outcome."
+                    ),
+                    evidence={"r_squared": r2, "adj_r_squared": adj_r2},
+                ))
+        except Exception:
+            pass
+
+    # Significance vs causality
+    if f_p is not None:
+        try:
+            f_p_f = float(f_p)
+
+            if f_p_f < 0.05:
+                findings.append(_new_finding(
+                    category="interpretation",
+                    severity="info",
+                    title="Statistically significant association",
+                    message=(
+                        "The overall model is statistically significant. This supports an "
+                        "association between the predictor set and the outcome, but does not "
+                        "establish causality."
+                    ),
+                    evidence={
+                        "f_p_value": f_p,
+                        "target_col": target,
+                        "feature_cols": features,
+                    },
+                    recommendation=(
+                        "Avoid causal language unless the study design supports causal inference."
+                    ),
+                ))
+        except Exception:
+            pass
+
+    # Inline heteroscedasticity flag from linear_model
+    bp_flag_inline = metrics.get("heteroscedasticity_flag_breusch_pagan_0_05")
+
+    if bp_flag_inline is True:
+        n_changed = metrics.get("n_predictors_with_changed_inference")
+
+        message = (
+            "Breusch-Pagan suggests heteroscedasticity. HC3 robust standard errors are "
+            "reported alongside classical OLS."
+        )
+
+        if n_changed is not None and int(n_changed) > 0:
+            message += (
+                f" For {n_changed} predictor(s), classical and HC3 robust inference "
+                f"disagree at the chosen alpha; prefer the robust column."
+            )
+
+        findings.append(_new_finding(
+            category="heteroscedasticity",
+            severity="warning",
+            title="Heteroscedasticity flagged in fitted model",
+            message=message,
+            evidence={
+                "heteroscedasticity_flag_breusch_pagan_0_05": bp_flag_inline,
+                "n_predictors_with_changed_inference": n_changed,
+            },
+            recommendation=(
+                "Report HC3 robust standard errors. Consider transforming the outcome, "
+                "respecifying the model, or weighted least squares if appropriate."
+            ),
+        ))
+
+    # Coefficient table interpretation
+    coef_table = tables.get("coef_table", []) or []
+
+    if coef_table:
+        for row in coef_table:
+            if not isinstance(row, dict):
+                continue
+
+            term = row.get("term")
+
+            if term in {"const", "intercept", "Intercept"}:
+                continue
+
+            p_value = row.get("p_value")
+            coef = row.get("coef")
+
+            try:
+                p_f = float(p_value)
+                coef_f = float(coef)
+
+                if p_f < 0.05:
+                    direction = "positive" if coef_f > 0 else "negative"
+
+                    findings.append(_new_finding(
+                        category="coefficient_interpretation",
+                        severity="info",
+                        title=f"Significant {direction} coefficient: {term}",
+                        message=(
+                            f"The coefficient for `{term}` is statistically significant "
+                            f"and {direction}. Interpret this as an association conditional "
+                            "on the model specification."
+                        ),
+                        evidence={
+                            "term": term,
+                            "coef": coef,
+                            "p_value": p_value,
+                            "ci_lower": row.get("ci_lower"),
+                            "ci_upper": row.get("ci_upper"),
+                        },
+                    ))
+            except Exception:
+                pass
+
+    return findings
 
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_multiple_regression",
