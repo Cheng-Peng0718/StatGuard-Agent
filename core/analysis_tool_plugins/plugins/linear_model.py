@@ -298,6 +298,80 @@ def _build_classical_coef_table(model, alpha: float) -> list[dict[str, Any]]:
     return rows
 
 
+def _result_term_names(result) -> list[str]:
+    """
+    Get coefficient term names from either regular statsmodels results
+    or robust covariance results.
+
+    Regular OLS results often keep pandas indexes.
+    Robust covariance results may expose params/bse as numpy arrays.
+    """
+    params = getattr(result, "params", None)
+
+    if hasattr(params, "index"):
+        return [str(x) for x in params.index]
+
+    model = getattr(result, "model", None)
+    exog_names = getattr(model, "exog_names", None)
+
+    if exog_names:
+        return [str(x) for x in exog_names]
+
+    try:
+        return [f"x{i}" for i in range(len(params))]
+    except Exception:
+        return []
+
+
+def _result_value(values: Any, index: int, term: str):
+    """
+    Read a value by label when available, otherwise by numeric position.
+    """
+    if values is None:
+        return None
+
+    try:
+        if hasattr(values, "loc"):
+            return values.loc[term]
+    except Exception:
+        pass
+
+    try:
+        if hasattr(values, "index") and term in values.index:
+            return values[term]
+    except Exception:
+        pass
+
+    try:
+        return values[index]
+    except Exception:
+        return None
+
+
+def _conf_int_value(conf: Any, index: int, term: str, column: int):
+    """
+    Read confidence interval from pandas DataFrame or numpy array.
+    """
+    if conf is None:
+        return None
+
+    try:
+        if hasattr(conf, "loc") and term in conf.index:
+            return conf.loc[term, column]
+    except Exception:
+        pass
+
+    try:
+        return conf[index][column]
+    except Exception:
+        pass
+
+    try:
+        return conf[index, column]
+    except Exception:
+        return None
+
+
 def _build_robust_coef_table(robust_model, alpha: float) -> list[dict[str, Any]]:
     """Coefficient table using HC3 robust standard errors."""
     try:
@@ -305,32 +379,33 @@ def _build_robust_coef_table(robust_model, alpha: float) -> list[dict[str, Any]]
     except Exception:
         conf = None
 
+    terms = _result_term_names(robust_model)
     rows = []
 
-    for term in robust_model.params.index:
-        ci_lower = None
-        ci_upper = None
-
-        if conf is not None and term in conf.index:
-            try:
-                ci_lower = _round_or_none(conf.loc[term, 0])
-                ci_upper = _round_or_none(conf.loc[term, 1])
-            except Exception:
-                ci_lower = None
-                ci_upper = None
-
+    for i, term in enumerate(terms):
         rows.append({
             "term": str(term),
-            "coef_robust": _round_or_none(robust_model.params[term]),
-            "std_err_robust": _round_or_none(robust_model.bse[term]),
-            "t_robust": _round_or_none(robust_model.tvalues[term]),
-            "p_value_robust": _round_or_none(robust_model.pvalues[term]),
-            "ci_lower_robust": ci_lower,
-            "ci_upper_robust": ci_upper,
+            "coef_robust": _round_or_none(
+                _result_value(getattr(robust_model, "params", None), i, term)
+            ),
+            "std_err_robust": _round_or_none(
+                _result_value(getattr(robust_model, "bse", None), i, term)
+            ),
+            "t_robust": _round_or_none(
+                _result_value(getattr(robust_model, "tvalues", None), i, term)
+            ),
+            "p_value_robust": _round_or_none(
+                _result_value(getattr(robust_model, "pvalues", None), i, term)
+            ),
+            "ci_lower_robust": _round_or_none(
+                _conf_int_value(conf, i, term, 0)
+            ),
+            "ci_upper_robust": _round_or_none(
+                _conf_int_value(conf, i, term, 1)
+            ),
         })
 
     return rows
-
 
 def _build_robust_comparison_table(
     classical: list[dict[str, Any]],
@@ -462,18 +537,24 @@ def execute_linear_model(context) -> Dict[str, Any]:
                 and not _is_intercept_term(row.get("term"))
             )
 
-            robust_results_available = True
+            robust_results_available = bool(coef_table_robust)
             robust_summary = {
-                "available": True,
+                "available": robust_results_available,
                 "method": "HC3 (MacKinnon-White) heteroscedasticity-consistent standard errors",
                 "n_predictors_with_changed_inference": int(n_changed),
                 "note": (
                     "HC3 robust standard errors are reported alongside classical OLS standard errors. "
                     "When heteroscedasticity is present, robust inference is preferred."
-                ),
+                ) if robust_results_available else "HC3 robust standard errors could not be tabulated.",
             }
-        except Exception:
+
+        except Exception as exc:
             robust_results_available = False
+            robust_summary = {
+                "available": False,
+                "method": "HC3 (MacKinnon-White)",
+                "error": str(exc),
+            }
 
         # ----------------------------------------------------
         # Coefficient interpretations
@@ -572,10 +653,18 @@ def execute_linear_model(context) -> Dict[str, Any]:
 
         if bp_flag is True and status != "warning":
             status = "warning"
-            message = (
-                "Multiple regression completed; Breusch-Pagan suggests heteroscedasticity. "
-                "Prefer the HC3 robust standard errors reported alongside classical OLS."
-            )
+
+            if robust_results_available:
+                message = (
+                    "Multiple regression completed; Breusch-Pagan suggests heteroscedasticity. "
+                    "HC3 robust standard errors are reported alongside classical OLS."
+                )
+            else:
+                message = (
+                    "Multiple regression completed; Breusch-Pagan suggests heteroscedasticity. "
+                    "Classical OLS standard errors may be unreliable; robust standard errors "
+                    "were not available in this run."
+                )
 
         if status == "warning":
             return _warning(message, details)
@@ -607,6 +696,7 @@ def extract_linear_model(
         title = "Linear Model"
 
     robust_summary = payload.get("robust_se_summary", {}) or {}
+    robust_available = robust_summary.get("available") is True
 
     metrics = compact_dict({
         "nobs": payload.get("nobs"),
@@ -618,7 +708,7 @@ def extract_linear_model(
         "model_significant_at_alpha": payload.get("model_significant_at_alpha"),
         "significant_predictor_count": payload.get("significant_predictor_count"),
         "heteroscedasticity_flag_breusch_pagan_0_05": payload.get("heteroscedasticity_flag_breusch_pagan_0_05"),
-        "robust_se_available": robust_summary.get("available"),
+        "robust_se_available": robust_available,
         "n_predictors_with_changed_inference": robust_summary.get("n_predictors_with_changed_inference"),
     })
 
@@ -683,7 +773,17 @@ def extract_linear_model(
         summary += f" Significant non-intercept predictors: {payload.get('significant_predictor_count')}."
 
     if payload.get("heteroscedasticity_flag_breusch_pagan_0_05") is True:
-        summary += " Breusch-Pagan suggests heteroscedasticity; HC3 robust standard errors are reported alongside classical OLS."
+        if robust_available:
+            summary += (
+                " Breusch-Pagan suggests heteroscedasticity; "
+                "HC3 robust standard errors are reported alongside classical OLS."
+            )
+        else:
+            summary += (
+                " Breusch-Pagan suggests heteroscedasticity; "
+                "classical OLS standard errors may be unreliable and robust standard "
+                "errors were not available in this run."
+            )
 
     return title, summary, metrics, tables, metadata
 
@@ -1011,16 +1111,36 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> list[Dict[str, Any]]:
 
     if bp_flag_inline is True:
         n_changed = metrics.get("n_predictors_with_changed_inference")
+        robust_available = metrics.get("robust_se_available") is True
 
-        message = (
-            "Breusch-Pagan suggests heteroscedasticity. HC3 robust standard errors are "
-            "reported alongside classical OLS."
-        )
+        if robust_available:
+            message = (
+                "Breusch-Pagan suggests heteroscedasticity. HC3 robust standard errors are "
+                "reported alongside classical OLS."
+            )
 
-        if n_changed is not None and int(n_changed) > 0:
-            message += (
-                f" For {n_changed} predictor(s), classical and HC3 robust inference "
-                f"disagree at the chosen alpha; prefer the robust column."
+            try:
+                if n_changed is not None and int(n_changed) > 0:
+                    message += (
+                        f" For {n_changed} predictor(s), classical and HC3 robust inference "
+                        f"disagree at the chosen alpha; prefer the robust column."
+                    )
+            except Exception:
+                pass
+
+            recommendation = (
+                "Report HC3 robust standard errors. Consider transforming the outcome, "
+                "respecifying the model, or weighted least squares if appropriate."
+            )
+        else:
+            message = (
+                "Breusch-Pagan suggests heteroscedasticity. Classical OLS standard errors "
+                "may be unreliable, and HC3 robust standard errors were not available in this run."
+            )
+
+            recommendation = (
+                "Consider computing robust standard errors, transforming the outcome, "
+                "respecifying the model, or weighted least squares if appropriate."
             )
 
         findings.append(_new_finding(
@@ -1030,12 +1150,10 @@ def evaluate_regression_guardrails(run: Dict[str, Any]) -> list[Dict[str, Any]]:
             message=message,
             evidence={
                 "heteroscedasticity_flag_breusch_pagan_0_05": bp_flag_inline,
+                "robust_se_available": robust_available,
                 "n_predictors_with_changed_inference": n_changed,
             },
-            recommendation=(
-                "Report HC3 robust standard errors. Consider transforming the outcome, "
-                "respecifying the model, or weighted least squares if appropriate."
-            ),
+            recommendation=recommendation,
         ))
 
     # Coefficient table interpretation

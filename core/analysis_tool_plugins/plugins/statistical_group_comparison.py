@@ -1243,23 +1243,19 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     display_name="Statistical Group Comparison",
     evidence_categories=["group_comparison", "statistical_inference"],
     description=(
-        "Compare a numeric outcome across a categorical grouping variable. "
-        "Two groups: Welch's t-test with Cohen's d and Hedges' g effect sizes. "
-        "Three or more groups: Levene's test for variance equality, then either classic ANOVA "
-        "(equal variances) or Welch's/Alexander-Govern ANOVA (unequal variances). "
-        "When the omnibus is significant, FWER-controlled pairwise comparisons follow "
-        "(Tukey HSD for equal variances or Games-Howell for unequal variances). "
-        "Shapiro-Wilk per-group normality is reported as a diagnostic."
+        "Run an inferential statistical comparison of a numeric outcome across "
+        "levels of a categorical group variable. This is the correct tool for "
+        "questions about whether an outcome differs across groups, segments, "
+        "regions, cohorts, treatments, or categories."
     ),
     usage_guidance=(
-        "Use this when the user asks whether a numeric metric differs across groups, segments, regions, "
-        "classes, treatments, or categories. This is a statistical comparison tool, not just a grouped summary. "
-        "It reports p-values, effect sizes, group means, post-hoc pairwise comparisons, and assumption checks. "
-        "For inferential statistics, the active dataset must be observation-level, not one row per group. "
-        "If the source is SQL, first materialize the natural observational unit, such as customer-level, "
-        "order-level, subject-level, student-level, patient-level, transaction-level, or experimental-unit-level data. "
-        "For example, to test whether total_revenue differs by region, use one row per customer or order with "
-        "both region and total_revenue, not SELECT region, SUM(revenue) GROUP BY region."
+        "Use this tool when the user asks whether a numeric outcome differs across "
+        "groups, segments, regions, cohorts, treatments, or categories. "
+        "This tool produces group_comparison evidence. "
+        "Examples: "
+        "compare total_revenue by segment -> target_col='total_revenue', group_col='segment'; "
+        "compare total_revenue by region -> target_col='total_revenue', group_col='region'. "
+        "Do not use groupby_summary to satisfy group_comparison evidence."
     ),
     use_when=[
         "The user asks if a numeric outcome differs by a categorical group.",

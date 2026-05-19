@@ -41,6 +41,24 @@ def _fmt_value(x: Any, digits: int = 4) -> str:
 
     return str(x)
 
+def _md_table_cell(value: Any) -> str:
+    """
+    Format a value for a Markdown table cell.
+
+    Important:
+    The HTML renderer parses Markdown tables by splitting on "|".
+    Therefore literal pipes inside cell values must be escaped before
+    table Markdown is generated.
+    """
+    text = _fmt_value(value)
+
+    # Keep table rows one-line.
+    text = " ".join(str(text).splitlines())
+
+    # Escape Markdown table delimiters inside cell content.
+    text = text.replace("|", r"\|")
+
+    return text
 
 def _pretty_severity(severity: str) -> str:
     if severity == "critical":
@@ -63,10 +81,16 @@ def _format_guardrail_table(findings: List[Dict[str, Any]]) -> str:
         recommendation = f.get("recommendation") or "N/A"
 
         lines.append(
-            f"| {_pretty_severity(f.get('severity', 'info'))} "
-            f"| {f.get('title', '')} "
-            f"| {f.get('message', '')} "
-            f"| {recommendation} |"
+            "| "
+            + " | ".join(
+                [
+                    _md_table_cell(_pretty_severity(f.get("severity", "info"))),
+                    _md_table_cell(f.get("title", "")),
+                    _md_table_cell(f.get("message", "")),
+                    _md_table_cell(recommendation),
+                ]
+            )
+            + " |"
         )
 
     return "\n".join(lines)
@@ -90,7 +114,7 @@ def _format_dict_as_markdown_table(d: Dict[str, Any]) -> str:
 
     lines = ["| Metric | Value |", "|---|---|"]
     for k, v in d.items():
-        lines.append(f"| {k} | {v} |")
+        lines.append(f"| {_md_table_cell(k)} | {_md_table_cell(v)} |")
     return "\n".join(lines)
 
 
@@ -109,12 +133,12 @@ def _format_list_of_dicts_as_markdown_table(rows: List[Dict[str, Any]]) -> str:
         return ""
 
     lines = [
-        "| " + " | ".join(keys) + " |",
+        "| " + " | ".join(_md_table_cell(k) for k in keys) + " |",
         "| " + " | ".join(["---"] * len(keys)) + " |",
     ]
 
     for row in rows:
-        lines.append("| " + " | ".join(_safe_str(row.get(k, "")) for k in keys) + " |")
+        lines.append("| " + " | ".join(_md_table_cell(row.get(k, "")) for k in keys) + " |")
 
     return "\n".join(lines)
 
@@ -163,7 +187,7 @@ def _format_metric_table_block(block: Dict[str, Any]) -> str:
         label = row.get("label") or _humanize_key(row.get("raw_key", ""))
         value = row.get("value", "")
 
-        lines.append(f"| {label} | {_fmt_value(value)} |")
+        lines.append(f"| {_md_table_cell(label)} | {_md_table_cell(value)} |")
 
     return "\n".join(lines)
 
@@ -215,7 +239,7 @@ def _format_generic_table_block(block: Dict[str, Any]) -> str:
             column_labels.append(str(col))
 
     lines = [
-        "| " + " | ".join(column_labels) + " |",
+        "| " + " | ".join(_md_table_cell(label) for label in column_labels) + " |",
         "| " + " | ".join(["---"] * len(column_labels)) + " |",
     ]
 
@@ -231,7 +255,7 @@ def _format_generic_table_block(block: Dict[str, Any]) -> str:
             0, len(column_labels) - len(values)
         )
 
-        lines.append("| " + " | ".join(_fmt_value(v) for v in values) + " |")
+        lines.append("| " + " | ".join(_md_table_cell(v) for v in values) + " |")
 
     return "\n".join(lines)
 
@@ -897,18 +921,59 @@ def build_html_report(markdown_text: str, title: str = "Data Analysis Report") -
 
         return text
 
+    def split_markdown_table_row(line: str) -> list[str]:
+        """
+        Split a Markdown table row while respecting escaped pipes: \\|.
+        """
+        text = line.strip().strip("|")
+
+        cells = []
+        buf = []
+        escaped = False
+
+        for ch in text:
+            if escaped:
+                if ch == "|":
+                    buf.append("|")
+                else:
+                    buf.append("\\")
+                    buf.append(ch)
+                escaped = False
+                continue
+
+            if ch == "\\":
+                escaped = True
+                continue
+
+            if ch == "|":
+                cells.append("".join(buf).strip())
+                buf = []
+                continue
+
+            buf.append(ch)
+
+        if escaped:
+            buf.append("\\")
+
+        cells.append("".join(buf).strip())
+
+        return cells
+
     def render_markdown_table(lines):
         if len(lines) < 2:
             return ""
 
-        header = [cell.strip() for cell in lines[0].strip().strip("|").split("|")]
+        header = split_markdown_table_row(lines[0])
+
         rows = []
 
         for line in lines[2:]:
-            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            cells = split_markdown_table_row(line)
             rows.append(cells)
 
-        html_lines = ["<table>"]
+        html_lines = ['<div class="table-scroll">']
+        html_lines.append("<table>")
+
         html_lines.append("<thead><tr>")
         for h in header:
             html_lines.append(f"<th>{render_inline(h)}</th>")
@@ -917,11 +982,18 @@ def build_html_report(markdown_text: str, title: str = "Data Analysis Report") -
         html_lines.append("<tbody>")
         for row in rows:
             html_lines.append("<tr>")
+
+            # Pad or trim row cells to match header length.
+            row = list(row)[:len(header)] + [""] * max(0, len(header) - len(row))
+
             for cell in row:
                 html_lines.append(f"<td>{render_inline(cell)}</td>")
+
             html_lines.append("</tr>")
+
         html_lines.append("</tbody>")
         html_lines.append("</table>")
+        html_lines.append("</div>")
 
         return "\n".join(html_lines)
 
@@ -1129,29 +1201,43 @@ li {{
     margin: 6px 0;
 }}
 
-table {{
+.table-scroll {{
     width: 100%;
-    border-collapse: collapse;
+    overflow-x: auto;
+    overflow-y: hidden;
     margin: 14px 0 24px;
-    font-size: 14px;
-    overflow: hidden;
+    border: 1px solid var(--border);
     border-radius: 10px;
 }}
 
-thead {{
-    background: var(--accent-soft);
+.table-scroll table {{
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    margin: 0;
+    font-size: 14px;
 }}
 
-th, td {{
+.table-scroll th,
+.table-scroll td {{
     border: 1px solid var(--border);
     padding: 9px 11px;
     text-align: left;
     vertical-align: top;
 }}
 
-th {{
+.table-scroll th {{
     color: #1e3a8a;
     font-weight: 700;
+}}
+
+.table-scroll td {{
+    max-width: 360px;
+    overflow-wrap: anywhere;
+}}
+
+thead {{
+    background: var(--accent-soft);
 }}
 
 code {{

@@ -283,10 +283,18 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="groupby_summary",
     display_name="Groupby Summary",
     evidence_categories=["group_summary", "descriptive_comparison"],
-    description="Compare a numeric metric across one or more grouping columns in the active DataFrame dataset.",
+    description=(
+        "Compute descriptive grouped aggregations such as count, sum, mean, "
+        "median, min, and max by one or more grouping columns."
+    ),
     usage_guidance=(
-        "Use this for business comparisons such as revenue by region, revenue by segment, "
-        "customer value by group, or numeric metric by category."
+        "Use this tool only for descriptive aggregation questions, such as "
+        "'summarize average revenue by segment and region' or "
+        "'show total sales by category'. "
+        "Do not use this tool when the user asks whether a numeric outcome "
+        "statistically differs across groups. "
+        "This tool does not produce group_comparison evidence. "
+        "For inferential comparison questions, use statistical_group_comparison."
     ),
     use_when=[
         "The user asks to compare a numeric column across categories, groups, segments, regions, or cohorts.",
