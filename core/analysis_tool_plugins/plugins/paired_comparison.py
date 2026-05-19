@@ -24,6 +24,7 @@ from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.group_comparison_guardrails import (
     evaluate_group_comparison_guardrails,
 )
+from core.analysis_tool_plugins.shared.apa_writers import write_apa_paired_comparison
 from core.guardrails import _new_finding
 
 
@@ -1180,6 +1181,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         evaluate_group_comparison_guardrails,
         evaluate_paired_comparison_specific_guardrails,
     ],
+    apa_methods_writer=write_apa_paired_comparison,
     display_config=PAIRED_COMPARISON_DISPLAY,
     examples=[
         {

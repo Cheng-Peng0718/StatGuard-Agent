@@ -24,6 +24,7 @@ from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.group_comparison_guardrails import (
     evaluate_group_comparison_guardrails,
 )
+from core.analysis_tool_plugins.shared.apa_writers import write_apa_nonparametric_group_comparison
 
 
 MISSING_TOKENS = {
@@ -1159,6 +1160,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     guardrail_evaluators=[
         evaluate_group_comparison_guardrails,
     ],
+    apa_methods_writer=write_apa_nonparametric_group_comparison,
     display_config=NONPARAMETRIC_GROUP_COMPARISON_DISPLAY,
     examples=[
         {

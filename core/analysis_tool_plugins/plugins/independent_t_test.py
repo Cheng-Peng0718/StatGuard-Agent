@@ -20,6 +20,11 @@ from core.analysis_tool_plugins.registry import register_plugin
 from core.analysis_tool_plugins.shared.group_comparison_guardrails import (
     evaluate_group_comparison_guardrails,
 )
+from core.analysis_tool_plugins.shared.effect_size_ci import (
+    cohens_d_independent_ci,
+    hedges_g_independent_ci,
+)
+from core.analysis_tool_plugins.shared.apa_writers import write_apa_independent_t_test
 
 
 MISSING_TOKENS = {
@@ -298,6 +303,8 @@ def execute_independent_t_test(context) -> Dict[str, Any]:
 
         df_welch = _welch_df(x1, x2)
         d, g = _cohens_d_and_hedges_g(x1, x2)
+        d_ci_low, d_ci_high = cohens_d_independent_ci(d, len(x1), len(x2), alpha) if d is not None else (None, None)
+        g_ci_low, g_ci_high = hedges_g_independent_ci(g, len(x1), len(x2), alpha) if g is not None else (None, None)
         ci_low, ci_high = _mean_diff_ci(x1, x2, alpha)
         mean_diff = float(np.mean(x1) - np.mean(x2))
 
@@ -375,8 +382,12 @@ def execute_independent_t_test(context) -> Dict[str, Any]:
             "p_value": _round_or_none(p_value),
             "effect_size_name": "Hedges g",
             "effect_size": _round_or_none(g),
+            "effect_size_ci_low": _round_or_none(g_ci_low),
+            "effect_size_ci_high": _round_or_none(g_ci_high),
             "effect_size_magnitude": _interpret_d(g),
             "cohens_d": _round_or_none(d),
+            "cohens_d_ci_low": _round_or_none(d_ci_low),
+            "cohens_d_ci_high": _round_or_none(d_ci_high),
             "significant_at_alpha": (
                 bool(p_value < alpha) if math.isfinite(float(p_value)) else None
             ),
@@ -430,8 +441,12 @@ def extract_independent_t_test(
         "significant_at_0_05": payload.get("significant_at_0_05"),
         "effect_size_name": payload.get("effect_size_name"),
         "effect_size": payload.get("effect_size"),
+        "effect_size_ci_low": payload.get("effect_size_ci_low"),
+        "effect_size_ci_high": payload.get("effect_size_ci_high"),
         "effect_size_magnitude": payload.get("effect_size_magnitude"),
         "cohens_d": payload.get("cohens_d"),
+        "cohens_d_ci_low": payload.get("cohens_d_ci_low"),
+        "cohens_d_ci_high": payload.get("cohens_d_ci_high"),
     })
 
     tables: Dict[str, Any] = {}
@@ -486,8 +501,12 @@ INDEPENDENT_T_TEST_DISPLAY = DisplayConfig(
             "significant_at_0_05": "Significant at 0.05",
             "effect_size_name": "Effect size",
             "effect_size": "Effect size value",
+            "effect_size_ci_low": "Effect size 95% CI lower",
+            "effect_size_ci_high": "Effect size 95% CI upper",
             "effect_size_magnitude": "Effect size magnitude",
             "cohens_d": "Cohen's d",
+            "cohens_d_ci_low": "Cohen's d 95% CI lower",
+            "cohens_d_ci_high": "Cohen's d 95% CI upper",
         },
         formatters={
             "group1_mean": format_number,
@@ -501,7 +520,11 @@ INDEPENDENT_T_TEST_DISPLAY = DisplayConfig(
             "significant_at_alpha": format_bool_yes_no,
             "significant_at_0_05": format_bool_yes_no,
             "effect_size": format_number,
+            "effect_size_ci_low": format_number,
+            "effect_size_ci_high": format_number,
             "cohens_d": format_number,
+            "cohens_d_ci_low": format_number,
+            "cohens_d_ci_high": format_number,
         },
         order=[
             "method",
@@ -522,8 +545,12 @@ INDEPENDENT_T_TEST_DISPLAY = DisplayConfig(
             "significant_at_0_05",
             "effect_size_name",
             "effect_size",
+            "effect_size_ci_low",
+            "effect_size_ci_high",
             "effect_size_magnitude",
             "cohens_d",
+            "cohens_d_ci_low",
+            "cohens_d_ci_high",
         ],
     ),
     tables={
@@ -587,5 +614,6 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     guardrail_evaluators=[
         evaluate_group_comparison_guardrails
     ],
+    apa_methods_writer=write_apa_independent_t_test,
     display_config=INDEPENDENT_T_TEST_DISPLAY,
 ))

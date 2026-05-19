@@ -395,6 +395,11 @@ class AnalysisToolPlugin:
     # - optional_context: useful context, not hard final coverage
     evidence_category_roles: Dict[str, str] = field(default_factory=dict)
 
+    # Optional: function that produces an APA-style Methods/Results paragraph
+    # from an analysis_run dict. Signature: (run: Dict) -> Optional[str].
+    # If None, the export_apa_methods plugin will skip this tool.
+    apa_methods_writer: Optional[Any] = None
+
     def run(self, context) -> Dict[str, Any]:
         if self.execute is None:
             return {
