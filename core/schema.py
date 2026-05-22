@@ -71,6 +71,7 @@ class GraphState(TypedDict):
     max_steps: int
     user_request: str
     workspace_dir: str
+    claims_validation: object
 
 # --- 3. Actions and tools ---
 class ToolSpec(BaseModel):
@@ -161,6 +162,12 @@ class Observation(BaseModel):
 # --- 5. Context packaging ---
 class ContextPackage(BaseModel):
     def load_df(self):
+        def _read_any(path):
+            # Read by extension; the active version path may be csv or parquet.
+            if str(path).lower().endswith(".csv"):
+                return pd.read_csv(path)
+            return pd.read_parquet(path)
+
         if self.active_data_version_id and self.data_versions:
             for version in self.data_versions:
                 if version.get("version_id") == self.active_data_version_id:
@@ -171,7 +178,7 @@ class ContextPackage(BaseModel):
                         print(f"[LOAD DF] active_version={self.active_data_version_id}, path={path}")
                         ##### DEBUG
 
-                        return pd.read_parquet(path)
+                        return _read_any(path)
 
         fallback_path = os.path.join(self.workspace_dir, "working_data.parquet")
         if os.path.exists(fallback_path):
@@ -278,6 +285,8 @@ class AgentContext:
         else:
             print(f"[LOAD DF] fallback working_data, path={path}")
 
+        if str(path).lower().endswith(".csv"):
+            return pd.read_csv(path)
         return pd.read_parquet(path, engine='pyarrow')
 
     def save_df(self, df):
@@ -369,6 +378,3 @@ class AnalysisRun(BaseModel):
     guardrails: List[Dict[str, Any]] = Field(default_factory=list)
 
     raw_observation_id: Optional[str] = None
-
-
-

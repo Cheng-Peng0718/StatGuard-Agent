@@ -52,7 +52,8 @@ Rules:
 - For broad end-to-end analysis requests, require enough evidence categories to support the requested final report.
 - If the user asks to summarize KPIs, include kpi_summary if available.
 - If the user asks to compare groups, segments, regions, treatments, or categories, include group_comparison if available.
-- If the user asks to model drivers, predictors, associations, or explain a numeric outcome, include regression_model if available.
+- If the user asks to model drivers, predictors, or explain a NUMERIC outcome from other columns, include regression_model if available.
+- If the user asks about association/relationship between two columns, choose by column type shown in the context: when BOTH columns are categorical, the appropriate evidence is statistical_inference (a chi-square test), NOT regression_model; when the outcome is numeric, regression_model or group_comparison is appropriate. Do not require regression_model for two categorical variables.
 - If the user asks to diagnose/check model reliability/assumptions, include regression_diagnostics if available.
 - If the user asks to compare more than one grouping variable, set required_evidence_counts.group_comparison to the number of distinct requested comparisons.
 - Use required_evidence_counts to indicate how many successful pieces of evidence of each category are needed.

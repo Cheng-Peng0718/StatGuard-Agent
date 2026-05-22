@@ -312,6 +312,7 @@ def check_answer_quality(
     observations: List[Dict[str, Any]],
     active_data_version_id: str | None = None,
     analysis_coverage_brief: Dict[str, Any] | None = None,
+    prev_substantive_run_count: int = 0,
 ) -> Dict[str, Any]:
     """
     Soft final-answer quality gate for the workbench-style analyst loop.
@@ -343,6 +344,7 @@ def check_answer_quality(
             "available_evidence_categories": available_evidence_categories_from_plugins(),
             "covered_evidence_categories": [],
             "missing_evidence_categories": [],
+            "current_substantive_run_count": 0,
             "warnings": [],
             "satisfied": [],
             "missing": [],
@@ -523,11 +525,45 @@ def check_answer_quality(
 
     quality_status = "needs_attention" if warnings else "pass"
 
+    # --- Continuation decision: progress-gated, not LLM-prescription-gated. ---
+    # The coverage brief is produced by an LLM and can prescribe evidence that
+    # is impossible or inappropriate to satisfy (e.g. a regression_model for two
+    # categorical variables). Treating "missing evidence" as a hard command to
+    # keep going causes infinite retry loops to max_steps.
+    #
+    # Instead we only recommend continuation when there is missing evidence AND
+    # the agent is still making REAL progress, measured by the number of
+    # substantive analysis runs growing since the previous gate visit. If the
+    # agent is no longer producing new substantive analysis (it is stuck
+    # retrying a blocked tool, or repeatedly emitting final_answer), we stop and
+    # let it deliver with whatever evidence exists. The missing evidence is then
+    # surfaced as a warning, not enforced as an unsatisfiable command.
+    # Progress is measured by SUCCESSFUL substantive runs only. A blocked
+    # attempt is "recorded" and "substantive" by category, but it produced no
+    # new analysis result, so it must not count as progress -- otherwise an
+    # agent repeatedly hitting a blocked tool would look like it is advancing
+    # and the loop would never stop.
+    successful_substantive_runs = [
+        run for run in substantive_runs
+        if _run_status(run) in {"ok", "warning"}
+    ]
+    current_substantive_run_count = len(successful_substantive_runs)
+    has_missing_evidence = bool(missing_evidence_categories)
+    is_first_gate_visit = prev_substantive_run_count == 0
+    made_progress = current_substantive_run_count > prev_substantive_run_count
+
+    # First visit: allow one continuation so a legitimate multi-step analysis
+    # gets a chance to add evidence. After that, require real progress.
+    continuation_recommended = has_missing_evidence and (
+        is_first_gate_visit or made_progress
+    )
+
     return {
         "status": "ok",
         "gate_type": "answer_quality_gate",
         "quality_status": quality_status,
-        "continuation_recommended": bool(missing_evidence_categories),
+        "continuation_recommended": continuation_recommended,
+        "current_substantive_run_count": current_substantive_run_count,
         "pre_analysis_check_categories": pre_analysis_check_categories,
         "missing_pre_analysis_checks": missing_pre_analysis_checks,
         "coverage_brief": coverage_brief,

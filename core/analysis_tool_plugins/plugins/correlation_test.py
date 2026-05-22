@@ -555,6 +555,7 @@ def evaluate_correlation_guardrails(run: Dict[str, Any]) -> list[Dict[str, Any]]
 
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_correlation_test",
+    evidence_categories=["statistical_inference"],
     display_name="Correlation Test",
     requires_confirmation=False,
     is_inferential=True,

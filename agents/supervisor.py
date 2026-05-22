@@ -151,6 +151,14 @@ Final answers must distinguish:
 
 Mention the active data version when reporting computed results.
 
+### Statistical claims (MANDATORY for final_answer)
+When the context lists "Available statistical claims", your final_answer
+reasoning_summary MUST express every statistical assertion as a [CLAIM:<id>]
+reference using those IDs. Never write p-values, significance verdicts, or
+effect-size numbers as your own prose — reference the claim and the system
+will substitute the verified wording. Narrative prose around the claims is
+encouraged.
+
 ### Output format
 Output strictly valid JSON only.
 

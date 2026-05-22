@@ -589,6 +589,7 @@ INDEPENDENT_T_TEST_DISPLAY = DisplayConfig(
 
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_independent_t_test",
+    evidence_categories=["group_comparison", "statistical_inference"],
     display_name="Independent t-test",
     requires_confirmation=False,
     is_inferential=True,

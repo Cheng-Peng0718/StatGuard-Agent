@@ -83,6 +83,55 @@ def build_context_node(state: GraphState):
     # Refresh dataset profile from sandbox.
     new_profile = generate_profile(current_data_path)
 
+    # Ensure there is an active data version even when the dataset arrived via
+    # the fallback working_data path (which never went through
+    # create_initial_data_version). The id is derived from the FILE CONTENT, so:
+    #   - pure analysis tools (which do not change the data) keep the same id,
+    #     letting the supervisor reuse prior results instead of re-running and
+    #     hitting the fingerprint gate in a loop;
+    #   - a tool that actually rewrites the data produces a new version through
+    #     the normal data-version path, so the id changes only when data changes.
+    updates_version_state = {}
+    active_version_id = state.get("active_data_version_id")
+    data_versions = state.get("data_versions", []) or []
+    if not active_version_id:
+        try:
+            with open(current_data_path, "rb") as _fh:
+                content_hash = hashlib.md5(_fh.read()).hexdigest()[:8]
+        except Exception:
+            content_hash = "unknown"
+        active_version_id = f"working_{content_hash}"
+        # generate_profile returns a DatasetProfile object (not a dict), so read
+        # n_rows via getattr; reading it as a dict left every fallback version
+        # registered with n_rows=0, which made the supervisor believe the active
+        # dataset was empty and retry forever.
+        if isinstance(new_profile, dict):
+            n_rows_val = int(new_profile.get("n_rows", 0))
+            n_cols_val = int(new_profile.get("n_cols", 0))
+        else:
+            n_rows_val = int(getattr(new_profile, "n_rows", 0) or 0)
+            n_cols_val = int(getattr(new_profile, "n_cols", 0) or 0)
+        # load_df() reads the active version's path with pd.read_parquet, so the
+        # registered path MUST be the parquet file -- not whatever working_data*
+        # os.listdir happened to hit first (it may be the .csv, which would make
+        # read_parquet fail and cascade into a no-data retry loop).
+        parquet_path = os.path.join(current_workspace, "working_data.parquet")
+        version_path = parquet_path if os.path.exists(parquet_path) else current_data_path
+        # Register the version if not already present.
+        if not any(v.get("version_id") == active_version_id for v in data_versions):
+            data_versions = data_versions + [{
+                "version_id": active_version_id,
+                "parent_version_id": None,
+                "path": version_path,
+                "n_rows": n_rows_val,
+                "n_cols": n_cols_val,
+                "label": "working_data (content-addressed)",
+            }]
+        updates_version_state = {
+            "active_data_version_id": active_version_id,
+            "data_versions": data_versions,
+        }
+
     context = build_context(
         step=step,
         max_steps=state["max_steps"],
@@ -91,8 +140,8 @@ def build_context_node(state: GraphState):
         observations=state.get("observations", []),
         workspace_dir=state.get("workspace_dir", "./"),
         deliverable_check=state.get("deliverable_check"),
-        data_versions=state.get("data_versions", []),
-        active_data_version_id=state.get("active_data_version_id"),
+        data_versions=data_versions,
+        active_data_version_id=active_version_id,
         data_audit_log=state.get("data_audit_log", []),
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
         analysis_runs=state.get("analysis_runs", []),
@@ -101,7 +150,8 @@ def build_context_node(state: GraphState):
     return {
         "current_step": step,
         "current_context_text": context.context_text,
-        "dataset_profile": new_profile
+        "dataset_profile": new_profile,
+        **updates_version_state,
     }
 
 def coverage_brief_node(state: GraphState):
@@ -149,11 +199,21 @@ def coverage_brief_node(state: GraphState):
         "analysis_coverage_brief": brief,
         "analysis_coverage_request_hash": request_hash,
         "answer_quality_continuation_attempts": 0,
+        "prev_substantive_run_count": 0,
     }
 
 def supervisor_node(state: GraphState):
     current_workspace = state.get("workspace_dir", "./")
     current_profile = state.get("dataset_profile")
+
+    # Build the statistical claims catalogue from all completed runs, so the
+    # supervisor can reference claims by ID instead of authoring statistics.
+    from core.analysis_tool_plugins.shared.claims_builders import build_claims_for_run
+    from core.claims import ClaimSet
+    _claimset = ClaimSet()
+    for _run in state.get("analysis_runs", []) or []:
+        _claimset.add_many(build_claims_for_run(_run))
+    _claims_catalogue = _claimset.catalogue_text() if not _claimset.is_empty() else None
 
     context_pkg = build_context(
         step=state.get("current_step", 1),
@@ -168,6 +228,7 @@ def supervisor_node(state: GraphState):
         data_audit_log=state.get("data_audit_log", []),
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
         analysis_runs=state.get("analysis_runs", []),
+        claims_catalogue=_claims_catalogue,
     )
 
     action = call_supervisor(context_pkg)
@@ -830,14 +891,62 @@ def deliverable_gate_node(state: GraphState):
         observations=observations,
         active_data_version_id=state.get("active_data_version_id"),
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
+        prev_substantive_run_count=int(state.get("prev_substantive_run_count", 0)),
     )
     # Session-level guardrails run here because they span multiple plugins
     # and cannot be expressed by any single plugin's evaluator. Attachment
     # logic is encapsulated in the evaluator itself.
-    session_findings = evaluate_multiple_comparison_guardrails(analysis_runs)
+    # NOTE: analysis_runs MUST be passed as the keyword arg; passing it
+    # positionally lands it in `context_or_run` and silently yields no findings.
+    session_findings = evaluate_multiple_comparison_guardrails(
+        None, analysis_runs=analysis_runs
+    )
 
     if session_findings:
         print(f"[SESSION GUARDRAIL] {len(session_findings)} session-level finding(s)")
+
+    # --- Statistical claims: substitute [CLAIM:id] refs in the final answer
+    # with verified wording, and detect bare (unbound) statistical assertions.
+    from core.analysis_tool_plugins.shared.claims_builders import build_claims_for_run
+    from core.claims import ClaimSet, Claim, CLAIM_SESSION_WARNING
+
+    claimset = ClaimSet()
+    for _run in analysis_runs:
+        claimset.add_many(build_claims_for_run(_run))
+
+    # Expose the multiple-comparison warning as a citable claim too.
+    for i, finding in enumerate(session_findings or []):
+        claimset.add(Claim(
+            claim_id=f"session_mc_{i}",
+            kind=CLAIM_SESSION_WARNING,
+            subject="multiple comparisons",
+            data={"text": finding.get("message") or finding.get("title", "")},
+        ))
+
+    claims_validation = None
+    action = state.get("current_action")
+    action_type = getattr(action, "action_type", None)
+    if action is not None and action_type == "final_answer" and not claimset.is_empty():
+        raw_answer = getattr(action, "reasoning_summary", "") or ""
+        claims_validation = claimset.validate(raw_answer)
+        rendered_answer, unresolved = claimset.substitute(raw_answer)
+        # Append the session-level multiple-comparison warning if it was not
+        # already cited by the model.
+        if session_findings and not any(
+                cid.startswith("session_mc_") for cid in claims_validation.get("referenced_ids", [])
+        ):
+            warning_text = "; ".join(
+                f.get("title", "") for f in session_findings if f.get("title")
+            )
+            if warning_text:
+                rendered_answer += f"\n\n_Statistical note: {warning_text}._"
+        # Write the rendered answer back so the UI shows verified wording.
+        try:
+            action.reasoning_summary = rendered_answer
+        except Exception:
+            pass
+        if claims_validation and not claims_validation.get("is_clean"):
+            print(f"[CLAIMS] validation flagged: {claims_validation}")
 
     gate_attempts = int(state.get("deliverable_gate_attempts", 0)) + 1
 
@@ -857,6 +966,9 @@ def deliverable_gate_node(state: GraphState):
         "deliverable_check": check,
         "deliverable_gate_attempts": gate_attempts,
         "answer_quality_continuation_attempts": continuation_attempts,
+        "prev_substantive_run_count": int(check.get("current_substantive_run_count", 0)),
+        "current_action": state.get("current_action"),
+        "claims_validation": claims_validation,
     }
 
 def route_after_deliverable_gate(state: GraphState):

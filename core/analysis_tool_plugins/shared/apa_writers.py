@@ -51,6 +51,11 @@ def write_apa_statistical_group_comparison(run: Dict[str, Any]) -> Optional[str]
     target = _arg(run, "target_col", "the outcome")
     group_col = _arg(run, "group_col", "group")
 
+    # If P2 routed this comparison to a rank-based primary test, reuse the
+    # nonparametric writer rather than duplicating its logic here.
+    if "mann-whitney" in method or "mann whitney" in method or "kruskal" in method:
+        return write_apa_nonparametric_group_comparison(run)
+
     # -------- Welch t-test path --------
     if "t-test" in method or "t test" in method:
         t = metrics.get("t_statistic")

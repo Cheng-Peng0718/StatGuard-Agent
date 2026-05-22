@@ -372,6 +372,79 @@ def _run_shapiro_per_group(groups: dict[str, np.ndarray]) -> list[dict[str, Any]
     return rows
 
 
+# Thresholds for the nonparametric-switch decision (see _decide_nonparametric).
+# - Below this per-group n, the central limit theorem cannot be relied on, so
+#   any non-normality is a reason to prefer a rank-based test.
+_SMALL_GROUP_N = 30
+# - At or above this absolute skew, the distribution is severely skewed and the
+#   CLT protection from n >= 30 is no longer adequate (Fagerland 2012; Fagerland
+#   & Sandvik 2009 show Welch-type tests stay acceptable under moderate skew ~1
+#   but degrade under severe skew). Non-normality then warrants a rank-based
+#   test even for moderately large samples.
+_HIGH_SKEW = 1.5
+
+
+def _max_abs_skew(groups: dict[str, np.ndarray]) -> float | None:
+    """Largest absolute sample skewness across groups (None if uncomputable)."""
+    skews = []
+    for arr in groups.values():
+        if len(arr) >= 3:
+            try:
+                s = float(stats.skew(arr, bias=False))
+                if math.isfinite(s):
+                    skews.append(abs(s))
+            except Exception:
+                continue
+    return max(skews) if skews else None
+
+
+def _decide_nonparametric(
+    groups: dict[str, np.ndarray],
+    any_group_non_normal: bool,
+) -> dict[str, Any]:
+    """
+    Deterministic decision: should the primary test be rank-based?
+
+    Rule (two-factor):
+        switch  <=>  any group is non-normal (Shapiro p < .05)
+                     AND ( smallest group n < 30          # CLT unreliable
+                           OR  max |skew| >= 1.0 )         # CLT inadequate
+
+    Rationale: a bare "n < 30" rule is a folk simplification. With strong skew,
+    n = 30 (or more) is not enough for the t-test's sampling distribution to be
+    approximately normal, so we also switch on high skew. Conversely, with a
+    large sample and only mild skew, Shapiro will reject normality yet the
+    t-test remains valid and more powerful -- so we do NOT switch there.
+
+    Returns a structured record (always), including why the decision was made,
+    so the choice is fully auditable.
+    """
+    min_n = min((len(a) for a in groups.values()), default=0)
+    max_skew = _max_abs_skew(groups)
+
+    small_sample = min_n < _SMALL_GROUP_N
+    high_skew = (max_skew is not None) and (max_skew >= _HIGH_SKEW)
+
+    switch = bool(any_group_non_normal and (small_sample or high_skew))
+
+    reasons = []
+    if switch:
+        if small_sample:
+            reasons.append(f"smallest group n={min_n} < {_SMALL_GROUP_N}")
+        if high_skew:
+            reasons.append(f"max |skew|={max_skew:.2f} >= {_HIGH_SKEW}")
+
+    return {
+        "switch_to_nonparametric": switch,
+        "any_group_non_normal": bool(any_group_non_normal),
+        "min_group_n": int(min_n),
+        "max_abs_skew": _round_or_none(max_skew),
+        "small_sample": bool(small_sample),
+        "high_skew": bool(high_skew),
+        "reasons": reasons,
+    }
+
+
 # ==========================================================
 # Pairwise post-hoc tests
 # ==========================================================
@@ -863,12 +936,37 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
         )
 
         # ----------------------------------------------------
+        # Deterministic decision: rank-based primary test?
+        # ----------------------------------------------------
+        np_decision = _decide_nonparametric(groups, any_group_non_normal)
+
+        # ----------------------------------------------------
         # Pick primary test
         # ----------------------------------------------------
         post_hoc_rows: list[dict[str, Any]] = []
         post_hoc_method = None
+        secondary_test = None  # the parametric result, kept for transparency
 
-        if len(groups) == 2:
+        if np_decision["switch_to_nonparametric"]:
+            # Strong non-normality (small sample or high skew): use a rank-based
+            # primary test, but ALSO compute the parametric test and keep it as
+            # a secondary result so expert users can compare.
+            from core.analysis_tool_plugins.plugins.nonparametric_group_comparison import (
+                _run_mann_whitney,
+                _run_kruskal_wallis,
+            )
+            if len(groups) == 2:
+                test_details = _run_mann_whitney(groups, alpha)
+                secondary_test = _run_welch_t_test(groups, alpha)
+            else:
+                test_details = _run_kruskal_wallis(groups, alpha)
+                variances_equal = levene.get("variances_equal_at_0_05")
+                if variances_equal is False:
+                    secondary_test = _run_welch_anova(groups, alpha)
+                else:
+                    secondary_test = _run_one_way_anova(groups, alpha)
+
+        elif len(groups) == 2:
             # Two-group case: Welch's t-test (does not require equal variances)
             test_details = _run_welch_t_test(groups, alpha)
 
@@ -943,10 +1041,20 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
                     "Omnibus test not significant; no pairwise post-hoc comparisons were performed."
                 )
 
-        if any_group_non_normal:
+        if np_decision["switch_to_nonparametric"]:
+            reason_str = " and ".join(np_decision["reasons"])
             assumptions_and_limitations.append(
-                "Shapiro-Wilk flagged possible non-normality in at least one group; "
-                "with small groups consider Mann-Whitney U (two groups) or Kruskal-Wallis (three or more groups) as a non-parametric alternative."
+                "Shapiro-Wilk indicated non-normality and "
+                f"{reason_str}; the primary test was switched to a rank-based "
+                "method (Mann-Whitney U for two groups, Kruskal-Wallis for three "
+                "or more). The parametric result is retained as a secondary "
+                "test for comparison."
+            )
+        elif any_group_non_normal:
+            assumptions_and_limitations.append(
+                "Shapiro-Wilk flagged possible non-normality, but the sample is "
+                "large enough and not highly skewed, so the parametric test "
+                "remains valid (central limit theorem) and was kept as primary."
             )
 
         # ----------------------------------------------------
@@ -969,6 +1077,8 @@ def execute_statistical_group_comparison(context) -> Dict[str, Any]:
             "group_summaries": group_summaries,
             "levene_test": levene,
             "shapiro_per_group": shapiro_rows,
+            "nonparametric_switch": np_decision,
+            "secondary_test": secondary_test,
             "post_hoc_method": post_hoc_method,
             "post_hoc_pairwise": post_hoc_rows,
             "assumptions_and_limitations": assumptions_and_limitations,

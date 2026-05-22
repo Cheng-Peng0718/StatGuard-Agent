@@ -238,6 +238,27 @@ def generate_profile(file_path: str) -> DatasetProfile:
         raise e
 
 
+def _render_claims_block(claims_catalogue) -> str:
+    """Render the available statistical claims so the supervisor can cite them."""
+    if not claims_catalogue:
+        return ""
+    return (
+        "Available statistical claims (cite these by ID in your final answer):\n"
+        f"{claims_catalogue}\n\n"
+        "FINAL-ANSWER STATISTICAL POLICY:\n"
+        "- State your conclusion in your own words (e.g. 'no significant "
+        "difference', 'the 2025 cohort scored higher'), and immediately follow "
+        "any statistical claim with the matching [CLAIM:<id>] token. The system "
+        "expands each token into the exact, verified numbers as a parenthetical, "
+        "e.g. '(p = .147, alpha = .05)' or '(Hedges g = 0.38, small, 95% CI "
+        "[-0.13, 0.88])'.\n"
+        "- Never type a p-value, an effect-size number, or a confidence interval "
+        "yourself — reference the claim and let the system fill in the numbers.\n"
+        "- Example: 'The two arms did not differ significantly [CLAIM:r1_sig], "
+        "and the effect was small [CLAIM:r1_es].'\n"
+    )
+
+
 def build_context(step,
                   max_steps,
                   user_request,
@@ -250,18 +271,46 @@ def build_context(step,
                   data_audit_log=None,
                   analysis_coverage_brief=None,
                   analysis_runs=None,
+                  claims_catalogue=None,
                   ):
     """
     Build the full context text sent to the LLM.
     """
 
+    def _describe_columns(cols_dict) -> str:
+        """Render columns with their semantic type so the model can match the
+        right test (e.g. categorical x categorical -> chi-square, numeric x
+        numeric -> correlation/regression) instead of guessing from names."""
+        if not isinstance(cols_dict, dict) or not cols_dict:
+            return "unable to parse column names"
+        parts = []
+        for name, info in cols_dict.items():
+            if isinstance(info, dict):
+                stype = info.get("semantic_type", "unknown")
+                tag = stype
+                if info.get("is_id_like"):
+                    tag += ", id-like"
+                parts.append(f"{name} ({tag})")
+            else:
+                parts.append(str(name))
+        return ", ".join(parts)
+
     if isinstance(profile, dict):
         rows = profile.get("n_rows", "unknown")
         cols_dict = profile.get("columns", {})
-        cols = list(cols_dict.keys()) if isinstance(cols_dict, dict) else ["unable to parse column names"]
+        cols = _describe_columns(cols_dict)
     else:
         rows = getattr(profile, "n_rows", "unknown")
-        cols = list(getattr(profile, "columns", {}).keys())
+        prof_cols = getattr(profile, "columns", {})
+        # pydantic model: columns may be dict of ColumnProfile
+        cols_dict = {}
+        for k, v in (prof_cols.items() if hasattr(prof_cols, "items") else []):
+            cols_dict[k] = {
+                "semantic_type": getattr(v, "semantic_type", "unknown"),
+                "is_id_like": getattr(v, "is_id_like", False),
+            } if not isinstance(v, dict) else v
+        cols = _describe_columns(cols_dict) if cols_dict else ", ".join(
+            list(prof_cols.keys()) if hasattr(prof_cols, "keys") else [])
 
     history_log = format_observation_history(
         observations=observations,
@@ -517,6 +566,7 @@ def build_context(step,
         "- Observations marked STALE must not be used to answer current numeric questions.\n"
         "- If the needed result is only available from a stale observation, call the appropriate tool again.\n\n"
         f"{deliverable_log}\n"
+        f"{_render_claims_block(claims_catalogue)}\n"
         "Read the history carefully. Do not repeat successful tools with the same intent. "
         "If you see an intervention warning, change strategy or output final_answer."
     )

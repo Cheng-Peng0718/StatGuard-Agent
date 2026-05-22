@@ -1,0 +1,464 @@
+{
+  "timestamp": "20260522T193018",
+  "model": "gpt-4o",
+  "n_cases": 30,
+  "estimated_spend_usd": 1.76,
+  "summary": {
+    "no_error": 30,
+    "routing": 30,
+    "honesty": 30,
+    "accuracy": 30
+  },
+  "results": [
+    {
+      "key": "grp_001_2g_normal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis of the dataset comparing the numeric variable `y` across the categorical groups in `g` has been completed. The Mann-Whitney U test was used due to non-normality in one of the groups, and it revealed that there is no statistically significant difference in `y` across the groups (p = .100, α = .050). The effect size, measured by the rank-biserial correlation, was moderate (rank-biserial correlation = -0.40, moderate). This suggests that while there is a moderate effect size, the difference is not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_019_2g_lognormal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, lognormal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis comparing the numeric variable `y` across the groups in `g` has been completed using the Mann-Whitney U test. The results indicate that there is no statistically significant difference between the groups (p = 1.000, α = .050). Additionally, the effect size is negligible (rank-biserial correlation = 0.00, negligible). This suggests that the observed differences in `y` across the groups are not statistically meaningful.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_020_2g_lognormal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, lognormal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The comparison of `y` across the groups in `g` did not reveal a statistically significant difference (p = .312, α = .050). The effect size, measured by rank-biserial correlation, was small (rank-biserial correlation = 0.25, small). This analysis was conducted using the Mann-Whitney U test due to non-normality in the data, as indicated by the Shapiro-Wilk test results. The active data version used for this analysis is working_9dffef92.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_021_2g_lognormal_n12_equal_eff1.2",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, lognormal, n=12/grp, var=equal, effect=1.2",
+      "final_answer": "The analysis comparing the numeric variable `y` across the groups in `g` has been completed using the Mann-Whitney U test. The results indicate that there is no statistically significant difference between the groups (p = .069, α = .050). The effect size, measured by rank-biserial correlation, is moderate (rank-biserial correlation = 0.44, moderate). These results suggest that while there is a moderate effect size, the difference is not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_002_2g_normal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The analysis of the dataset indicates that there is no statistically significant difference in the variable `y` across the groups in `g` (p = .154, α = .050). The effect size, measured by Hedges' g, is medium (Hedges g = -0.58, medium, 95% CI [-1.37, 0.21]), and the test statistic is reported as (t(19.76) = -1.48). These results suggest that any observed differences in `y` between the groups are not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_003_2g_normal_n12_equal_eff1.2",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=equal, effect=1.2",
+      "final_answer": "The analysis comparing the numeric variable `y` across the groups in `g` has been completed using a Welch independent two-sample t-test. The results indicate that there is no statistically significant difference in `y` between the groups (p = .152, α = .050). The effect size, measured by Hedges' g, is medium (Hedges g = -0.58, medium, 95% CI [-1.37, 0.21]). The test statistic for this comparison is (t(21.89) = -1.48). These results suggest that the observed difference in means is not statistically significant at the 0.05 level, and the effect size is moderate.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_004_2g_normal_n12_unequal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=unequal, effect=0.0",
+      "final_answer": "The analysis of the dataset comparing the numeric variable `y` across the categorical groups in `g` has been completed using a Welch independent two-sample t-test. The results indicate that there is no statistically significant difference in `y` across the groups (p = .329, α = .050). The effect size is small (Hedges g = 0.40, small, 95% CI [-0.39, 1.17]), and the test statistic is reported as (t(17.70) = 1.00). These findings suggest that the observed differences in means are not statistically significant at the 0.05 level, and the effect size is small, indicating a minimal practical difference between the groups.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_073_3g_normal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "3 groups, normal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis of the numeric variable `y` across the categorical groups in `g` was conducted using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .655, α = .050). The effect size, measured by eta squared, is small (eta squared = .025, small, 95% CI [.000, .153]), and the F-statistic supports this conclusion (F(2) = 0.43). These findings suggest that the differences in `y` across the groups are not meaningful in a statistical sense.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_074_3g_normal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "3 groups, normal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The analysis of the dataset comparing `y` across the groups in `g` using a one-way ANOVA indicates that there is no statistically significant difference between the groups (p = .737, α = .050). The effect size is small (eta squared = .018, small, 95% CI [.000, .133]), and the F-statistic is also reported (F(2) = 0.31). This suggests that the observed differences in means are likely due to random variation rather than a true effect. The assumptions of the ANOVA were met, including the homogeneity of variances and normality within groups.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_075_3g_normal_n12_equal_eff1.2",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "3 groups, normal, n=12/grp, var=equal, effect=1.2",
+      "final_answer": "The analysis comparing the numeric outcome `y` across the groups in `g` has been completed using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .067, α = .050). The effect size, measured by eta squared, is considered large, but the confidence interval includes zero, suggesting uncertainty about the effect's magnitude (eta squared = .151, large, 95% CI [.000, .339]). The F-statistic for this analysis is also provided (F(2) = 2.93). These results are based on the current active data version `working_aa1b3a16`.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_145_5g_normal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "5 groups, normal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis of the dataset comparing the numeric variable `y` across the categorical groups in `g` has been completed using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .561, α = .050). The effect size is small (eta squared = .052, small, 95% CI [.000, .134]), and the F-statistic for the comparison is (F(4) = 0.75). These results suggest that the differences observed in the means of `y` across the groups are not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_146_5g_normal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "5 groups, normal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The analysis of the dataset comparing the numeric variable `y` across the categorical groups in `g` has been completed using a one-way ANOVA. The results indicate that there is a statistically significant difference in `y` across the groups (p = .014, α = .050). The effect size is large, as indicated by the eta squared value (eta squared = .201, large, 95% CI [.010, .332]). The F-statistic for this analysis is also provided (F(4) = 3.46). These results suggest that the differences observed are not due to random chance, and the effect size indicates a substantial difference between the groups.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "reg_001_n40_noise0.3_slope0.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=0.3, slope=0.0",
+      "final_answer": "The regression analysis predicting `y` from `x` has been successfully completed using the current dataset version `working_26bdf1bc`. The model used was an OLS multiple linear regression. The results indicate that the relationship between `x` and `y` is not statistically significant at the 0.05 level. Specifically, the coefficient for `x` is 0.01168, suggesting a positive association, but this is not statistically significant with a p-value of 0.757585. The R-squared value is very low (0.002537), indicating that `x` explains very little of the variance in `y`. The model assumptions and limitations have been considered, and robust standard errors were used to ensure reliable inference. However, the lack of statistical significance suggests that `x` may not be a meaningful predictor of `y` in this dataset.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "reg_002_n40_noise0.3_slope2.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=0.3, slope=2.0",
+      "final_answer": "The regression analysis predicting `y` from `x` has been successfully completed using the current dataset version `working_7bfa5e97`. The model is an OLS multiple linear regression, which shows a strong positive relationship between `x` and `y`. Specifically, for a one-unit increase in `x`, `y` is estimated to increase by approximately 1.948 units. This relationship is statistically significant at the 0.05 level, as indicated by a p-value of 0.0 for the coefficient of `x`. The model explains a substantial portion of the variance in `y`, with an R-squared value of 0.977. The assumptions of the model, such as linearity and constant variance, should be considered when interpreting these results. Additionally, robust standard errors have been calculated to account for potential heteroscedasticity, although the Breusch-Pagan test did not indicate its presence. This analysis provides a reliable description of the relationship between `x` and `y` under the given assumptions.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "reg_003_n40_noise1.5_slope0.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=1.5, slope=0.0",
+      "final_answer": "The regression analysis predicting `y` from `x` has been successfully completed using the current dataset version `working_3e030dca`. The model used was an OLS multiple linear regression. The results indicate that the relationship between `x` and `y` is not statistically significant at the 0.05 level. Specifically, the coefficient for `x` is 0.07539, suggesting a positive association, but this is not statistically significant with a p-value of 0.748907. The R-squared value is 0.002728, indicating that `x` explains a very small portion of the variance in `y`. These results suggest that `x` is not a strong predictor of `y` in this dataset. It is important to note that this analysis describes association, not causation, and assumptions of the OLS model should be considered when interpreting these results.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "reg_004_n40_noise1.5_slope2.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=1.5, slope=2.0",
+      "final_answer": "The regression analysis predicting `y` from `x` has been successfully completed using the current dataset version `working_99e5e297`. The model is a simple linear regression with `x` as the predictor. The results indicate a statistically significant positive relationship between `x` and `y`. Specifically, for each one-unit increase in `x`, `y` is estimated to increase by approximately 1.81 units, and this association is statistically significant at the 0.05 level. The model explains about 58.1% of the variance in `y` (R² = 0.581). However, the Breusch-Pagan test suggests the presence of heteroscedasticity, so HC3 robust standard errors were used to ensure reliable inference. It's important to note that this model describes an association, not causation, unless the data come from a randomized or otherwise causal design. Further regression diagnostics are recommended to check for multicollinearity, influential observations, autocorrelation, and residual normality.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "cor_001_n30_rho0.0",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "n=30, true rho=0.0",
+      "final_answer": "The correlation between the columns `x` and `y` has been successfully analyzed using the Pearson product-moment correlation test. The test indicates a moderate positive correlation with a correlation coefficient of 0.41. The p-value of 0.02459 suggests that this correlation is statistically significant at the 0.05 level. The confidence interval for the correlation coefficient ranges from 0.05787 to 0.670871, calculated using the Fisher z-transform method. It is important to note that the Pearson correlation assumes linear association and is sensitive to outliers. If the relationship is monotonic but not linear, or if outliers are present, alternative methods like Spearman or Kendall might be more appropriate. The observations are assumed to be independent, and the reported p-value tests the null hypothesis of zero correlation.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "cor_002_n30_rho0.4",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "n=30, true rho=0.4",
+      "final_answer": "The correlation between `x` and `y` was assessed using the Pearson product-moment correlation test. The correlation coefficient was found to be 0.145, which is considered a small correlation. The p-value was 0.445, indicating that the correlation is not statistically significant at the 0.05 level. The 95% confidence interval for the correlation coefficient ranges from -0.227 to 0.480, suggesting that the true correlation could be anywhere within this range. These results imply that there is no strong evidence of a linear relationship between `x` and `y` in this dataset. [CLAIM:correlation_test_result]",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "cor_003_n30_rho0.8",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "n=30, true rho=0.8",
+      "final_answer": "The correlation between `x` and `y` has already been assessed using the Pearson product-moment correlation test on the current dataset version. The test found a very large correlation of 0.832217, which is statistically significant at the 0.05 level (p-value = 0.0). The confidence interval for the correlation coefficient, calculated using the Fisher z-transform, ranges from 0.67404 to 0.917423. This suggests a strong linear association between the two variables. However, it's important to note that Pearson's correlation assumes linearity and is sensitive to outliers, so if the relationship is non-linear or if outliers are present, alternative methods like Spearman or Kendall might be more appropriate. Additionally, the observations are assumed to be independent, and the confidence interval assumes approximate bivariate normality.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "chi_001_n80_assocFalse",
+      "task": "chi_square",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Are `a` and `b` associated?",
+      "notes": "n=80, association=False",
+      "final_answer": "The association between the categorical variables `a` and `b` was assessed using a Chi-square test of independence. The test was conducted on the current dataset version (working_2b68174b) with 80 observations. The Chi-square statistic was 1.108 with 1 degree of freedom, resulting in a p-value of 0.292. Since the p-value is greater than the common significance level of 0.05, we do not have sufficient evidence to reject the null hypothesis of independence. Therefore, we conclude that there is no statistically significant association between `a` and `b` in this dataset. The effect size, measured by Cramer's V, was 0.118, indicating a small association magnitude. Assumptions for the Chi-square test were met, as all expected cell counts were sufficiently large.",
+      "tools_used": [
+        "run_chi_square"
+      ]
+    },
+    {
+      "key": "chi_002_n80_assocTrue",
+      "task": "chi_square",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Are `a` and `b` associated?",
+      "notes": "n=80, association=True",
+      "final_answer": "The association between the categorical variables `a` and `b` was assessed using a Chi-square test of independence. The test was conducted on the current dataset version (working_d76e0698) with 80 observations. The Chi-square statistic was 9.63 with 1 degree of freedom, resulting in a p-value of 0.00191. This p-value is less than the conventional significance level of 0.05, indicating a statistically significant association between `a` and `b`. The effect size, measured by Cramer's V, was 0.347, which is considered a medium magnitude of association. Therefore, we can conclude that there is a significant association between the two categorical variables `a` and `b` in this dataset.",
+      "tools_used": [
+        "run_chi_square"
+      ]
+    },
+    {
+      "key": "chi_003_n300_assocFalse",
+      "task": "chi_square",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Are `a` and `b` associated?",
+      "notes": "n=300, association=False",
+      "final_answer": "The association between the categorical variables `a` and `b` was assessed using a Chi-square test of independence. The test was conducted on the current dataset version (working_f1c72acc) with 300 observations. The Chi-square statistic was 0.193056 with 1 degree of freedom, resulting in a p-value of 0.660385. This p-value indicates that there is no statistically significant association between `a` and `b` at the 0.05 significance level. The effect size, measured by Cramer's V, was 0.025368, which is considered negligible. Therefore, we conclude that there is no significant association between the two variables in this dataset.",
+      "tools_used": [
+        "run_chi_square"
+      ]
+    },
+    {
+      "key": "pair_001_n15_shift0.0_normal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=0.0, diff=normal",
+      "final_answer": "The analysis of the pre and post measurements using a paired samples t-test indicates that there is no significant change in the values between the two time points (p = .374, α = .050). The effect size is small (Cohen's d_z = -0.24, small), suggesting that any observed difference is not practically meaningful. The data version used for this analysis is working_628c84c1.",
+      "tools_used": [
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "pair_002_n15_shift0.0_lognormal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=0.0, diff=lognormal",
+      "final_answer": "The analysis of the pre and post measurements using the Wilcoxon signed-rank test indicates that there is no significant change in values between the two time points (p = .720, α = .050). The effect size is small (matched-pairs rank-biserial r = 0.12, small). This conclusion is based on the current active data version, which includes 15 complete pairs of observations.",
+      "tools_used": [
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "pair_003_n15_shift3.0_normal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=3.0, diff=normal",
+      "final_answer": "The analysis of the pre and post measurements for the same subjects indicates a significant change. The paired samples t-test shows a significant difference between the pre and post values (p = .005, α = .050). The effect size, measured by Cohen's d_z, is large (Cohen's d_z = -0.87, large). This suggests that the intervention or condition between the pre and post measurements had a substantial impact on the measured values.",
+      "tools_used": [
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "pair_004_n15_shift3.0_lognormal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=3.0, diff=lognormal",
+      "final_answer": "The analysis of the pre and post measurements for the same subjects indicates a significant change. The Wilcoxon signed-rank test, which is recommended due to the non-normality of the differences, shows a significant difference between the pre and post values (p < .001, α = .050). The effect size is large, as indicated by the matched-pairs rank-biserial correlation (matched-pairs rank-biserial r = -1.00, large). This suggests a substantial change in the measured values from pre to post.",
+      "tools_used": [
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "adv_extreme_separation",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "groups separated by 100 SD",
+      "final_answer": "The analysis comparing the numeric outcome `y` across the groups in `g` has been completed using a Welch independent two-sample t-test. The results indicate a statistically significant difference between the groups (p < .001, α = .050). The effect size is large, as indicated by Hedges g (Hedges g = -92.32, large). The test statistic further supports this conclusion (t(73.09) = -416.90). These results suggest a substantial difference in `y` between the groups `a` and `b`.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "adv_near_identical",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "groups differ by 1e-9",
+      "final_answer": "The analysis of the dataset indicates that there is no statistically significant difference in the variable `y` across the groups defined by `g`. The Welch independent two-sample t-test was used to compare the means of `y` between the groups, and the results showed no significant difference (p = 1.000, α = .050). Additionally, the effect size was negligible (Hedges g = -0.00, negligible, 95% CI [-0.39, 0.39]), and the test statistic further supports this conclusion (t(98) = -0.00). These findings suggest that the observed differences in `y` across the groups are not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "adv_perfect_correlation",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "y == x exactly",
+      "final_answer": "The correlation between the columns `x` and `y` has been successfully assessed using the Pearson product-moment correlation test. The test indicates a very large correlation with a coefficient of 1.0, which is statistically significant at the 0.05 level (p-value = 0.0). This suggests a perfect linear relationship between `x` and `y` in the dataset. The confidence interval for the correlation coefficient is [1.0, 1.0], confirming the strength of this relationship. It is important to note that Pearson's correlation assumes linearity and is sensitive to outliers, so these factors should be considered when interpreting the results.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "adv_regression_outlier",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "one y value = 1000",
+      "final_answer": "The regression analysis predicting `y` from `x` has been successfully completed using the current dataset version `working_c98a85d5`. The model used was an OLS multiple linear regression. The results indicate that the relationship between `x` and `y` is not statistically significant at the 0.05 level. Specifically, the coefficient for `x` is 12.7, suggesting that for a one-unit increase in `x`, `y` is estimated to increase by 12.7 units. However, this association is not statistically significant, as indicated by a p-value of 0.518. The R-squared value is 0.0088, which implies that `x` explains less than 1% of the variance in `y`. These results suggest that `x` is not a strong predictor of `y` in this dataset. The model assumptions, such as linearity and homoscedasticity, were checked, and robust standard errors were used to ensure reliable inference. It is important to note that this analysis describes association, not causation, unless the data come from a randomized or otherwise causal design.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    }
+  ]
+}

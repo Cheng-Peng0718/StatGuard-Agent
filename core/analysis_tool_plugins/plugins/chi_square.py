@@ -630,7 +630,21 @@ def evaluate_chi_square_guardrails(run: Dict[str, Any]) -> list[Dict[str, Any]]:
 
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_chi_square",
+    evidence_categories=["statistical_inference"],
     display_name="Chi-square Test",
+    description=(
+        "Test of independence between TWO CATEGORICAL variables, using a "
+        "contingency table. The right tool for questions like 'are these two "
+        "categorical columns associated/related?'"
+    ),
+    use_when=[
+        "Both variables are categorical (e.g. semantic_type 'categorical' or 'boolean')",
+        "The question is about association/independence between two category columns",
+    ],
+    do_not_use_when=[
+        "Either variable is numeric (use correlation for numeric-numeric, or "
+        "regression / group comparison for numeric outcomes)",
+    ],
     requires_confirmation=False,
     is_inferential=True,
     argument_schema=ArgumentSchema(

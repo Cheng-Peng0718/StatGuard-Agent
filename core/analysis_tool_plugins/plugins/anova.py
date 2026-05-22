@@ -80,6 +80,7 @@ def extract_anova(
 
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="run_anova",
+    evidence_categories=["group_comparison", "statistical_inference"],
     display_name="One-way ANOVA",
     description=(
         "One-way ANOVA with Levene's test for variance homogeneity. "
