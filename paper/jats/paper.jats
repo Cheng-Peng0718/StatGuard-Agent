@@ -1,0 +1,260 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!DOCTYPE article PUBLIC "-//NLM//DTD JATS (Z39.96) Journal Publishing DTD v1.2 20190208//EN"
+                  "JATS-publishing1.dtd">
+<article xmlns:mml="http://www.w3.org/1998/Math/MathML" xmlns:xlink="http://www.w3.org/1999/xlink" dtd-version="1.2" article-type="other">
+<front>
+<journal-meta>
+<journal-id></journal-id>
+<journal-title-group>
+<journal-title>Journal of Open Source Software</journal-title>
+<abbrev-journal-title>JOSS</abbrev-journal-title>
+</journal-title-group>
+<issn publication-format="electronic">2475-9066</issn>
+<publisher>
+<publisher-name>Open Journals</publisher-name>
+</publisher>
+</journal-meta>
+<article-meta>
+<article-id pub-id-type="publisher-id">0</article-id>
+<article-id pub-id-type="doi">N/A</article-id>
+<title-group>
+<article-title>StatGuard Agent: An auditable statistical analysis
+framework pairing LLM orchestration with a deterministic,
+cross-validated statistics engine</article-title>
+</title-group>
+<contrib-group>
+<contrib contrib-type="author">
+<name>
+<surname>Peng</surname>
+<given-names>Cheng</given-names>
+</name>
+<xref ref-type="aff" rid="aff-1"/>
+</contrib>
+<aff id="aff-1">
+<institution-wrap>
+<institution>Independent Researcher</institution>
+</institution-wrap>
+</aff>
+</contrib-group>
+<pub-date date-type="pub" publication-format="electronic" iso-8601-date="2026-05-23">
+<day>23</day>
+<month>5</month>
+<year>2026</year>
+</pub-date>
+<volume>¿VOL?</volume>
+<issue>¿ISSUE?</issue>
+<fpage>¿PAGE?</fpage>
+<permissions>
+<copyright-statement>Authors of papers retain copyright and release the
+work under a Creative Commons Attribution 4.0 International License (CC
+BY 4.0)</copyright-statement>
+<copyright-year>1970</copyright-year>
+<copyright-holder>The article authors</copyright-holder>
+<license license-type="open-access" xlink:href="https://creativecommons.org/licenses/by/4.0/">
+<license-p>Authors of papers retain copyright and release the work under
+a Creative Commons Attribution 4.0 International License (CC BY
+4.0)</license-p>
+</license>
+</permissions>
+<kwd-group kwd-group-type="author">
+<kwd>Python</kwd>
+<kwd>statistics</kwd>
+<kwd>reproducible research</kwd>
+<kwd>large language models</kwd>
+<kwd>statistical inference</kwd>
+<kwd>data analysis</kwd>
+</kwd-group>
+</article-meta>
+</front>
+<body>
+<sec id="summary">
+  <title>Summary</title>
+  <p><monospace>StatGuard Agent</monospace> is a Python framework for
+  conducting statistical analysis from natural-language requests while
+  guaranteeing that every reported statistic is deterministic,
+  reproducible, and independently verified. It is built on a strict
+  separation of responsibilities: a large language model (LLM) acts only
+  as an <italic>orchestrator</italic> that interprets the request and
+  selects which analysis to run, while all statistical computation is
+  performed by a fixed library of plugins whose numerical output is
+  cross-validated against <monospace>scipy</monospace> and
+  <monospace>statsmodels</monospace>
+  (<xref alt="Seabold &amp; Perktold, 2010" rid="ref-seabold2010statsmodels" ref-type="bibr">Seabold
+  &amp; Perktold, 2010</xref>;
+  <xref alt="Virtanen et al., 2020" rid="ref-virtanen2020scipy" ref-type="bibr">Virtanen
+  et al., 2020</xref>). The LLM never computes a statistic and cannot
+  alter a numerical result.</p>
+  <p>This design targets a specific failure mode of using LLMs as data
+  analysts: the same request, on the same data, can produce different
+  statistical methods and different conclusions on different runs. By
+  confining the LLM to routing and delegating all computation to
+  deterministic, pre-validated methods,
+  <monospace>StatGuard Agent</monospace> produces analyses that are
+  identical across runs and auditable down to the individual reported
+  number.</p>
+</sec>
+<sec id="statement-of-need">
+  <title>Statement of need</title>
+  <p>LLMs are increasingly used to perform data analysis by generating
+  and executing code. Their statistical output, however, is stochastic
+  and difficult to reproduce: recent empirical work shows that the same
+  prompt and data can yield materially different analytical pathways and
+  conclusions across independent runs
+  (<xref alt="Cui &amp; Alexander, 2026" rid="ref-cui2026same" ref-type="bibr">Cui
+  &amp; Alexander, 2026</xref>), and that reproducibility of
+  LLM-generated data-science workflows is generally low
+  (<xref alt="Zeng et al., 2025" rid="ref-zeng2025airepr" ref-type="bibr">Zeng
+  et al., 2025</xref>). For exploratory work this variability may be
+  acceptable; for research, clinical, or regulatory analysis — settings
+  where a reported p-value or effect size must be defensible and
+  reproducible — it is not.</p>
+  <p>A parallel line of work argues that LLM-driven scientific workflows
+  must be constrained for reproducibility and auditability, and proposes
+  execution-level frameworks that enforce deterministic, traceable
+  execution of agent actions
+  (<xref alt="Sureshkumar, 2026" rid="ref-sureshkumar2026rlam" ref-type="bibr">Sureshkumar,
+  2026</xref>). These frameworks establish that an analysis can be
+  <italic>replayed</italic>; they do not, however, verify that the
+  statistics produced are <italic>correct</italic> — that the
+  appropriate test was chosen, that its assumptions were checked, and
+  that the resulting numbers match an independent reference
+  implementation.</p>
+  <p><monospace>StatGuard Agent</monospace> addresses this gap for the
+  specific domain of statistical inference. Its contribution is not the
+  general idea of constraining an LLM, but the combination of (1)
+  deterministic, assumption-aware statistical methods that encode the
+  kind of decisions a statistician makes, and (2) a validation regime
+  that checks those methods’ numerical output, case by case, against
+  reference implementations. The framework is intended for researchers,
+  graduate students, and analysts who need LLM-level convenience in
+  expressing an analysis but require statistical results that are
+  reproducible and independently verifiable — a combination not offered
+  by general-purpose LLM tools (which compute statistics stochastically)
+  nor by traditional statistical software such as SPSS or base
+  <monospace>scipy</monospace>/<monospace>statsmodels</monospace> (which
+  are reproducible but require the user to specify the method and check
+  assumptions themselves).</p>
+</sec>
+<sec id="design-and-key-features">
+  <title>Design and key features</title>
+  <p><bold>LLM orchestration, deterministic computation.</bold> A
+  supervisor LLM selects one analysis action at a time from a registry
+  of 25 tool plugins. Each plugin implements a hardcoded statistical
+  method; the same data and arguments always produce identical output.
+  The LLM’s role is limited to choosing which plugin to invoke.</p>
+  <p><bold>Assumption-aware routing.</bold> Method selection is governed
+  by explicit, inspectable rules rather than left to the LLM. For
+  example, the group-comparison plugin checks variance homogeneity
+  (Levene’s test) to route between Welch’s t-test and classical
+  procedures, and switches from a parametric test to a rank-based
+  non-parametric alternative when normality is violated together with a
+  small sample (group <italic>n</italic> &lt; 30) or strong skew
+  (|skewness| <inline-formula><alternatives>
+  <tex-math><![CDATA[\ge]]></tex-math>
+  <mml:math display="inline" xmlns:mml="http://www.w3.org/1998/Math/MathML"><mml:mo>≥</mml:mo></mml:math></alternatives></inline-formula>
+  1.5).</p>
+  <p><bold>Independent cross-validation.</bold> A 246-case benchmark
+  (<monospace>benchmark/carpet/</monospace>) generates statistical
+  scenarios with fixed random seeds and compares each plugin’s output
+  against an independent
+  <monospace>scipy</monospace>/<monospace>statsmodels</monospace>
+  computation of the same quantity. All 246 cases currently pass,
+  providing case-by-case evidence that the framework’s reported
+  statistics are numerically correct.</p>
+  <p><bold>Anti-fabrication claims ledger.</bold> Plugins emit
+  structured, verified claims; the LLM may only reference these claims
+  by identifier, and a render layer substitutes the verified wording
+  into the final report. This prevents the LLM from reporting a
+  statistic that was not actually computed.</p>
+  <p><bold>Reproducibility and provenance.</bold> Analyses are tied to
+  an explicit data version, and reports record how the analysis-ready
+  dataset was constructed, including SQL provenance where applicable.
+  The framework also exports a reproducibility manifest and APA-style
+  methods text.</p>
+  <p><bold>Testing.</bold> The framework includes 615 deterministic unit
+  and integration tests that run without an API key or network access,
+  in addition to the 246-case numerical validation benchmark.</p>
+</sec>
+<sec id="acknowledgements">
+  <title>Acknowledgements</title>
+  <p>The author thanks the maintainers of <monospace>scipy</monospace>,
+  <monospace>statsmodels</monospace>, and
+  <monospace>LangGraph</monospace>, on which this framework builds.</p>
+</sec>
+</body>
+<back>
+<ref-list>
+  <title></title>
+  <ref id="ref-virtanen2020scipy">
+    <element-citation publication-type="article-journal">
+      <person-group person-group-type="author">
+        <name><surname>Virtanen</surname><given-names>Pauli</given-names></name>
+        <name><surname>Gommers</surname><given-names>Ralf</given-names></name>
+        <name><surname>Oliphant</surname><given-names>Travis E.</given-names></name>
+        <name><surname>Haberland</surname><given-names>Matt</given-names></name>
+        <name><surname>Reddy</surname><given-names>Tyler</given-names></name>
+        <name><surname>Cournapeau</surname><given-names>David</given-names></name>
+        <name><surname>others</surname></name>
+      </person-group>
+      <article-title>SciPy 1.0: Fundamental algorithms for scientific computing in Python</article-title>
+      <source>Nature Methods</source>
+      <year iso-8601-date="2020">2020</year>
+      <volume>17</volume>
+      <issue>3</issue>
+      <pub-id pub-id-type="doi">10.1038/s41592-019-0686-2</pub-id>
+      <fpage>261</fpage>
+      <lpage>272</lpage>
+    </element-citation>
+  </ref>
+  <ref id="ref-seabold2010statsmodels">
+    <element-citation publication-type="paper-conference">
+      <person-group person-group-type="author">
+        <name><surname>Seabold</surname><given-names>Skipper</given-names></name>
+        <name><surname>Perktold</surname><given-names>Josef</given-names></name>
+      </person-group>
+      <article-title>Statsmodels: Econometric and statistical modeling with Python</article-title>
+      <source>Proceedings of the 9th python in science conference</source>
+      <year iso-8601-date="2010">2010</year>
+      <pub-id pub-id-type="doi">10.25080/Majora-92bf1922-011</pub-id>
+      <fpage>92</fpage>
+      <lpage>96</lpage>
+    </element-citation>
+  </ref>
+  <ref id="ref-sureshkumar2026rlam">
+    <element-citation>
+      <person-group person-group-type="author">
+        <name><surname>Sureshkumar</surname><given-names>Suriya</given-names></name>
+      </person-group>
+      <article-title>R-LAM: Reproducibility-constrained large action models for scientific workflow automation</article-title>
+      <year iso-8601-date="2026">2026</year>
+      <uri>https://arxiv.org/abs/2601.09749</uri>
+    </element-citation>
+  </ref>
+  <ref id="ref-zeng2025airepr">
+    <element-citation>
+      <person-group person-group-type="author">
+        <name><surname>Zeng</surname><given-names>Qiuhai</given-names></name>
+        <name><surname>Jin</surname><given-names>Claire</given-names></name>
+        <name><surname>Wang</surname><given-names>Xinyue</given-names></name>
+        <name><surname>Zheng</surname><given-names>Yuhan</given-names></name>
+        <name><surname>Li</surname><given-names>Qunhua</given-names></name>
+      </person-group>
+      <article-title>AIRepr: An analyst-inspector framework for evaluating reproducibility of LLMs in data science</article-title>
+      <year iso-8601-date="2025">2025</year>
+      <uri>https://arxiv.org/abs/2502.16395</uri>
+    </element-citation>
+  </ref>
+  <ref id="ref-cui2026same">
+    <element-citation>
+      <person-group person-group-type="author">
+        <name><surname>Cui</surname><given-names>Jiaxin</given-names></name>
+        <name><surname>Alexander</surname><given-names>Rohan</given-names></name>
+      </person-group>
+      <article-title>Same prompt, different outcomes: Evaluating the reproducibility of data analysis by LLMs</article-title>
+      <year iso-8601-date="2026">2026</year>
+      <uri>https://arxiv.org/abs/2602.14349</uri>
+    </element-citation>
+  </ref>
+</ref-list>
+</back>
+</article>

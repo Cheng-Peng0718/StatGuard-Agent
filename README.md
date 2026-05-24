@@ -75,7 +75,7 @@ Reporting and reproducibility: `generate_scatterplot`, `generate_residual_histog
 Requires Python 3.12 (3.12 is the tested reference; the deterministic engine has no exotic dependencies).
 
 ```bash
-git clone https://github.com/Cheng-Peng0718/StatGuard_Agent.git
+git clone https://github.com/<your-username>/statguard-agent.git
 cd statguard-agent
 pip install -r requirements.txt
 ```
@@ -177,7 +177,13 @@ The idea that LLM-driven analysis should be constrained for reproducibility and 
 
 ## Project status and scope
 
-StatGuard Agent is an actively developed research framework. The deterministic statistics engine and its validation suite are its most mature components. Contributions, issues, and independent validation are welcome via the issue tracker.
+StatGuard Agent is an actively developed research framework. The deterministic statistics engine and its validation suite are its most mature components.
+
+**What it covers.** The framework targets standard univariate statistical inference and ordinary least squares regression: group comparisons (parametric and non-parametric, with post-hoc tests and multiple-comparison correction), correlation, chi-square association, paired comparisons, multiple linear regression with diagnostics and robust standard errors, power analysis, and the supporting description, data-preparation, and reporting tools. This range covers the large majority of everyday applied statistical analysis. It is a deliberate design choice — reproducible scientific analysis should use standard, validated methods rather than code improvised per request — and the trade-off is that the framework does not attempt to handle arbitrary or non-standard analyses.
+
+**Graceful handling of edge cases.** Because tool arguments are supplied by the LLM orchestrator, plugins are written defensively: missing or non-existent columns, non-numeric data, degenerate inputs (empty groups, single rows, all-missing data, constant columns, infinities), and invalid parameters return a structured, explanatory result rather than crashing. This behaviour is verified by a dedicated robustness test suite (`tests/test_plugin_robustness.py`).
+
+**Roadmap.** Planned additions include logistic regression (binary outcomes), two-way / factorial ANOVA with interaction effects, and broadened effect-size and diagnostic reporting. Contributions, issues, and independent validation are welcome via the issue tracker.
 
 ---
 
