@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/1228703550.svg)](https://doi.org/10.5281/zenodo.20369635)
+
 # StatGuard Agent
 
 **An auditable statistical analysis framework that pairs LLM orchestration with a deterministic, cross-validated statistics engine.**
