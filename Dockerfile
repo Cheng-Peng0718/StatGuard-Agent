@@ -15,6 +15,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
+RUN python -m pytest -q
+
 EXPOSE 8501
 
 CMD ["streamlit", "run", "app.py"]

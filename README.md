@@ -1,362 +1,190 @@
-<img width="1448" height="1086" alt="Structure" src="https://github.com/user-attachments/assets/27b80f08-30a1-42bb-98c9-3615d8b21c3c" />
+# StatGuard Agent
 
-# SQL-Connected AI Data Analyst Agent
+**An auditable statistical analysis framework that pairs LLM orchestration with a deterministic, cross-validated statistics engine.**
 
-An AI data analyst agent that turns natural-language analysis requests into end-to-end statistical analysis reports.
+StatGuard Agent turns a natural-language analysis request into an end-to-end, reproducible statistical report. It is built on a deliberate separation of concerns:
 
-This project is not just an LLM-to-SQL chatbot.
+- **The LLM orchestrates** — it reads the request, inspects the data, and decides *which* analysis to run next.
+- **The deterministic engine computes** — every statistic is produced by hardcoded, plugin-based methods that are cross-validated against `scipy` / `statsmodels`, never by the LLM itself.
 
-The goal is to build an analyst-style workbench where an LLM supervisor can inspect the user request, understand the available data, choose appropriate analysis tools, run statistical methods, track evidence coverage, and generate a report grounded in actual computations.
+This division is the core design principle. A general-purpose LLM asked to "compare these groups" may silently pick the wrong test, skip an assumption check, or report a number it did not actually compute — and may do so *differently every time it is run*. A traditional tool like SPSS is reproducible but cannot interpret an open-ended request. StatGuard Agent aims for both: **as adaptable as an LLM, as reproducible as a fixed statistical routine.**
 
-## Demo Concept
+---
 
-Imagine a data analyst sitting at a desk.
+## Why this project exists
 
-A supervisor is standing beside them.
+Large language models are increasingly used as data analysts, but their statistical output is **stochastic and hard to reproduce**: the same data and the same question can yield different methods and different conclusions across runs, depending on whether the model happens to check an assumption that time. For low-stakes exploration this is tolerable; for research, clinical, or regulatory analysis, it is not.
 
-On the desk, there are many tools: SQL inspection, data materialization, KPI summaries, statistical tests, regression models, diagnostics, guardrails, and report generation.
+StatGuard Agent addresses this by **removing statistical computation from the LLM entirely**. The LLM's role is reduced to routing — selecting an appropriate, pre-validated analysis tool — while the numbers come from deterministic plugins whose correctness is verified against independent reference implementations.
 
-The analyst does not blindly follow a fixed checklist.
+The result is a system where:
 
-Instead, the supervisor looks at the question, checks the data, decides what evidence is needed, and chooses the right tool at the right time.
+- the **same input always produces the same statistics** (deterministic engine),
+- every reported number is **traceable to a specific tool run** (anti-fabrication claims ledger), and
+- the **choice of method follows explicit, inspectable rules** (e.g. assumption checks that route between parametric and non-parametric tests).
 
-That is the core idea behind this project.
+---
 
-## What This Agent Can Do
+## Key properties
 
-Given a request such as:
+- **Deterministic statistics.** All 25 analysis tools are implemented as plugins with hardcoded methods. The same data and arguments always produce identical results.
+- **Independently cross-validated.** A 246-case "carpet" benchmark checks every plugin's output against `scipy` / `statsmodels` ground truth — currently **246 / 246 passing**.
+- **Assumption-aware routing.** Tools encode statistical decision rules rather than leaving them to the LLM — for example, normality and variance checks that route between Welch's t-test, Alexander-Govern / Welch ANOVA, and rank-based non-parametric alternatives.
+- **Anti-fabrication claims ledger.** Plugins emit structured, verified claims; the LLM may only *reference* them by ID, and a render layer substitutes the verified wording. The LLM cannot invent a statistic.
+- **Reproducibility and provenance.** Analyses are tied to an explicit data version; the report records how the analysis-ready dataset was constructed (including SQL provenance when applicable).
+- **Tested.** 615 deterministic unit/integration tests, runnable with no API key and no network access.
 
-> Inspect the SQL data in `demo_data/ecommerce_demo.duckdb`, then analyze the ecommerce database end-to-end. Build an analysis-ready customer-level dataset, summarize business KPIs, compare whether revenue differs across customer segments and regions, model the drivers of customer revenue, diagnose the model, and generate an executive report with key findings, limitations, and recommended next steps.
+---
 
-The agent can automatically:
+## Architecture in brief
 
-1. Inspect the SQL database schema.
-2. Materialize an analysis-ready customer-level dataset from SQL.
-3. Track the active data version and SQL provenance.
-4. Summarize business KPIs.
-5. Compare revenue across customer segments using ANOVA.
-6. Compare revenue across regions using ANOVA.
-7. Fit a multiple regression model for revenue drivers.
-8. Interpret numeric and categorical regression coefficients.
-9. Run regression diagnostics, including VIF and Breusch-Pagan tests.
-10. Surface statistical guardrails and limitations.
-11. Generate an executive HTML report with findings, limitations, and recommended next steps.
-
-## Example Output
-
-The ecommerce showcase produces a report with sections such as:
-
-- Executive Summary
-- Data Provenance
-- SQL Schema Summary
-- SQL Query Materialization
-- KPI Summary
-- Statistical Group Comparison by Segment
-- Statistical Group Comparison by Region
-- Multiple Linear Regression
-- Coefficient Interpretations
-- Regression Diagnostics
-- Statistical Guardrails
-- Notes and Limitations
-
-Example insights from the demo:
-
-- Customer-level total revenue was analyzed using a materialized dataset of 98 customers.
-- Revenue differences across customer segments were tested using one-way ANOVA.
-- Revenue differences across regions were tested using one-way ANOVA.
-- A multiple regression model explained around 61.6% of the variation in customer revenue.
-- `number_of_orders` was identified as a statistically significant predictor of `total_revenue`.
-- Regression diagnostics detected possible heteroscedasticity, which was surfaced as a statistical guardrail.
-
-## Why This Project Is Different
-
-Many LLM data tools focus on answering a single SQL question.
-
-This project focuses on a broader problem:
-
-> How can an AI agent behave more like a real data analyst?
-
-Real data analysis is adaptive.  
-You inspect the data, build an analysis-ready dataset, choose methods, check assumptions, revise based on results, and communicate limitations.
-
-To support that, this project uses an evidence-driven agent architecture rather than a rigid workflow pipeline.
-
-## Core Architecture
-
-### 1. LLM Supervisor
-
-The supervisor is responsible for choosing one next action at a time.
-
-It reads:
-
-- user request
-- current data context
-- previous observations
-- active data version
-- available tool cards
-- analysis coverage feedback
-
-Then it chooses either:
-
-- one tool call, or
-- a final answer
-
-The supervisor does not create rigid task queues or executable workflow plans.
-
-### 2. Plugin-Based Analysis Tools
-
-Each analysis tool is implemented as a plugin with metadata such as:
-
-- tool name
-- description
-- argument schema
-- usage guidance
-- data source requirements
-- whether it produces an active dataset
-- evidence categories
-- reporting configuration
-
-This makes the system easier to extend. New tools can be added without rewriting the core agent loop.
-
-Current tools include:
-
-- SQL schema inspection
-- SQL query materialization
-- KPI summary
-- missingness and data quality checks
-- group-by summaries
-- statistical group comparison
-- multiple regression
-- regression diagnostics
-- summary statistics
-- dataset inspection
-
-### 3. Evidence Coverage Instead of Rigid Workflows
-
-For broad analysis requests, the agent generates an analysis coverage brief.
-
-The brief describes what kinds of evidence are needed before the final answer is complete, such as:
-
-- KPI summary
-- group comparison
-- regression model
-- regression diagnostics
-
-Each tool declares what evidence it can produce.
-
-The answer quality gate compares:
-
-```text
-required evidence
-vs.
-actual evidence produced by tool runs
+```
+natural-language request
+        │
+        ▼
+   LLM Supervisor ──────────► chooses ONE next action at a time
+        │                     (a tool call, or a final answer)
+        ▼
+ Deterministic plugin  ─────► runs a hardcoded statistical method,
+        │                     cross-validated against scipy/statsmodels
+        ▼
+ Claims ledger + gate ──────► verifies evidence coverage and that every
+        │                     reported number came from an actual run
+        ▼
+   Auditable report
 ```
 
-This allows the agent to continue analysis when important evidence is missing, without forcing every request through a fixed workflow.
+The LLM never computes a statistic. It selects tools; the plugins compute and self-verify; a quality gate checks that the evidence required by the request has actually been produced before a final answer is allowed.
 
-### 4. Data Version Tracking
+### Analysis tools (25 plugins)
 
-When the agent materializes a dataset from SQL, it creates an active data version.
+Statistical inference and comparison: `statistical_group_comparison`, `run_independent_t_test`, `run_anova`, `nonparametric_group_comparison`, `paired_comparison`, `run_correlation_test`, `run_chi_square`, `power_analysis`.
 
-Analysis results are tied to that data version.
+Modeling and diagnostics: `run_multiple_regression`, `regression_diagnostics`.
 
-This helps prevent stale results from being reused after the data changes.
+Description and data prep: `get_summary_stats`, `summarize_columns`, `groupby_summary`, `get_correlation_matrix`, `kpi_summary`, `missingness_report`, `clean_data`, `inspect_dataset`.
 
-The report includes:
+SQL and data sourcing: `inspect_sql_schema`, `run_sql_query`, `materialize_sql_query_result`.
 
-- active data version
-- parent version
-- number of rows
-- number of columns
-- operation that produced the dataset
-- SQL query used for materialization
+Reporting and reproducibility: `generate_scatterplot`, `generate_residual_histogram`, `export_apa_methods`, `export_reproducibility_manifest`.
 
-### 5. SQL Provenance
+---
 
-The agent records the SQL query used to create the analysis-ready dataset.
+## Installation
 
-This makes the final report auditable.
+Requires Python 3.12 (3.12 is the tested reference; the deterministic engine has no exotic dependencies).
 
-Instead of only showing final statistics, the report shows how the analysis dataset was constructed from the source database.
-
-### 6. Model-Spec Handoff
-
-The regression tool stores a model specification after fitting a model.
-
-Regression diagnostics can then consume the previous regression model contract instead of relying on the LLM to manually reconstruct feature columns.
-
-This avoids common mistakes such as passing encoded coefficient terms as raw dataset columns.
-
-### 7. Statistical Guardrails
-
-The report surfaces statistical warnings and limitations, such as:
-
-- observational analysis does not imply causation
-- ANOVA assumptions and follow-up testing requirements
-- regression assumptions
-- multicollinearity diagnostics
-- heteroscedasticity warnings
-- data version dependency
-
-The goal is to make the agent's output more statistically honest and auditable.
-
-## Tech Stack
-
-- Python
-- Streamlit
-- LangGraph
-- OpenAI API
-- DuckDB
-- pandas
-- statsmodels
-- pytest
-
-## Example Showcase Flow
-
-```text
-The ecommerce demo follows this sequence:
-
-User request
-    ↓
-SQL schema inspection
-    ↓
-Customer-level dataset materialization
-    ↓
-KPI summary
-    ↓
-Revenue comparison by customer segment
-    ↓
-Revenue comparison by region
-    ↓
-Multiple regression model
-    ↓
-Regression diagnostics
-    ↓
-Evidence-based executive report
-```
-
-## Project Structure
-
-```text
-analysis_agent_mvp/
-│
-├── app.py
-├── agents/
-│   ├── supervisor.py
-│   └── coverage_brief.py
-│
-├── core/
-│   ├── graph.py
-│   ├── schema.py
-│   ├── context_builder.py
-│   ├── deliverables.py
-│   ├── analysis_coverage.py
-│   ├── report_builder.py
-│   └── analysis_tool_plugins/
-│       ├── base.py
-│       ├── registry.py
-│       ├── execution.py
-│       └── plugins/
-│           ├── inspect_sql_schema.py
-│           ├── materialize_sql_query_result.py
-│           ├── kpi_summary.py
-│           ├── statistical_group_comparison.py
-│           ├── linear_model.py
-│           ├── regression_diagnostics.py
-│           ├── missingness_report.py
-│           └── ...
-│
-├── demo_data/
-│   └── ecommerce_demo.duckdb
-│
-├── tests/
-└── README.md
-```
-
-## Local Setup
-
-```Bash
-python -m venv .venv
-.venv\Scripts\activate
+```bash
+git clone https://github.com/Cheng-Peng0718/StatGuard_Agent.git
+cd statguard-agent
 pip install -r requirements.txt
 ```
-Create a local environment file outside the repo or use `.env` locally:
 
-```text
-OPENAI_API_KEY=...
-LANGCHAIN_TRACING_V2=false
-LANGSMITH_API_KEY=...
-LANGCHAIN_PROJECT=analysis-agent-dev
-OPENAI_MODEL=gpt-4o
-```
+A pinned `requirements.lock.txt` is also provided for fully reproducible environments.
 
-Run:
+---
 
-```Bash
-streamlit run app.py
-```
+## Verifying the installation
 
-## Run Tests
+The deterministic core requires **no API key and no network access**. Two checks confirm a working install.
 
-```Bash
+**1. Run the test suite (615 deterministic tests):**
+
+```bash
 python -m pytest -q
 ```
 
-## Generate Demo Database
+Expected: `615 passed`.
 
-```Bash
-python scripts/create_demo_ecommerce_db.py
+**2. Run the headless engine smoke test:**
+
+```bash
+python smoke_test.py
 ```
 
-## Docker
+This invokes the statistics engine directly — without the UI and without an LLM — on a small in-memory dataset, and prints a Welch t-test result. Expected: `SMOKE TEST PASSED`.
 
-```Bash
-docker build -t analysis-agent-mvp .
-docker run --rm -p 8501:8501 --env-file ../.env.analysis_agent.local analysis-agent-mvp
+### Reproducing with Docker
+
+A `Dockerfile` is provided. To verify the full install and test suite in a clean environment:
+
+```bash
+docker build -t statguard-agent .
+docker run --rm statguard-agent python -m pytest -q
+docker run --rm statguard-agent python smoke_test.py
 ```
 
+---
 
-**This repository does not include user-uploaded data, workspace artifacts, generated reports, or API keys.**
+## Using the deterministic engine as a library
 
+The statistics engine is callable directly, independent of the LLM and the UI. `smoke_test.py` is the minimal example; in short:
 
-## Current Status
+```python
+import numpy as np
+import pandas as pd
+from core.analysis_tool_plugins.registry import get_plugin
 
-This is an active MVP.
+df = pd.DataFrame({
+    "score": np.concatenate([np.random.normal(100, 15, 45),
+                             np.random.normal(108, 15, 45)]),
+    "cohort": ["2024"] * 45 + ["2025"] * 45,
+})
 
-The current version demonstrates:
+class Ctx:
+    def __init__(self, df, args): self._df, self.arguments = df, args
+    def load_df(self): return self._df
+    def get_arg(self, name, default=None): return self.arguments.get(name, default)
 
-- SQL-connected analysis
-- plugin-based tool execution
-- evidence coverage checking
-- data version tracking
-- regression model-spec handoff
-- statistical diagnostics
-- HTML report generation
-
-The project is still evolving. Planned improvements include:
-
-- improved report UI
-- richer visualization support
-- logistic regression
-- model comparison
-- time-series analysis
-- more robust data quality checks
-- better automatic variable-role detection
-- stronger support for user-provided datasets
-
-## Design Philosophy
-
-This project is built around a simple idea:
-
-```text
-A data analysis agent should not be a rigid workflow engine.
-It should behave more like an analyst at a workbench.
+result = get_plugin("statistical_group_comparison").run(
+    Ctx(df, {"target_col": "score", "group_col": "cohort"})
+)
+print(result["details"]["method"], result["details"]["p_value"])
 ```
 
-The agent should understand the user's goal, inspect the available data, select the right tools, verify what evidence has been produced, and communicate results with statistical honesty.
+---
+
+## Running the full agent (with an LLM)
+
+The complete experience — natural-language requests, automatic tool selection, and report generation — requires an LLM backend. Set an OpenAI API key and launch the interface:
+
+```bash
+cp .env.example .env      # then add your OPENAI_API_KEY to .env
+streamlit run app.py
+```
+
+Note: the LLM is used **only for orchestration** (deciding which tool to run). All statistics are still computed by the deterministic, cross-validated engine.
+
+---
+
+## The 246-case validation benchmark
+
+The `benchmark/carpet/` suite generates 246 statistical scenarios with known ground truth and runs each through its plugin, checking the plugin's output against an independent `scipy` / `statsmodels` computation:
+
+```bash
+python -m benchmark.carpet.run_plugin_carpet
+```
+
+This is the primary evidence for the engine's correctness: every statistic the framework reports has been checked, case by case, against a reference implementation.
+
+---
+
+## Relationship to prior and concurrent work
+
+The idea that LLM-driven analysis should be constrained for reproducibility and auditability is an active research direction. Recent work includes frameworks for reproducibility-constrained execution of LLM/agent workflows, and empirical studies documenting that LLM data analysis is not reproducible across runs. StatGuard Agent is complementary and distinct in its **focus on statistical inference specifically**, and in **validating statistical correctness** (not merely execution traceability) against reference implementations across a 246-case benchmark. Related work is discussed in the accompanying paper.
+
+---
+
+## Project status and scope
+
+StatGuard Agent is an actively developed research framework. The deterministic statistics engine and its validation suite are its most mature components. Contributions, issues, and independent validation are welcome via the issue tracker.
+
+---
 
 ## Author
 
-Cheng Peng
-M.S. Statistics, Michigan State University
-Interested in statistics, machine learning, data science, and AI agents.
+Cheng Peng, Independent Researcher.
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).

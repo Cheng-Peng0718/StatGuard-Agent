@@ -881,8 +881,14 @@ def deliverable_gate_node(state: GraphState):
     It intentionally does not force rigid plan/workflow completion.
     """
     observations = state.get("observations", []) or []
-    analysis_runs = state.get("analysis_runs", []) or []\
+    analysis_runs = state.get("analysis_runs", []) or []
 
+    # answer_quality_continuation_attempts is the ONE counter that reliably
+    # accumulates across the checkpointed loop (verified at runtime: it climbs
+    # 0,1,2,3...). deliverable_gate_attempts and reducer-backed gate_visits were
+    # both observed resetting/None across checkpoint round-trips, so we must NOT
+    # rely on them. On the first gate visit this reads 0.
+    reliable_visits = int(state.get("answer_quality_continuation_attempts", 0))
 
     check = check_answer_quality(
         user_request=state.get("user_request", ""),
@@ -892,6 +898,8 @@ def deliverable_gate_node(state: GraphState):
         active_data_version_id=state.get("active_data_version_id"),
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
         prev_substantive_run_count=int(state.get("prev_substantive_run_count", 0)),
+        force_first_visit=(reliable_visits == 0),
+        gate_attempts_so_far=reliable_visits,
     )
     # Session-level guardrails run here because they span multiple plugins
     # and cannot be expressed by any single plugin's evaluator. Attachment
@@ -991,12 +999,40 @@ def route_after_deliverable_gate(state: GraphState):
         continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
         max_continuation_attempts = 10
 
-        if continuation_recommended and continuation_attempts <= max_continuation_attempts:
+        # Progress circuit-breaker (checkpoint-safe).
+        #
+        # continuation_attempts is read reliably HERE in the route function (it
+        # drives the visible "attempt N/10" counter). current_substantive_run_count
+        # comes from the gate's own check. Each granted continuation is supposed to
+        # let the agent add one more successful analysis run, so a healthy run count
+        # keeps pace with the attempt count. If the agent is stuck re-emitting
+        # final_answer, its run count freezes while attempts climb. We allow one
+        # grace continuation (attempts <= run_count) and then require that real
+        # progress keeps up: as soon as the run count falls behind the number of
+        # continuations spent, we stop. This needs only the two values that are
+        # reliable in this function, not the gate-node counters that were observed
+        # to reset across checkpoint round-trips.
+        substantive_runs = int(check.get("current_substantive_run_count", 0))
+        made_progress = substantive_runs >= continuation_attempts
+
+        if (
+            continuation_recommended
+            and made_progress
+            and continuation_attempts <= max_continuation_attempts
+        ):
             print(
                 "[ROUTE AFTER ANSWER QUALITY GATE] continuation recommended; "
-                f"attempt {continuation_attempts}/{max_continuation_attempts} -> build_context"
+                f"attempt {continuation_attempts}/{max_continuation_attempts} "
+                f"(runs={substantive_runs}) -> build_context"
             )
             return "build_context"
+
+        if continuation_recommended and not made_progress:
+            print(
+                "[ROUTE AFTER ANSWER QUALITY GATE] continuation requested but no "
+                f"progress (runs={substantive_runs} < attempts={continuation_attempts}); "
+                "stopping to avoid a dead loop."
+            )
 
         return "end"
 

@@ -313,6 +313,8 @@ def check_answer_quality(
     active_data_version_id: str | None = None,
     analysis_coverage_brief: Dict[str, Any] | None = None,
     prev_substantive_run_count: int = 0,
+    force_first_visit: bool | None = None,
+    gate_attempts_so_far: int | None = None,
 ) -> Dict[str, Any]:
     """
     Soft final-answer quality gate for the workbench-style analyst loop.
@@ -549,14 +551,41 @@ def check_answer_quality(
     ]
     current_substantive_run_count = len(successful_substantive_runs)
     has_missing_evidence = bool(missing_evidence_categories)
-    is_first_gate_visit = prev_substantive_run_count == 0
+    # "First visit" is normally inferred from prev_substantive_run_count == 0, but
+    # that value can be lost across checkpoint round-trips in the graph loop. When
+    # the caller can determine first-visit reliably (via a persisted gate counter),
+    # it passes force_first_visit and we trust that instead.
+    if force_first_visit is not None:
+        is_first_gate_visit = bool(force_first_visit)
+    else:
+        is_first_gate_visit = prev_substantive_run_count == 0
     made_progress = current_substantive_run_count > prev_substantive_run_count
 
-    # First visit: allow one continuation so a legitimate multi-step analysis
-    # gets a chance to add evidence. After that, require real progress.
-    continuation_recommended = has_missing_evidence and (
-        is_first_gate_visit or made_progress
-    )
+    # Continuation rule (progress-gated). First gate visit with missing evidence:
+    # grant ONE grace continuation so a legitimate multi-step analysis can add the
+    # next piece of evidence. After that, only continue if the agent actually
+    # produced a NEW successful analysis run. An agent stuck re-emitting
+    # final_answer (run count frozen) has made_progress=False and therefore stops.
+    #
+    # made_progress is measured against the reliably-persisted gate-attempts
+    # counter when available (prev_substantive_run_count can be lost across
+    # checkpoint round-trips). Each granted continuation increments
+    # gate_attempts_so_far; a genuinely progressing analysis adds a successful run
+    # per continuation, so successful run count stays ahead of attempts. A stuck
+    # agent's run count stops growing while attempts climb, so the gap closes and
+    # we stop. Concretely: after the first visit, require that the number of
+    # successful runs strictly exceeds the number of continuations already spent.
+    if gate_attempts_so_far is not None:
+        made_progress = current_substantive_run_count > gate_attempts_so_far
+    else:
+        made_progress = current_substantive_run_count > prev_substantive_run_count
+
+    if not has_missing_evidence:
+        continuation_recommended = False
+    elif is_first_gate_visit:
+        continuation_recommended = True
+    else:
+        continuation_recommended = made_progress
 
     return {
         "status": "ok",
