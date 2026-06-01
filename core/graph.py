@@ -3,7 +3,6 @@ from verifiers.validators import verify
 import uuid
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-import re
 import numpy as np
 
 from core.state import GraphState
@@ -199,7 +198,6 @@ def coverage_brief_node(state: GraphState):
         "analysis_coverage_brief": brief,
         "analysis_coverage_request_hash": request_hash,
         "answer_quality_continuation_attempts": 0,
-        "prev_substantive_run_count": 0,
     }
 
 def supervisor_node(state: GraphState):
@@ -772,74 +770,6 @@ def route_after_summarize(state: GraphState):
         return "end"
     return "build_context"
 
-def call_llm_to_route(state: GraphState):
-    """
-    Semantic routing stub (replace with LLM call).
-    """
-    prompt = f"""
-    Classify the user's task intent.
-
-    User request: "{state['user_request']}"
-    Number of columns: {len(state.get('dataset_profile').columns) if state.get('dataset_profile') else 0}
-
-    Rules:
-    - Simple lookups (single values, column names, row counts, univariate stats) -> reply 'SUPERVISOR'.
-    - Multivariate analysis, modeling, plotting, prediction, exploration -> reply 'PLANNER'.
-
-    Reply only 'PLANNER' or 'SUPERVISOR'.
-    """
-
-    return "PLANNER"  # Stub; replace with llm.invoke(prompt).
-
-def call_llm_to_plan(state: GraphState):
-    """Stub for LLM-generated analysis plan."""
-
-    prompt = f"""
-    You are a data analyst. Produce a concise analysis plan.
-
-    User request: {state['user_request']}
-    Dataset profile: {state.get('dataset_profile', 'not available')}
-
-    Rules:
-    1. If the task is trivial (e.g. row count, column names), reply only "DIRECT".
-    2. Otherwise list logical steps (at most 5).
-    3. Each step starts with a number, e.g. "1. [step content]".
-    """
-    return "1. Check missing values\n2. Compute GPA mean\n3. Run t-test"
-
-
-def parse_plan(text: str) -> list:
-    """Parse numbered steps from LLM text."""
-    if "DIRECT" in text.upper():
-        return ["Execute the user instruction directly"]
-    steps = re.findall(r'\d\.\s*(.*)', text)
-    return steps if steps else [text]
-
-def planner_node(state: GraphState):
-    """Planner: derive analysis_plan from profile (stub)."""
-    if state.get("analysis_plan"):
-        return {}
-
-    response = call_llm_to_plan(state)
-
-    if "DIRECT" in response:
-        return {"analysis_plan": ["Answer the user directly"]}
-
-    plan_steps = parse_plan(response)
-    return {"analysis_plan": plan_steps}
-
-
-def router_gate(state: GraphState):
-    """
-    Current architecture decision:
-    all analytical decisions go through the Supervisor.
-
-    The old planner_node is a historical stub and must not drive execution.
-    We keep the node in the graph for compatibility, but the active route is
-    always build_context -> supervisor.
-    """
-    return "coverage_brief"
-
 def sanitize_results(obj):
     """
     Recursively convert numpy scalars/arrays to native Python for serialization.
@@ -881,14 +811,8 @@ def deliverable_gate_node(state: GraphState):
     It intentionally does not force rigid plan/workflow completion.
     """
     observations = state.get("observations", []) or []
-    analysis_runs = state.get("analysis_runs", []) or []
+    analysis_runs = state.get("analysis_runs", []) or []\
 
-    # answer_quality_continuation_attempts is the ONE counter that reliably
-    # accumulates across the checkpointed loop (verified at runtime: it climbs
-    # 0,1,2,3...). deliverable_gate_attempts and reducer-backed gate_visits were
-    # both observed resetting/None across checkpoint round-trips, so we must NOT
-    # rely on them. On the first gate visit this reads 0.
-    reliable_visits = int(state.get("answer_quality_continuation_attempts", 0))
 
     check = check_answer_quality(
         user_request=state.get("user_request", ""),
@@ -897,9 +821,6 @@ def deliverable_gate_node(state: GraphState):
         observations=observations,
         active_data_version_id=state.get("active_data_version_id"),
         analysis_coverage_brief=state.get("analysis_coverage_brief"),
-        prev_substantive_run_count=int(state.get("prev_substantive_run_count", 0)),
-        force_first_visit=(reliable_visits == 0),
-        gate_attempts_so_far=reliable_visits,
     )
     # Session-level guardrails run here because they span multiple plugins
     # and cannot be expressed by any single plugin's evaluator. Attachment
@@ -974,7 +895,6 @@ def deliverable_gate_node(state: GraphState):
         "deliverable_check": check,
         "deliverable_gate_attempts": gate_attempts,
         "answer_quality_continuation_attempts": continuation_attempts,
-        "prev_substantive_run_count": int(check.get("current_substantive_run_count", 0)),
         "current_action": state.get("current_action"),
         "claims_validation": claims_validation,
     }
@@ -999,40 +919,12 @@ def route_after_deliverable_gate(state: GraphState):
         continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
         max_continuation_attempts = 10
 
-        # Progress circuit-breaker (checkpoint-safe).
-        #
-        # continuation_attempts is read reliably HERE in the route function (it
-        # drives the visible "attempt N/10" counter). current_substantive_run_count
-        # comes from the gate's own check. Each granted continuation is supposed to
-        # let the agent add one more successful analysis run, so a healthy run count
-        # keeps pace with the attempt count. If the agent is stuck re-emitting
-        # final_answer, its run count freezes while attempts climb. We allow one
-        # grace continuation (attempts <= run_count) and then require that real
-        # progress keeps up: as soon as the run count falls behind the number of
-        # continuations spent, we stop. This needs only the two values that are
-        # reliable in this function, not the gate-node counters that were observed
-        # to reset across checkpoint round-trips.
-        substantive_runs = int(check.get("current_substantive_run_count", 0))
-        made_progress = substantive_runs >= continuation_attempts
-
-        if (
-            continuation_recommended
-            and made_progress
-            and continuation_attempts <= max_continuation_attempts
-        ):
+        if continuation_recommended and continuation_attempts <= max_continuation_attempts:
             print(
                 "[ROUTE AFTER ANSWER QUALITY GATE] continuation recommended; "
-                f"attempt {continuation_attempts}/{max_continuation_attempts} "
-                f"(runs={substantive_runs}) -> build_context"
+                f"attempt {continuation_attempts}/{max_continuation_attempts} -> build_context"
             )
             return "build_context"
-
-        if continuation_recommended and not made_progress:
-            print(
-                "[ROUTE AFTER ANSWER QUALITY GATE] continuation requested but no "
-                f"progress (runs={substantive_runs} < attempts={continuation_attempts}); "
-                "stopping to avoid a dead loop."
-            )
 
         return "end"
 
@@ -1048,7 +940,6 @@ def route_after_deliverable_gate(state: GraphState):
 workflow = StateGraph(GraphState)
 
 workflow.add_node("build_context", build_context_node)
-workflow.add_node("planner", planner_node)
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("verify", verify_node)
 workflow.add_node("human_review", human_review_node)
@@ -1089,21 +980,13 @@ workflow.add_conditional_edges(
     },
 )
 
-# After build_context: optional planner
-workflow.add_conditional_edges(
-    "build_context",
-    router_gate,
-    {
-        "coverage_brief": "coverage_brief",
-        "planner": "planner",
-        "supervisor": "supervisor",
-    }
-)
+# All analytical decisions go through the Supervisor. build_context always
+# hands off to coverage_brief -> supervisor. The historical planner_node and
+# its plan->execute path were removed; do NOT reintroduce a "planner" route
+# here. Guarded by tests/architecture/test_no_planner_node.py.
+workflow.add_edge("build_context", "coverage_brief")
 
 workflow.add_edge("coverage_brief", "supervisor")
-
-# Planner hands off to supervisor
-workflow.add_edge("planner", "supervisor")
 
 workflow.add_conditional_edges(
     "human_review",
