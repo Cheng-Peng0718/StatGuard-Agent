@@ -29,12 +29,13 @@ The result is a system where:
 
 ## Key properties
 
-- **Deterministic statistics.** All 25 analysis tools are implemented as plugins with hardcoded methods. The same data and arguments always produce identical results.
-- **Independently cross-validated.** A 246-case "carpet" benchmark checks every plugin's output against `scipy` / `statsmodels` ground truth — currently **246 / 246 passing**.
+- **Deterministic statistics.** All 26 analysis tools are implemented as plugins with hardcoded methods. The same data and arguments always produce identical results.
+- **Independently cross-validated.** A 356-case "carpet" benchmark checks every plugin's output against `scipy` / `statsmodels` ground truth — currently **356 / 356 passing**.
 - **Assumption-aware routing.** Tools encode statistical decision rules rather than leaving them to the LLM — for example, normality and variance checks that route between Welch's t-test, Alexander-Govern / Welch ANOVA, and rank-based non-parametric alternatives.
+- **Replication-aware bootstrap inference.** A dedicated `bootstrap_inference` plugin provides confidence intervals for paired-difference statistics (mean / median / trimmed mean / Cohen's d_z) under three CI methods (percentile, basic, BCa) cross-validated against `scipy.stats.bootstrap`. An optional Sequential Bootstrap mode ([Peng 2025](https://arxiv.org/abs/2511.18065)) stabilises the resampler so the CI itself is reproducible across bootstrap RNG seeds — appropriate for regulatory / clinical / audit-grade contexts. Every run emits a cross-seed CI endpoint-stability diagnostic.
 - **Anti-fabrication claims ledger.** Plugins emit structured, verified claims; the LLM may only *reference* them by ID, and a render layer substitutes the verified wording. The LLM cannot invent a statistic.
 - **Reproducibility and provenance.** Analyses are tied to an explicit data version; the report records how the analysis-ready dataset was constructed (including SQL provenance when applicable).
-- **Tested.** 615 deterministic unit/integration tests, runnable with no API key and no network access.
+- **Tested.** 758 deterministic unit/integration tests, runnable with no API key and no network access.
 
 ---
 
@@ -58,9 +59,9 @@ natural-language request
 
 The LLM never computes a statistic. It selects tools; the plugins compute and self-verify; a quality gate checks that the evidence required by the request has actually been produced before a final answer is allowed.
 
-### Analysis tools (25 plugins)
+### Analysis tools (26 plugins)
 
-Statistical inference and comparison: `statistical_group_comparison`, `run_independent_t_test`, `run_anova`, `nonparametric_group_comparison`, `paired_comparison`, `run_correlation_test`, `run_chi_square`, `power_analysis`.
+Statistical inference and comparison: `statistical_group_comparison`, `run_independent_t_test`, `run_anova`, `nonparametric_group_comparison`, `paired_comparison`, `bootstrap_inference`, `run_correlation_test`, `run_chi_square`, `power_analysis`.
 
 Modeling and diagnostics: `run_multiple_regression`, `regression_diagnostics`.
 
@@ -90,13 +91,13 @@ A pinned `requirements.lock.txt` is also provided for fully reproducible environ
 
 The deterministic core requires **no API key and no network access**. Two checks confirm a working install.
 
-**1. Run the test suite (615 deterministic tests):**
+**1. Run the test suite (758 deterministic tests):**
 
-```bash
+```
 python -m pytest -q
 ```
 
-Expected: `615 passed`.
+Expected: `758 passed`.
 
 **2. Run the headless engine smoke test:**
 
@@ -159,15 +160,17 @@ Note: the LLM is used **only for orchestration** (deciding which tool to run). A
 
 ---
 
-## The 246-case validation benchmark
+## The 356-case validation benchmark
 
-The `benchmark/carpet/` suite generates 246 statistical scenarios with known ground truth and runs each through its plugin, checking the plugin's output against an independent `scipy` / `statsmodels` computation:
+The `benchmark/carpet/` suite generates 356 statistical scenarios with known ground truth and runs each through its plugin, checking the plugin's output against an independent `scipy` / `statsmodels` computation:
 
-```bash
+```
 python -m benchmark.carpet.run_plugin_carpet
 ```
 
 This is the primary evidence for the engine's correctness: every statistic the framework reports has been checked, case by case, against a reference implementation.
+
+An end-to-end variant, `benchmark/carpet/run_e2e_carpet.py`, drives the full agent (with `gpt-4o`) on a representative subset of the same matrix and checks **routing** (the LLM selects the right plugin), **honesty** (claims ledger is clean), and **no-error** (the agent reaches a final answer). It also verifies plugin-specific routing decisions — for example, whether regulatory or audit-grade prompt framing causes `bootstrap_inference` to select Sequential Bootstrap. Current pass rate: **38 / 38 cases** pass all four dimensions. Requires an `OPENAI_API_KEY`.
 
 ---
 
@@ -179,7 +182,7 @@ The idea that LLM-driven analysis should be constrained for reproducibility and 
 
 ## Project status and scope
 
-StatGuard Agent is an actively developed research framework. The deterministic statistics engine and its validation suite are its most mature components.
+StatGuard Agent is complementary and distinct in its **focus on statistical inference specifically**, and in **validating statistical correctness** (not merely execution traceability) against reference implementations across a 356-case benchmark.
 
 **What it covers.** The framework targets standard univariate statistical inference and ordinary least squares regression: group comparisons (parametric and non-parametric, with post-hoc tests and multiple-comparison correction), correlation, chi-square association, paired comparisons, multiple linear regression with diagnostics and robust standard errors, power analysis, and the supporting description, data-preparation, and reporting tools. This range covers the large majority of everyday applied statistical analysis. It is a deliberate design choice — reproducible scientific analysis should use standard, validated methods rather than code improvised per request — and the trade-off is that the framework does not attempt to handle arbitrary or non-standard analyses.
 
@@ -188,6 +191,12 @@ StatGuard Agent is an actively developed research framework. The deterministic s
 **Roadmap.** Planned additions include logistic regression (binary outcomes), two-way / factorial ANOVA with interaction effects, and broadened effect-size and diagnostic reporting. Contributions, issues, and independent validation are welcome via the issue tracker.
 
 ---
+
+## Related work by the author
+
+- Peng, C. (2025). *Sequential Bootstrap for Out-of-Bag Error Estimation: A 100-Seed Replication Study and Variance-Structure Analysis.* arXiv:2511.18065. <https://arxiv.org/abs/2511.18065>
+
+  This methodological study motivates StatGuard's Sequential Bootstrap mode for `bootstrap_inference`. It establishes empirically that the resampler-side variance term in the bootstrap variance decomposition — $\mathrm{Var}(\mathbb{E}[\widehat{\theta}_b \mid U_b])$ — is a non-trivial contributor to cross-seed CI variability on real-world datasets, and that holding the distinct-sample count $U_b$ at a fixed target produces CIs that are more reproducible across bootstrap RNG seeds.
 
 ## Author
 
