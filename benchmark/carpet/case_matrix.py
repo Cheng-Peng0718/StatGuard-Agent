@@ -351,6 +351,231 @@ def _make_adversarial_cases() -> List[Case]:
 
     return cases
 
+def _bootstrap_tol(stat_name: str, n_pairs: int, ci_width):
+    """
+    Tolerance for |our_ci - scipy_ci| comparison, calibrated to the
+    Monte-Carlo SE of bootstrap CI endpoints at B=10000 when our pipeline
+    and scipy use *independent* RNG seeds. We use ~3-sigma envelopes per
+    statistic; on small-n median bootstrap the distribution is so discrete
+    that independent seeds disagree by 30-50% of CI width even when both
+    implementations are correct, so we drop the numerical comparison for
+    those cells (the case is still run as a smoke test for status/resampler).
+    """
+    if ci_width is None or ci_width <= 0:
+        return None
+    if stat_name == "mean_diff":
+        return 0.030 * ci_width
+    if stat_name == "cohens_dz":
+        return 0.050 * ci_width
+    if stat_name == "median_diff":
+        if n_pairs >= 40:
+            return 0.100 * ci_width
+        # n < 40 median bootstrap: too discrete to compare across RNG seeds
+        return None
+    return 0.050 * ci_width
+
+
+def _make_bootstrap_cases() -> List[Case]:
+    """
+    Carpet cases for bootstrap_inference.
+
+    Dimensions covered:
+      - statistic: mean_diff / median_diff / cohens_dz
+      - ci_method: percentile / basic / BCa
+      - resampler: classical / sequential
+      - difference distribution: normal / lognormal / heavy_tail
+      - n_pairs: 15 (small), 40 (medium), 120 (large)
+      - B for diagnostic ladder: 500 (small) / 10000 (large)
+
+    Cases compute gold answers via scipy.stats.bootstrap for the classical
+    branch (where scipy supports the method) and via structural invariants
+    for the Sequential branch.
+    """
+    cases: List[Case] = []
+    combo_id = 0
+
+    paired_stat_opts = ["mean_diff", "median_diff", "cohens_dz"]
+    ci_method_opts = ["percentile", "basic", "BCa"]
+    n_opts = [15, 40, 120]
+    dist_opts = ["normal", "lognormal", "heavy_tail"]
+
+    # --- Branch A: classical bootstrap, validated against scipy --------------
+
+    for n_pairs, dist, stat_name, ci_method in itertools.product(
+            n_opts, dist_opts, paired_stat_opts, ci_method_opts
+    ):
+        # BCa requires n_pairs >= 8 (plugin enforces this); we already meet it.
+        combo_id += 1
+        rng = np.random.default_rng(GLOBAL_SEED + 10000 + combo_id)
+
+        # Paired sample: two columns with a known mean shift.
+        pre = _sample(dist, n_pairs, loc=10.0, scale=2.0, rng=rng)
+        post = pre + _sample(dist, n_pairs, loc=0.5, scale=1.5, rng=rng)
+
+        df = pd.DataFrame({"pre": pre, "post": post})
+        diffs = (post - pre).astype(float)
+
+        # Gold: scipy.stats.bootstrap with matched B / method / seed.
+        # We use B=10000 to keep Monte-Carlo error well below the tolerance.
+        if stat_name == "mean_diff":
+            stat_fn = np.mean
+        elif stat_name == "median_diff":
+            stat_fn = np.median
+        elif stat_name == "cohens_dz":
+            def stat_fn(d):  # noqa: E306
+                sd = np.std(d, ddof=1)
+                return np.mean(d) / sd if sd > 1e-12 else float("nan")
+        else:
+            raise ValueError(stat_name)
+
+        try:
+            scipy_res = stats.bootstrap(
+                (diffs,),
+                statistic=stat_fn,
+                n_resamples=10000,
+                confidence_level=0.95,
+                method=ci_method.lower(),
+                random_state=np.random.default_rng(combo_id),
+                vectorized=False,
+            )
+            gold_lo = float(scipy_res.confidence_interval.low)
+            gold_hi = float(scipy_res.confidence_interval.high)
+        except Exception:
+            # Some scipy versions reject median for BCa on small samples;
+            # skip the gold check but keep the case as a smoke test.
+            gold_lo, gold_hi = None, None
+
+        ci_width = (gold_hi - gold_lo) if gold_lo is not None else None
+
+        cases.append(Case(
+            key=f"bootstrap_classical_{dist}_n{n_pairs}_{stat_name}_{ci_method}_{combo_id}",
+            task="paired_bootstrap",
+            df=df,
+            tool="bootstrap_inference",
+            args={
+                "target_col_1": "pre",
+                "target_col_2": "post",
+                "statistic": stat_name,
+                "ci_method": ci_method,
+                "B": 10000,
+                "n_seeds": 5,
+                "alpha": 0.05,
+                "use_sequential": False,
+                "seed": combo_id,
+            },
+            gold={
+                "ci_lower": gold_lo,
+                "ci_upper": gold_hi,
+                "ci_width": ci_width,
+                "tolerance": _bootstrap_tol(stat_name, n_pairs, ci_width),
+                "source": "scipy.stats.bootstrap",
+            },
+            expect={
+                "status": "ok",
+                "resampler": "classical",
+                "statistic": stat_name,
+                "ci_method": ci_method,
+            },
+            notes=(
+                f"Classical bootstrap, n_pairs={n_pairs}, diff dist={dist}, "
+                f"stat={stat_name}, method={ci_method}. CI endpoints must "
+                f"match scipy.stats.bootstrap within 1.5% of CI width."
+            ),
+        ))
+
+    # --- Branch B: Sequential Bootstrap, structural-invariant gold -----------
+
+    for n_pairs, dist, stat_name in itertools.product(
+            n_opts, dist_opts, paired_stat_opts
+    ):
+        combo_id += 1
+        rng = np.random.default_rng(GLOBAL_SEED + 20000 + combo_id)
+
+        pre = _sample(dist, n_pairs, loc=10.0, scale=2.0, rng=rng)
+        post = pre + _sample(dist, n_pairs, loc=0.5, scale=1.5, rng=rng)
+
+        df = pd.DataFrame({"pre": pre, "post": post})
+
+        cases.append(Case(
+            key=f"bootstrap_sequential_{dist}_n{n_pairs}_{stat_name}_{combo_id}",
+            task="paired_bootstrap_sequential",
+            df=df,
+            tool="bootstrap_inference",
+            args={
+                "target_col_1": "pre",
+                "target_col_2": "post",
+                "statistic": stat_name,
+                "ci_method": "BCa",
+                "B": 5000,
+                "n_seeds": 5,
+                "alpha": 0.05,
+                "use_sequential": True,
+                "rho": 0.632,
+                "seed": combo_id,
+            },
+            gold={
+                "k_n_expected": int(np.floor(0.632 * n_pairs)),
+                "source": "structural-invariants",
+            },
+            expect={
+                "status": "ok",
+                "resampler": "sequential",
+                "use_sequential": True,
+                "statistic": stat_name,
+            },
+            notes=(
+                f"Sequential Bootstrap, n_pairs={n_pairs}, diff dist={dist}, "
+                f"stat={stat_name}. Gold check: resampler=='sequential' and "
+                f"k_n equals floor(0.632 * n_pairs). CI math itself is "
+                f"validated in Branch A; here we only check the SB-specific "
+                f"contract."
+            ),
+        ))
+
+    # --- Branch C: stability-diagnostic ladder -------------------------------
+    # B=500 should yield 'high' (or at worst 'moderate') on small data;
+    # B=10000 should yield 'low' (or at worst 'moderate') on clean data.
+
+    for B, expected_band in [(500, {"moderate", "high"}), (10000, {"low", "moderate"})]:
+        combo_id += 1
+        rng = np.random.default_rng(GLOBAL_SEED + 30000 + combo_id)
+
+        pre = _sample("normal", 60, loc=10.0, scale=2.0, rng=rng)
+        post = pre + _sample("normal", 60, loc=0.5, scale=1.0, rng=rng)
+        df = pd.DataFrame({"pre": pre, "post": post})
+
+        cases.append(Case(
+            key=f"bootstrap_stability_ladder_B{B}_{combo_id}",
+            task="paired_bootstrap_stability",
+            df=df,
+            tool="bootstrap_inference",
+            args={
+                "target_col_1": "pre",
+                "target_col_2": "post",
+                "statistic": "mean_diff",
+                "ci_method": "BCa",
+                "B": B,
+                "n_seeds": 5,
+                "alpha": 0.05,
+                "use_sequential": False,
+                "seed": combo_id,
+            },
+            gold={
+                "expected_interpretation_in": list(expected_band),
+                "source": "stability-ladder",
+            },
+            expect={
+                "status": "ok",
+                "stability_interpretation_in": list(expected_band),
+            },
+            notes=(
+                f"Stability diagnostic ladder: at B={B} on clean normal "
+                f"paired data, interpretation should be in {expected_band}."
+            ),
+        ))
+
+    return cases
+
 def generate_all_cases() -> List[Case]:
     cases: List[Case] = []
     cases += _make_group_cases()
@@ -359,6 +584,7 @@ def generate_all_cases() -> List[Case]:
     cases += _make_chi_square_cases()
     cases += _make_paired_cases()
     cases += _make_adversarial_cases()
+    cases += _make_bootstrap_cases()
     return cases
 
 

@@ -1,0 +1,587 @@
+{
+  "timestamp": "20260601T224727",
+  "model": "gpt-4o",
+  "n_cases": 38,
+  "estimated_spend_usd": 2.23,
+  "summary": {
+    "no_error": 38,
+    "routing": 38,
+    "honesty": 38,
+    "accuracy": 38
+  },
+  "results": [
+    {
+      "key": "grp_001_2g_normal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The comparison of `y` across the groups in `g` did not reveal a statistically significant difference (p = .100, α = .050). The effect size, measured by rank-biserial correlation, was moderate (rank-biserial correlation = -0.40, moderate). This analysis was conducted using a non-parametric method due to non-normality in one of the groups and small sample sizes.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_019_2g_lognormal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, lognormal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis comparing the numeric variable `y` across the groups in `g` has been completed using a Mann-Whitney U test. The results indicate that there is no statistically significant difference between the groups (p = 1.000, α = .050). Additionally, the effect size is negligible (rank-biserial correlation = 0.00, negligible). This suggests that the observed differences in `y` across the groups are not statistically meaningful.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_020_2g_lognormal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, lognormal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The analysis of the dataset comparing `y` across the groups in `g` has been completed using a Mann-Whitney U test. The results indicate that there is no statistically significant difference in `y` across the groups (p = .312, α = .050). Additionally, the effect size, measured by rank-biserial correlation, is small (rank-biserial correlation = 0.25, small). These findings suggest that the differences observed in the data are not statistically significant and the effect size is minimal.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_021_2g_lognormal_n12_equal_eff1.2",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, lognormal, n=12/grp, var=equal, effect=1.2",
+      "final_answer": "The comparison of `y` across the groups in `g` did not reveal a statistically significant difference (p = .069, α = .050). The effect size, measured by rank-biserial correlation, was moderate (rank-biserial correlation = 0.44, moderate). This analysis was conducted using a nonparametric method due to non-normality in one of the groups and a small sample size. The results suggest that while there is a moderate effect size, the difference is not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_002_2g_normal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The comparison of `y` across the groups in `g` did not reveal a statistically significant difference (p = .154, α = .050). The effect size was medium (Hedges g = -0.58, medium, 95% CI [-1.37, 0.21]), and the test statistic was (t(19.76) = -1.48). This analysis was conducted using a Welch independent two-sample t-test, which is appropriate for comparing means between two groups when variances are not assumed to be equal. The assumptions of normality and equal variances were met, and the analysis was based on 24 observations.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_003_2g_normal_n12_equal_eff1.2",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=equal, effect=1.2",
+      "final_answer": "The comparison of `y` across the groups in `g` did not reveal a statistically significant difference (p = .152, α = .050). The effect size was medium (Hedges g = -0.58, medium, 95% CI [-1.37, 0.21]), and the test statistic was (t(21.89) = -1.48). This analysis was conducted using a Welch independent two-sample t-test, which is appropriate for comparing two groups with potentially unequal variances. The assumptions of normality and equal variances were met, and the analysis was based on 24 observations.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_004_2g_normal_n12_unequal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "2 groups, normal, n=12/grp, var=unequal, effect=0.0",
+      "final_answer": "The comparison of `y` across the groups in `g` did not reveal a statistically significant difference (p = .329, α = .050). The effect size was small (Hedges g = 0.40, small, 95% CI [-0.39, 1.17]), and the statistical test used was a Welch independent two-sample t-test (t(17.70) = 1.00). This analysis was based on the current active data version, ensuring the results are up-to-date.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_073_3g_normal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "3 groups, normal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis of the dataset comparing `y` across the groups in `g` has been completed using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .655, α = .050). The effect size is small (eta squared = .025, small, 95% CI [.000, .153]), and the F-statistic supports this conclusion (F(2) = 0.43). These findings suggest that the differences observed in the means of `y` across the groups are not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_074_3g_normal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "3 groups, normal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The analysis of the numeric variable `y` across the categorical groups in `g` was conducted using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .737, α = .050). The effect size is small (eta squared = .018, small, 95% CI [.000, .133]), and the F-statistic supports this conclusion (F(2) = 0.31). Therefore, we can conclude that the differences in `y` across the groups are not statistically significant.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_075_3g_normal_n12_equal_eff1.2",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "3 groups, normal, n=12/grp, var=equal, effect=1.2",
+      "final_answer": "The analysis comparing the numeric outcome `y` across the groups in `g` was conducted using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .067, α = .050). The effect size, measured by eta squared, is considered large, but the confidence interval includes zero, suggesting uncertainty about the magnitude of the effect (eta squared = .151, large, 95% CI [.000, .339]). The F-statistic for this analysis is also provided (F(2) = 2.93).",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_145_5g_normal_n12_equal_eff0.0",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "5 groups, normal, n=12/grp, var=equal, effect=0.0",
+      "final_answer": "The analysis of the numeric variable `y` across the categorical groups in `g` was conducted using a one-way ANOVA. The results indicate that there is no statistically significant difference in `y` across the groups (p = .561, α = .050). The effect size, measured by eta squared, is small (eta squared = .052, small, 95% CI [.000, .134]). The F-statistic for this analysis is also provided (F(4) = 0.75). These results suggest that the differences in means across the groups are not large enough to be considered statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "grp_146_5g_normal_n12_equal_eff0.5",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "5 groups, normal, n=12/grp, var=equal, effect=0.5",
+      "final_answer": "The analysis of the dataset comparing `y` across the groups in `g` has been completed using a one-way ANOVA. The results indicate that there is a statistically significant difference in `y` across the groups (p = .014, α = .050). The effect size is large, as indicated by the eta squared value (eta squared = .201, large, 95% CI [.010, .332]). The F-statistic for this analysis is also provided (F(4) = 3.46). These results suggest that the differences observed are not due to random chance, assuming the data meet the assumptions of the ANOVA test. The analysis was conducted on the current active data version, ensuring the results are up-to-date.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "reg_001_n40_noise0.3_slope0.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=0.3, slope=0.0",
+      "final_answer": "The regression analysis to predict `y` from `x` has been successfully completed using the current dataset version `working_26bdf1bc`. The model used was an OLS multiple linear regression. The results indicate that the relationship between `x` and `y` is not statistically significant at the 0.05 level. Specifically, the coefficient for `x` is 0.01168, suggesting a positive association, but the p-value of 0.757585 indicates that this association is not statistically significant. The R-squared value is 0.002537, which means that `x` explains only a very small portion of the variance in `y`. Additionally, robust standard errors were computed, and no significant differences in inference were found compared to classical OLS standard errors. The model assumptions and limitations have been noted, including the fact that this analysis describes association, not causation, unless the data come from a randomized or causal design.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "reg_002_n40_noise0.3_slope2.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=0.3, slope=2.0",
+      "final_answer": "The regression analysis predicting `y` from `x` has been successfully completed using the current dataset version `working_7bfa5e97`. The model is an OLS multiple linear regression, which shows a strong relationship between `x` and `y` with an R-squared value of 0.977, indicating that approximately 97.7% of the variance in `y` is explained by `x`. The coefficient for `x` is 1.948, meaning that for each one-unit increase in `x`, `y` is expected to increase by approximately 1.948 units. This relationship is statistically significant with a p-value of 0.0, suggesting a very strong association. The model assumptions have been checked, and heteroscedasticity-consistent standard errors were used to ensure robust inference. However, it is important to note that this model describes an association, not causation, unless the data come from a randomized or causal design. Further diagnostics could be performed to check for multicollinearity, influential observations, and residual normality to strengthen the conclusions.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "reg_003_n40_noise1.5_slope0.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=1.5, slope=0.0",
+      "final_answer": "The regression analysis has been successfully completed using the current dataset version `working_3e030dca`. The model fitted is an OLS multiple linear regression predicting `y` from `x`. The results indicate that the relationship between `x` and `y` is not statistically significant at the 0.05 level. Specifically, the coefficient for `x` is 0.07539, suggesting a positive association, but this is not statistically significant with a p-value of 0.748907. The R-squared value is very low (0.002728), indicating that `x` explains very little of the variance in `y`. The model assumptions and limitations have been noted, including the need for regression diagnostics to check for multicollinearity, influential observations, and residual normality. Overall, the analysis suggests that `x` does not have a meaningful impact on `y` in this dataset.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "reg_004_n40_noise1.5_slope2.0",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "n=40, noise=1.5, slope=2.0",
+      "final_answer": "The regression analysis has been successfully completed using the current dataset version `working_99e5e297`. The model predicts `y` from `x` using an OLS multiple linear regression approach. The analysis indicates that there is a statistically significant positive relationship between `x` and `y`. Specifically, for a one-unit increase in `x`, `y` is estimated to increase by approximately 1.81 units, and this association is statistically significant at the 0.05 level. The model explains about 58.1% of the variance in `y` (R² = 0.581). However, the Breusch-Pagan test suggests the presence of heteroscedasticity, so HC3 robust standard errors were used to ensure reliable inference. It is important to note that this model describes an association, not causation, unless the data come from a randomized or otherwise causal design. Additionally, assumptions such as linearity, independence, and constant variance should be considered when interpreting the results.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "cor_001_n30_rho0.0",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "n=30, true rho=0.0",
+      "final_answer": "The correlation between `x` and `y` has been successfully analyzed using the Pearson product-moment correlation test. The test indicates a moderate positive correlation with a correlation coefficient of 0.4096. The p-value of 0.02459 suggests that this correlation is statistically significant at the 0.05 level. The confidence interval for the correlation coefficient, calculated using the Fisher z-transform, ranges from 0.05787 to 0.670871. It is important to note that the Pearson correlation assumes linear association and is sensitive to outliers. If the relationship is monotonic but not linear, or if outliers are present, alternative methods like Spearman or Kendall might be more appropriate. The analysis was conducted on the current data version `working_d3812855`.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "cor_002_n30_rho0.4",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "n=30, true rho=0.4",
+      "final_answer": "The correlation analysis between the columns `x` and `y` has been successfully completed using the Pearson product-moment correlation test. The test results indicate a small correlation coefficient of 0.145, which is not statistically significant at the 0.05 level (p-value = 0.445). This suggests that there is no significant linear relationship between `x` and `y` in the current dataset. The confidence interval for the correlation coefficient ranges from -0.227 to 0.480, further supporting the lack of a significant correlation. It is important to note that Pearson's correlation assumes linearity and is sensitive to outliers, so alternative methods like Spearman or Kendall might be considered if the relationship is suspected to be non-linear or if outliers are present.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "cor_003_n30_rho0.8",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "n=30, true rho=0.8",
+      "final_answer": "The correlation between `x` and `y` has been successfully assessed using the Pearson product-moment correlation test. The analysis indicates a very large correlation with a coefficient of 0.832, which is statistically significant at the 0.05 level (p-value = 0.0). The confidence interval for the correlation coefficient, calculated using the Fisher z-transform, ranges from 0.674 to 0.917. This suggests a strong linear relationship between the two variables. However, it's important to note that Pearson's correlation assumes linearity and is sensitive to outliers. If the relationship is monotonic but not linear, or if outliers are present, alternative methods like Spearman or Kendall might be more appropriate. The analysis was conducted on the current dataset version `working_becfd6c2` with 30 observations.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "chi_001_n80_assocFalse",
+      "task": "chi_square",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Are `a` and `b` associated?",
+      "notes": "n=80, association=False",
+      "final_answer": "The association between the categorical variables `a` and `b` was tested using a Chi-square test of independence. The test was conducted on the current dataset version (working_2b68174b) with 80 observations. The Chi-square statistic was 1.108318 with 1 degree of freedom, resulting in a p-value of 0.292448. Since the p-value is greater than the common significance level of 0.05, we do not have sufficient evidence to reject the null hypothesis of independence. Therefore, we conclude that there is no statistically significant association between `a` and `b` in this dataset. The effect size, measured by Cramer's V, was 0.117703, indicating a small association magnitude.",
+      "tools_used": [
+        "run_chi_square"
+      ]
+    },
+    {
+      "key": "chi_002_n80_assocTrue",
+      "task": "chi_square",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Are `a` and `b` associated?",
+      "notes": "n=80, association=True",
+      "final_answer": "The association between the two categorical variables `a` and `b` was tested using a Chi-square test of independence. The test was successfully completed with the current data version. The Chi-square statistic was 9.63 with 1 degree of freedom, resulting in a p-value of 0.00191. This indicates a statistically significant association between `a` and `b` at the 0.05 significance level. The effect size, measured by Cramer's V, was 0.347, which is considered a medium magnitude of association. The assumptions for the Chi-square test were met, as all expected cell counts were sufficiently large.",
+      "tools_used": [
+        "run_chi_square"
+      ]
+    },
+    {
+      "key": "chi_003_n300_assocFalse",
+      "task": "chi_square",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Are `a` and `b` associated?",
+      "notes": "n=300, association=False",
+      "final_answer": "The association between the two categorical variables `a` and `b` was tested using a Chi-square test of independence. The test was conducted on the current dataset version `working_f1c72acc`, which contains 300 observations. The Chi-square statistic was 0.193056 with 1 degree of freedom, resulting in a p-value of 0.660385. This p-value is greater than the common significance level of 0.05, indicating that there is no statistically significant association between `a` and `b` at this level. Additionally, Cramer's V was calculated to be 0.025368, which is considered negligible, further supporting the conclusion that there is no meaningful association between the two variables. The assumptions of the Chi-square test were met, as all expected cell counts were sufficiently large.",
+      "tools_used": [
+        "run_chi_square"
+      ]
+    },
+    {
+      "key": "pair_001_n15_shift0.0_normal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=0.0, diff=normal",
+      "final_answer": "The analysis requires paired inference evidence, which can be provided by the bootstrap_inference tool. This tool will generate a bootstrap confidence interval for the mean difference between the pre and post measurements, covering the missing evidence category.",
+      "tools_used": [
+        "bootstrap_inference",
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "pair_002_n15_shift0.0_lognormal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=0.0, diff=lognormal",
+      "final_answer": "The analysis of the paired data using the Wilcoxon signed-rank test indicates that there is no significant change in the values from pre to post measurements (p = .720, α = .050). The effect size is small (matched-pairs rank-biserial r = 0.12, small). This suggests that the intervention or condition measured did not lead to a statistically significant change in the measured values.",
+      "tools_used": [
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "pair_003_n15_shift3.0_normal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=3.0, diff=normal",
+      "final_answer": "The analysis requires paired_inference evidence, which can be provided by the bootstrap_inference tool. This tool has already been successfully executed, but the analysis coverage brief indicates that the required evidence is still missing. Therefore, I will call the bootstrap_inference tool again to ensure the evidence requirement is met.",
+      "tools_used": [
+        "bootstrap_inference",
+        "missingness_report",
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "pair_004_n15_shift3.0_lognormal",
+      "task": "paired",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "These are the same subjects measured as `pre` and `post`. Did the value change significantly?",
+      "notes": "n=15, shift=3.0, diff=lognormal",
+      "final_answer": "The analysis of the paired measurements for the same subjects before and after the intervention indicates a significant change. The Wilcoxon signed-rank test, which is recommended due to the non-normality of the differences, shows a significant difference between the pre and post measurements (p < .001, α = .050). The effect size is large, as indicated by the matched-pairs rank-biserial correlation (matched-pairs rank-biserial r = -1.00, large).",
+      "tools_used": [
+        "paired_comparison"
+      ]
+    },
+    {
+      "key": "adv_extreme_separation",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "groups separated by 100 SD",
+      "final_answer": "The analysis has been successfully completed using a Welch independent two-sample t-test to compare the numeric variable `y` across the categorical groups in `g`. The results indicate a statistically significant difference between the groups (p < .001, α = .050). The effect size is large, as indicated by Hedges' g (Hedges g = -92.32, large). The test statistic further supports this conclusion (t(73.09) = -416.90). These findings suggest a substantial difference in `y` between the groups, with group `b` having a notably higher mean than group `a`.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "adv_near_identical",
+      "task": "group",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compare `y` across the groups in `g` and tell me whether the difference is statistically significant.",
+      "notes": "groups differ by 1e-9",
+      "final_answer": "The analysis comparing the numeric variable `y` across the groups in `g` has been completed using a Welch independent two-sample t-test. The results indicate that there is no statistically significant difference between the groups (p = 1.000, α = .050). The effect size is negligible (Hedges g = -0.00, negligible, 95% CI [-0.39, 0.39]), and the test statistic supports this conclusion (t(98) = -0.00). These findings suggest that the observed differences in `y` across the groups are not statistically significant at the 0.05 level.",
+      "tools_used": [
+        "statistical_group_comparison"
+      ]
+    },
+    {
+      "key": "adv_perfect_correlation",
+      "task": "correlation",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Is there a correlation between `x` and `y`?",
+      "notes": "y == x exactly",
+      "final_answer": "The correlation between `x` and `y` has been successfully analyzed using the Pearson product-moment correlation test. The test indicates a very large correlation with a correlation coefficient of 1.0. The p-value is 0.0, which is significant at the 0.05 level, suggesting a statistically significant linear relationship between the two variables. The confidence interval for the correlation coefficient is [1.0, 1.0], indicating a perfect linear relationship. However, it's important to note that Pearson's correlation assumes linearity and is sensitive to outliers. If the relationship is monotonic but not linear, or if outliers are present, alternative methods like Spearman or Kendall might be more appropriate. The analysis assumes that observations are independent and that the data approximately follows a bivariate normal distribution.",
+      "tools_used": [
+        "run_correlation_test"
+      ]
+    },
+    {
+      "key": "adv_regression_outlier",
+      "task": "regression",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a regression predicting `y` from `x` and describe the relationship.",
+      "notes": "one y value = 1000",
+      "final_answer": "The regression analysis has been successfully completed using the current dataset version `working_c98a85d5`. The model fitted was an OLS multiple linear regression predicting `y` from `x`. The results indicate that the relationship between `x` and `y` is not statistically significant at the 0.05 level. Specifically, the coefficient for `x` is 12.7, suggesting that for a one-unit increase in `x`, `y` is estimated to increase by 12.7 units. However, this association is not statistically significant, as indicated by a p-value of 0.518. The R-squared value is 0.0088, which implies that the model explains less than 1% of the variance in `y`. These results suggest that `x` does not have a meaningful predictive relationship with `y` in this dataset. It is important to note that this analysis describes association, not causation, and the assumptions of OLS should be considered when interpreting these results.",
+      "tools_used": [
+        "run_multiple_regression"
+      ]
+    },
+    {
+      "key": "bootstrap_classical_normal_n15_mean_diff_percentile_1",
+      "task": "paired_bootstrap",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compute a 95% bootstrap confidence interval for the mean difference between `pre` and `post`.",
+      "notes": "Classical bootstrap, n_pairs=15, diff dist=normal, stat=mean_diff, method=percentile. CI endpoints must match scipy.stats.bootstrap within 1.5% of CI width.",
+      "final_answer": "The 95% bootstrap confidence interval for the mean difference between 'pre' and 'post' has already been computed using the current active data version. The interval is [-0.7681, 0.8919], with a width of 1.6599. The cross-seed CI stability is moderate, indicating a reasonable level of confidence in the reproducibility of this interval.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_classical_normal_n15_mean_diff_basic_2",
+      "task": "paired_bootstrap",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compute a 95% bootstrap confidence interval for the mean difference between `pre` and `post`.",
+      "notes": "Classical bootstrap, n_pairs=15, diff dist=normal, stat=mean_diff, method=basic. CI endpoints must match scipy.stats.bootstrap within 1.5% of CI width.",
+      "final_answer": "The 95% bootstrap confidence interval for the mean difference between 'pre' and 'post' has already been computed using the current active data version. The interval is [-0.3566, 1.2455], with a width of 1.6021. The cross-seed CI stability is low, indicating that the confidence interval endpoints are stable across different bootstrap random number generator seeds. This result provides a reliable estimate of the mean difference between the two measurements.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_classical_normal_n15_median_diff_percentile_4",
+      "task": "paired_bootstrap",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compute a 95% bootstrap confidence interval for the median difference between `pre` and `post`.",
+      "notes": "Classical bootstrap, n_pairs=15, diff dist=normal, stat=median_diff, method=percentile. CI endpoints must match scipy.stats.bootstrap within 1.5% of CI width.",
+      "final_answer": "The 95% bootstrap confidence interval for the median difference between `pre` and `post` has already been computed using the current active data version. The interval is [-0.598, 1.2369], with a width of 1.835. The cross-seed CI stability was assessed as low, indicating consistent results across different bootstrap samples. This analysis provides a robust estimate of the median difference, considering the small sample size of 15 pairs.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_classical_normal_n15_cohens_dz_percentile_7",
+      "task": "paired_bootstrap",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Compute a 95% bootstrap confidence interval for the Cohen's d_z effect size between `pre` and `post`.",
+      "notes": "Classical bootstrap, n_pairs=15, diff dist=normal, stat=cohens_dz, method=percentile. CI endpoints must match scipy.stats.bootstrap within 1.5% of CI width.",
+      "final_answer": "The requested 95% bootstrap confidence interval for the Cohen's d_z effect size between the `pre` and `post` measurements has already been successfully computed using the current active data version. The confidence interval is [-0.7816, 0.3761], with a width of 1.1577. The cross-seed CI stability was assessed as moderate, indicating a reasonable level of reproducibility across different bootstrap seeds. This result provides a quantification of the uncertainty around the effect size estimate.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_sequential_normal_n15_mean_diff_82",
+      "task": "paired_bootstrap_sequential",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "I need an audit-grade analysis. compute a 95% bootstrap confidence interval for the mean difference between `pre` and `post`.",
+      "notes": "Sequential Bootstrap, n_pairs=15, diff dist=normal, stat=mean_diff. Gold check: resampler=='sequential' and k_n equals floor(0.632 * n_pairs). CI math itself is validated in Branch A; here we only check the SB-specific contract.",
+      "final_answer": "The audit-grade analysis for the mean difference between 'pre' and 'post' has been successfully completed using a bootstrap confidence interval. The 95% confidence interval for the mean difference is [-0.3101, 1.3482], with a width of 1.6583. The analysis used a sequential bootstrap method with 5000 resamples, ensuring moderate cross-seed CI stability. This result is based on the current active data version, ensuring its validity and reliability for audit purposes.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_sequential_lognormal_n15_mean_diff_85",
+      "task": "paired_bootstrap_sequential",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "For a clinical report where the confidence interval itself must be reproducible across re-runs, compute a 95% bootstrap confidence interval for the mean difference between `pre` and `post`.",
+      "notes": "Sequential Bootstrap, n_pairs=15, diff dist=lognormal, stat=mean_diff. Gold check: resampler=='sequential' and k_n equals floor(0.632 * n_pairs). CI math itself is validated in Branch A; here we only check the SB-specific contract.",
+      "final_answer": "The 95% bootstrap confidence interval for the mean difference between 'pre' and 'post' has already been successfully computed using a sequential bootstrap method, ensuring reproducibility across re-runs. The confidence interval is [-0.117, 1.5115] with a width of 1.6285. The cross-seed CI stability was assessed as moderate, indicating that the interval endpoints are reasonably stable across different random seeds. This analysis was conducted on the current active data version, ensuring that the results are up-to-date and accurate for the clinical report requirements.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_sequential_normal_n15_median_diff_83",
+      "task": "paired_bootstrap_sequential",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "For a clinical report where the confidence interval itself must be reproducible across re-runs, compute a 95% bootstrap confidence interval for the median difference between `pre` and `post`.",
+      "notes": "Sequential Bootstrap, n_pairs=15, diff dist=normal, stat=median_diff. Gold check: resampler=='sequential' and k_n equals floor(0.632 * n_pairs). CI math itself is validated in Branch A; here we only check the SB-specific contract.",
+      "final_answer": "The 95% bootstrap confidence interval for the median difference between the `pre` and `post` measurements has been successfully computed using a sequential bootstrap method. This approach ensures that the confidence interval is reproducible across re-runs, which is crucial for clinical reporting. The computed interval is [-1.167, 1.723] with a width of 2.89. The cross-seed CI stability was assessed as moderate, indicating that the interval endpoints are consistent across different random seeds. This fulfills the requirement for a reproducible confidence interval in a clinical context.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    },
+    {
+      "key": "bootstrap_sequential_normal_n15_cohens_dz_84",
+      "task": "paired_bootstrap_sequential",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "I need an audit-grade analysis. compute a 95% bootstrap confidence interval for the Cohen's d_z effect size between `pre` and `post`.",
+      "notes": "Sequential Bootstrap, n_pairs=15, diff dist=normal, stat=cohens_dz. Gold check: resampler=='sequential' and k_n equals floor(0.632 * n_pairs). CI math itself is validated in Branch A; here we only check the SB-specific contract.",
+      "final_answer": "The audit-grade analysis for the 95% bootstrap confidence interval of Cohen's d_z effect size between the `pre` and `post` measurements has been successfully completed. The analysis used a sequential bootstrap method with 5000 resamples, resulting in a confidence interval of [-0.974, 0.210]. The cross-seed CI stability was assessed as moderate, indicating a reliable estimate. This analysis meets the audit standards as required by the task's autonomy level and evidence coverage brief.",
+      "tools_used": [
+        "bootstrap_inference"
+      ]
+    }
+  ]
+}

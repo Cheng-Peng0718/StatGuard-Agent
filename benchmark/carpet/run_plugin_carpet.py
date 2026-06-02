@@ -139,12 +139,64 @@ def _check_paired(c: Case, d: Dict[str, Any]) -> List[str]:
     return issues
 
 
+def _check_paired_bootstrap(c: Case, d: Dict[str, Any]) -> List[str]:
+    """Branch A: classical bootstrap; CI endpoints must match scipy gold within tolerance."""
+    issues = []
+    g = c.gold
+
+    if d.get("resampler") != "classical":
+        issues.append(f"resampler {d.get('resampler')} != classical")
+
+    if g.get("ci_lower") is not None and g.get("tolerance") is not None:
+        tol = float(g["tolerance"])
+        lo, hi = d.get("ci_lower"), d.get("ci_upper")
+        if lo is None or hi is None:
+            issues.append(f"CI missing: lo={lo}, hi={hi}")
+        else:
+            if abs(float(lo) - float(g["ci_lower"])) > tol:
+                issues.append(
+                    f"ci_lower {float(lo):.4f} != gold {float(g['ci_lower']):.4f} (tol {tol:.4f})"
+                )
+            if abs(float(hi) - float(g["ci_upper"])) > tol:
+                issues.append(
+                    f"ci_upper {float(hi):.4f} != gold {float(g['ci_upper']):.4f} (tol {tol:.4f})"
+                )
+    return issues
+
+
+def _check_paired_bootstrap_sequential(c: Case, d: Dict[str, Any]) -> List[str]:
+    """Branch B: Sequential Bootstrap; structural invariants only (no scipy gold)."""
+    issues = []
+    if d.get("resampler") != "sequential":
+        issues.append(f"resampler {d.get('resampler')} != sequential")
+    if not bool(d.get("use_sequential")):
+        issues.append(f"use_sequential {d.get('use_sequential')} != True")
+    expected_kn = c.gold.get("k_n_expected")
+    if expected_kn is not None and d.get("k_n") != expected_kn:
+        issues.append(f"k_n {d.get('k_n')} != gold {expected_kn}")
+    return issues
+
+
+def _check_paired_bootstrap_stability(c: Case, d: Dict[str, Any]) -> List[str]:
+    """Branch C: stability diagnostic interpretation in expected band."""
+    issues = []
+    allowed = set(c.gold.get("expected_interpretation_in", []) or [])
+    diag = d.get("stability_diagnostic") or {}
+    actual = diag.get("interpretation")
+    if allowed and actual not in allowed:
+        issues.append(f"stability interpretation {actual} not in {sorted(allowed)}")
+    return issues
+
+
 _CHECKERS = {
     "group": _check_group,
     "regression": _check_regression,
     "correlation": _check_correlation,
     "chi_square": _check_chi_square,
     "paired": _check_paired,
+    "paired_bootstrap": _check_paired_bootstrap,
+    "paired_bootstrap_sequential": _check_paired_bootstrap_sequential,
+    "paired_bootstrap_stability": _check_paired_bootstrap_stability,
 }
 
 

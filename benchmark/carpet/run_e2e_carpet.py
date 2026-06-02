@@ -99,6 +99,36 @@ def _prompt_for(case: Case) -> str:
     if case.task == "paired":
         return (f"These are the same subjects measured as `{case.args['target_col_1']}` "
                 f"and `{case.args['target_col_2']}`. Did the value change significantly?")
+    if case.task == "paired_bootstrap":
+        stat = case.args.get("statistic", "mean_diff")
+        stat_phrase = {
+            "mean_diff": "mean difference",
+            "median_diff": "median difference",
+            "cohens_dz": "Cohen's d_z effect size",
+            "trimmed_mean_diff": "10% trimmed mean difference",
+        }.get(stat, "mean difference")
+        return (f"Compute a 95% bootstrap confidence interval for the "
+                f"{stat_phrase} between `{case.args['target_col_1']}` and "
+                f"`{case.args['target_col_2']}`.")
+    if case.task == "paired_bootstrap_sequential":
+        stat = case.args.get("statistic", "mean_diff")
+        stat_phrase = {
+            "mean_diff": "mean difference",
+            "median_diff": "median difference",
+            "cohens_dz": "Cohen's d_z effect size",
+        }.get(stat, "mean difference")
+        # Vary framing so we don't pattern-match a single phrase. All three
+        # should trigger Sequential Bootstrap via the plugin's use_when text
+        # (regulatory / clinical / audit-grade).
+        framings = [
+            "For an FDA regulatory submission, ",
+            "For a clinical report where the confidence interval itself must be reproducible across re-runs, ",
+            "I need an audit-grade analysis. ",
+        ]
+        framing = framings[abs(hash(case.key)) % len(framings)]
+        return (f"{framing}compute a 95% bootstrap confidence interval for the "
+                f"{stat_phrase} between `{case.args['target_col_1']}` and "
+                f"`{case.args['target_col_2']}`.")
     return "Analyze this dataset."
 
 
@@ -135,6 +165,26 @@ def select_subset() -> List[Case]:
     picks += first_matching(lambda c: c.task == "paired", 4)
     # adversarial
     picks += first_matching(lambda c: c.key.startswith("adv_"), 4)
+    # bootstrap_inference: neutral-language routing (must NOT trigger SB)
+    picks += first_matching(
+        lambda c: c.task == "paired_bootstrap"
+                  and c.args.get("statistic") == "mean_diff", 2)
+    picks += first_matching(
+        lambda c: c.task == "paired_bootstrap"
+                  and c.args.get("statistic") == "median_diff", 1)
+    picks += first_matching(
+        lambda c: c.task == "paired_bootstrap"
+                  and c.args.get("statistic") == "cohens_dz", 1)
+    # bootstrap_inference: Sequential-Bootstrap routing (audit / clinical / FDA framing)
+    picks += first_matching(
+        lambda c: c.task == "paired_bootstrap_sequential"
+                  and c.args.get("statistic") == "mean_diff", 2)
+    picks += first_matching(
+        lambda c: c.task == "paired_bootstrap_sequential"
+                  and c.args.get("statistic") == "median_diff", 1)
+    picks += first_matching(
+        lambda c: c.task == "paired_bootstrap_sequential"
+                  and c.args.get("statistic") == "cohens_dz", 1)
 
     # de-dup preserving order
     seen = set()
@@ -217,6 +267,8 @@ EXPECTED_TOOL_FAMILY = {
     "correlation": {"run_correlation_test", "get_correlation_matrix"},
     "chi_square": {"run_chi_square"},
     "paired": {"paired_comparison"},
+    "paired_bootstrap": {"bootstrap_inference"},
+    "paired_bootstrap_sequential": {"bootstrap_inference"},
 }
 
 
@@ -293,6 +345,43 @@ def judge(case: Case, state: Dict[str, Any]) -> Dict[str, Any]:
         if not _close(p, target, rel=5e-2):
             res["accuracy"] = False
             res["issues"].append(f"paired p={p} != gold≈{target} (method={method})")
+    elif case.task in ("paired_bootstrap", "paired_bootstrap_sequential"):
+        # For bootstrap, plugin-layer carpet already validates CI numerical
+        # correctness; here we check the parts that only exist e2e:
+        #   (a) Sequential-Bootstrap mode triggers iff the prompt has
+        #       regulatory / clinical / audit framing -- this validates that
+        #       the plugin's usage_guidance is sharp enough for the LLM to
+        #       read regulatory signal and set use_sequential=True.
+        #   (b) The recorded CI is finite and monotone (sanity check).
+        resampler = (m.get("resampler") or "").lower()
+        if case.task == "paired_bootstrap_sequential":
+            if resampler != "sequential":
+                res["routing"] = False
+                res["issues"].append(
+                    f"SB not triggered: resampler={resampler!r}, expected 'sequential'. "
+                    f"LLM failed to read audit/regulatory framing as a Sequential "
+                    f"Bootstrap signal -- the plugin's usage_guidance may need sharpening."
+                )
+        else:
+            if resampler == "sequential":
+                res["routing"] = False
+                res["issues"].append(
+                    f"SB falsely triggered: resampler={resampler!r} on neutral prompt. "
+                    f"LLM defaulted to Sequential Bootstrap without audit cues."
+                )
+        lo = m.get("ci_lower")
+        hi = m.get("ci_upper")
+        try:
+            lo_f, hi_f = float(lo), float(hi)
+            if not (math.isfinite(lo_f) and math.isfinite(hi_f)):
+                res["accuracy"] = False
+                res["issues"].append(f"non-finite CI: [{lo}, {hi}]")
+            elif hi_f <= lo_f:
+                res["accuracy"] = False
+                res["issues"].append(f"non-monotone CI: lo={lo} >= hi={hi}")
+        except (TypeError, ValueError):
+            res["accuracy"] = False
+            res["issues"].append(f"missing/invalid CI endpoints: [{lo}, {hi}]")
 
     return res
 
