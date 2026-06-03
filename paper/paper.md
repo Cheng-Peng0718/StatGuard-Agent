@@ -13,7 +13,7 @@ authors:
 affiliations:
   - name: Independent Researcher
     index: 1
-date: 23 May 2026
+date: 2 June 2026
 bibliography: paper.bib
 ---
 
@@ -72,7 +72,7 @@ method and check assumptions themselves).
 # Design and key features
 
 **LLM orchestration, deterministic computation.** A supervisor LLM selects one
-analysis action at a time from a registry of 25 tool plugins. Each plugin
+analysis action at a time from a registry of 27 tool plugins. Each plugin
 implements a hardcoded statistical method; the same data and arguments always
 produce identical output. The LLM's role is limited to choosing which plugin to
 invoke.
@@ -84,11 +84,28 @@ t-test and classical procedures, and switches from a parametric test to a
 rank-based non-parametric alternative when normality is violated together with a
 small sample (group *n* < 30) or strong skew (|skewness| $\ge$ 1.5).
 
-**Independent cross-validation.** A 246-case benchmark (`benchmark/carpet/`)
+**Independent cross-validation.** A 362-case benchmark (`benchmark/carpet/`)
 generates statistical scenarios with fixed random seeds and compares each
 plugin's output against an independent `scipy`/`statsmodels` computation of the
-same quantity. All 246 cases currently pass, providing case-by-case evidence
-that the framework's reported statistics are numerically correct.
+same quantity. All 362 cases currently pass, providing case-by-case evidence
+that the framework's reported statistics are numerically correct. A complementary
+end-to-end benchmark drives the full agent (with `gpt-4o`) on a representative
+42-case subset and checks four dimensions — routing (the LLM picks the right
+plugin), no-error, honesty (the claims ledger is clean), and numerical accuracy
+— currently 42 / 42 pass.
+
+**Replication-aware bootstrap inference.** A `bootstrap_inference` plugin
+provides confidence intervals for paired-difference statistics (mean, median,
+trimmed mean, Cohen's $d_z$) under percentile, basic, and BCa methods,
+cross-validated against `scipy.stats.bootstrap`. An optional Sequential
+Bootstrap mode [@peng2025sboob] constrains the resampler so that the number of
+distinct in-bag samples per replicate is held at a fixed target, eliminating
+the resampler-side variance component $\mathrm{Var}\big(\mathbb{E}[\widehat{\theta}_b
+\mid U_b]\big)$ in the bootstrap's variance decomposition. The resulting CI
+endpoints are reproducible across bootstrap RNG seeds — a property required
+in regulatory, clinical, or audit-grade settings where the *same* CI, not
+merely the same point estimate, must be reproducible on independent re-run.
+Each call emits a cross-seed CI endpoint-stability diagnostic.
 
 **Anti-fabrication claims ledger.** Plugins emit structured, verified claims;
 the LLM may only reference these claims by identifier, and a render layer
@@ -100,9 +117,9 @@ version, and reports record how the analysis-ready dataset was constructed,
 including SQL provenance where applicable. The framework also exports a
 reproducibility manifest and APA-style methods text.
 
-**Testing.** The framework includes 615 deterministic unit and integration tests
-that run without an API key or network access, in addition to the 246-case
-numerical validation benchmark.
+**Testing.** The framework includes 764 deterministic unit and integration tests
+that run without an API key or network access, in addition to the 362-case
+numerical validation benchmark and the 42-case end-to-end agent benchmark.
 
 # Acknowledgements
 
