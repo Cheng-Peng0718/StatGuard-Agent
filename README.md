@@ -192,12 +192,6 @@ StatGuard Agent is complementary and distinct in its **focus on statistical infe
 
   This methodological study motivates StatGuard's Sequential Bootstrap mode for `bootstrap_inference`. It establishes empirically that the resampler-side variance term in the bootstrap variance decomposition — $\mathrm{Var}(\mathbb{E}[\widehat{\theta}_b \mid U_b])$ — is a non-trivial contributor to cross-seed CI variability on real-world datasets, and that holding the distinct-sample count $U_b$ at a fixed target produces CIs that are more reproducible across bootstrap RNG seeds.
 
-## Related work by the author
-
-- Peng, C. (2025). *Sequential Bootstrap for Out-of-Bag Error Estimation: A 100-Seed Replication Study and Variance-Structure Analysis.* arXiv:2511.18065. <https://arxiv.org/abs/2511.18065>
-
-  This methodological study motivates StatGuard's Sequential Bootstrap mode for `bootstrap_inference`. It establishes empirically that the resampler-side variance term in the bootstrap variance decomposition — $\mathrm{Var}(\mathbb{E}[\widehat{\theta}_b \mid U_b])$ — is a non-trivial contributor to cross-seed CI variability on real-world datasets, and that holding the distinct-sample count $U_b$ at a fixed target produces CIs that are more reproducible across bootstrap RNG seeds.
-
 ## Author
 
 Cheng Peng, Independent Researcher.
