@@ -27,6 +27,8 @@ import traceback
 from collections import defaultdict
 from typing import Any, Dict, List
 
+import numpy as np
+
 from benchmark.carpet.case_matrix import Case, generate_all_cases
 from core.analysis_tool_plugins.registry import get_plugin
 
@@ -187,6 +189,62 @@ def _check_paired_bootstrap_stability(c: Case, d: Dict[str, Any]) -> List[str]:
         issues.append(f"stability interpretation {actual} not in {sorted(allowed)}")
     return issues
 
+def _check_logistic(c: Case, d: Dict[str, Any]) -> List[str]:
+    """Logistic regression: structural + numerical checks against statsmodels gold."""
+    issues = []
+    g = c.gold
+    if g.get("_unfittable"):
+        return issues
+
+    metrics = d.get("metrics", {}) or {}
+    tables = d.get("tables", {}) or {}
+    metadata = d.get("metadata", {}) or {}
+
+    # Structural
+    if metrics.get("n_obs") != g.get("n_obs"):
+        issues.append(f"n_obs {metrics.get('n_obs')} != gold {g.get('n_obs')}")
+    if metrics.get("n_events") != g.get("n_events"):
+        issues.append(f"n_events {metrics.get('n_events')} != gold {g.get('n_events')}")
+    if metrics.get("n_predictors") != g.get("n_predictors"):
+        issues.append(f"n_predictors {metrics.get('n_predictors')} != gold {g.get('n_predictors')}")
+
+    # Convergence
+    if not metrics.get("converged"):
+        issues.append(f"model did not converge (converged={metrics.get('converged')})")
+
+    # Numerical
+    if not _close(metrics.get("pseudo_r2_mcfadden"), g.get("pseudo_r2"), rel=1e-3):
+        issues.append(
+            f"pseudo_r2 {metrics.get('pseudo_r2_mcfadden')} != gold {g.get('pseudo_r2')}"
+        )
+    if not _close(metrics.get("log_likelihood"), g.get("log_likelihood"), rel=1e-3):
+        issues.append(
+            f"log_likelihood {metrics.get('log_likelihood')} != gold {g.get('log_likelihood')}"
+        )
+
+    # Coefficient signs (catches column-mapping bugs)
+    coef_rows = tables.get("coefficients", []) or []
+    plugin_signs = {
+        r["term"]: float(np.sign(r["coefficient_log_odds"]))
+        for r in coef_rows
+        if r.get("term") and r["term"] != "const"
+        and r.get("coefficient_log_odds") is not None
+    }
+    for term, gold_sign in (g.get("coef_signs") or {}).items():
+        if term not in plugin_signs:
+            issues.append(f"coefficient for {term!r} missing from plugin output")
+        elif plugin_signs[term] != gold_sign:
+            issues.append(
+                f"coefficient sign for {term!r}: plugin {plugin_signs[term]}, gold {gold_sign}"
+            )
+
+    # Positive class (for string-labeled cases)
+    if "positive_class" in g:
+        actual = metadata.get("positive_class")
+        if actual != g["positive_class"]:
+            issues.append(f"positive_class {actual!r} != gold {g['positive_class']!r}")
+
+    return issues
 
 _CHECKERS = {
     "group": _check_group,
@@ -197,6 +255,7 @@ _CHECKERS = {
     "paired_bootstrap": _check_paired_bootstrap,
     "paired_bootstrap_sequential": _check_paired_bootstrap_sequential,
     "paired_bootstrap_stability": _check_paired_bootstrap_stability,
+    "logistic": _check_logistic,
 }
 
 

@@ -1,0 +1,74 @@
+{
+  "timestamp": "20260602T204109",
+  "model": "gpt-4o",
+  "n_cases": 4,
+  "estimated_spend_usd": 0.24,
+  "summary": {
+    "no_error": 4,
+    "routing": 4,
+    "honesty": 4,
+    "accuracy": 4
+  },
+  "results": [
+    {
+      "key": "logistic_balanced_n200_1",
+      "task": "logistic",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a logistic regression of `outcome` on `x1`, `x2` and give me the odds ratios.",
+      "notes": "Logistic regression, scenario=balanced, n=200, true_betas=[1.2, -0.8]",
+      "final_answer": "The logistic regression model has been successfully fitted using the current active data version. The odds ratios for the predictors are as follows:\n\n- For `x1`, the odds ratio is approximately 5.98, with a 95% confidence interval ranging from 3.51 to 10.20. This indicates a significant positive association between `x1` and the outcome.\n- For `x2`, the odds ratio is approximately 0.49, with a 95% confidence interval ranging from 0.33 to 0.73. This suggests a significant negative association between `x2` and the outcome.\n\nThe model's McFadden pseudo-R² is 0.32, indicating a moderate fit. The analysis was conducted on 200 observations, with 92 events of the rarer class. The model converged successfully, and no separation was detected.",
+      "tools_used": [
+        "run_logistic_regression"
+      ]
+    },
+    {
+      "key": "logistic_imbalanced_low_n200_2",
+      "task": "logistic",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Predict the probability of the binary outcome `outcome` from `x1`, `x2`. Which predictors are significant?",
+      "notes": "Logistic regression, scenario=imbalanced_low, n=200, true_betas=[1.2, -0.8]",
+      "final_answer": "The logistic regression analysis has been successfully completed on the current dataset version. The model predicts the probability of the binary outcome using predictors `x1` and `x2`. Both predictors are statistically significant at the 0.05 level. Specifically, `x1` has a positive association with the outcome, with an odds ratio of approximately 2.88, indicating that as `x1` increases, the probability of the outcome being 1 increases. Conversely, `x2` has a negative association, with an odds ratio of approximately 0.23, suggesting that as `x2` increases, the probability of the outcome being 1 decreases. The McFadden pseudo-R² of 0.259 indicates a moderate fit of the model to the data. No further action is needed as the required evidence categories have been covered.",
+      "tools_used": [
+        "run_logistic_regression"
+      ]
+    },
+    {
+      "key": "logistic_small_n_n50_3",
+      "task": "logistic",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a logistic regression of `outcome` on `x1`, `x2` and give me the odds ratios.",
+      "notes": "Logistic regression, scenario=small_n, n=50, true_betas=[1.5, -1.0]",
+      "final_answer": "The logistic regression model has been successfully fitted to the dataset with the current active data version. The odds ratios for the predictors `x1` and `x2` have been computed. Here are the results:\n\n- For `x1`, the odds ratio is 4.04 with a 95% confidence interval of [1.60, 10.20]. This indicates that for each unit increase in `x1`, the odds of the outcome occurring increase by a factor of approximately 4.04, assuming all other variables are held constant.\n- For `x2`, the odds ratio is 0.26 with a 95% confidence interval of [0.11, 0.63]. This suggests that for each unit increase in `x2`, the odds of the outcome occurring decrease by a factor of approximately 0.26, assuming all other variables are held constant.\n\nBoth predictors are statistically significant at the 0.05 level, as indicated by their p-values being less than 0.05. The model's McFadden pseudo-R² is 0.31, suggesting a moderate fit to the data.\n\nThese results are based on the current active data version `working_b76355cd`.",
+      "tools_used": [
+        "run_logistic_regression"
+      ]
+    },
+    {
+      "key": "logistic_strong_signal_n100_4",
+      "task": "logistic",
+      "no_error": true,
+      "routing": true,
+      "honesty": true,
+      "accuracy": true,
+      "issues": [],
+      "prompt": "Fit a logistic regression of `outcome` on `x1`, `x2` and give me the odds ratios.",
+      "notes": "Logistic regression, scenario=strong_signal, n=100, true_betas=[2.0, -2.0]",
+      "final_answer": "The logistic regression model has already been successfully fitted on the current dataset version (working_45fc70f4). The odds ratios for the predictors are as follows: \n\n- For `x1`, the odds ratio is 6.56 with a 95% confidence interval of [2.84, 15.13]. This indicates a significant positive association with the outcome.\n- For `x2`, the odds ratio is 0.09 with a 95% confidence interval of [0.03, 0.24]. This suggests a significant negative association with the outcome.\n\nThe model converged successfully, and no separation was detected. The McFadden pseudo-R² is 0.51, indicating a moderate fit. These results are based on the current active data version and are statistically valid.",
+      "tools_used": [
+        "run_logistic_regression"
+      ]
+    }
+  ]
+}

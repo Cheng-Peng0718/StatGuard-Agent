@@ -110,6 +110,21 @@ def _prompt_for(case: Case) -> str:
         return (f"Compute a 95% bootstrap confidence interval for the "
                 f"{stat_phrase} between `{case.args['target_col_1']}` and "
                 f"`{case.args['target_col_2']}`.")
+    if case.task == "logistic":
+        target = case.args["target_col"]
+        feats = case.args["feature_cols"]
+        feats_str = ", ".join(f"`{f}`" for f in feats)
+        # Vary framing slightly across cases.
+        idx = abs(hash(case.key)) % 3
+        if idx == 0:
+            return (f"Run a logistic regression to model the binary outcome "
+                    f"`{target}` using {feats_str}. Report odds ratios and "
+                    f"statistical significance.")
+        if idx == 1:
+            return (f"Predict the probability of the binary outcome `{target}` "
+                    f"from {feats_str}. Which predictors are significant?")
+        return (f"Fit a logistic regression of `{target}` on {feats_str} and "
+                f"give me the odds ratios.")
     if case.task == "paired_bootstrap_sequential":
         stat = case.args.get("statistic", "mean_diff")
         stat_phrase = {
@@ -182,9 +197,12 @@ def select_subset() -> List[Case]:
     picks += first_matching(
         lambda c: c.task == "paired_bootstrap_sequential"
                   and c.args.get("statistic") == "median_diff", 1)
+    # bootstrap_inference: Sequential-Bootstrap routing (audit / clinical / FDA framing)
     picks += first_matching(
         lambda c: c.task == "paired_bootstrap_sequential"
                   and c.args.get("statistic") == "cohens_dz", 1)
+    # logistic regression: routing on binary-outcome prompts
+    picks += first_matching(lambda c: c.task == "logistic", 4)
 
     # de-dup preserving order
     seen = set()
@@ -269,6 +287,7 @@ EXPECTED_TOOL_FAMILY = {
     "paired": {"paired_comparison"},
     "paired_bootstrap": {"bootstrap_inference"},
     "paired_bootstrap_sequential": {"bootstrap_inference"},
+    "logistic": {"run_logistic_regression"},
 }
 
 
@@ -382,6 +401,18 @@ def judge(case: Case, state: Dict[str, Any]) -> Dict[str, Any]:
         except (TypeError, ValueError):
             res["accuracy"] = False
             res["issues"].append(f"missing/invalid CI endpoints: [{lo}, {hi}]")
+    elif case.task == "logistic":
+        # Plugin-layer carpet already validates the numerics. Here we check
+        # the e2e-specific contract: the LLM actually routed to logistic
+        # regression and the resulting model converged.
+        if not m.get("converged"):
+            res["accuracy"] = False
+            res["issues"].append(f"model did not converge (converged={m.get('converged')})")
+        if not _close(m.get("pseudo_r2_mcfadden"), g["pseudo_r2"], rel=5e-2):
+            res["accuracy"] = False
+            res["issues"].append(
+                f"pseudo_r2={m.get('pseudo_r2_mcfadden')} != gold {g['pseudo_r2']}"
+            )
 
     return res
 
@@ -391,9 +422,16 @@ def main():
     ap.add_argument("--max-usd", type=float, default=8.0,
                     help="hard ceiling on estimated spend; stops before exceeding")
     ap.add_argument("--list", action="store_true", help="print subset and cost estimate, then exit")
+    ap.add_argument("--only", type=str, default=None,
+                    help="only run cases with this task name (e.g., 'logistic'); skips all others")
     args = ap.parse_args()
 
     subset = select_subset()
+    if args.only:
+        subset = [c for c in subset if c.task == args.only]
+        if not subset:
+            print(f"No cases with task='{args.only}' in subset.")
+            sys.exit(1)
     per_case = _est_case_usd()
     est_total = per_case * len(subset)
 

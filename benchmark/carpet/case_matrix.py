@@ -576,6 +576,118 @@ def _make_bootstrap_cases() -> List[Case]:
 
     return cases
 
+def _make_logistic_cases() -> List[Case]:
+    """
+    Carpet cases for run_logistic_regression.
+
+    Validates against an independently-fitted statsmodels.Logit:
+      - structural fields (n_obs, n_events, n_predictors) match,
+      - pseudo R^2 (McFadden) and log-likelihood agree numerically,
+      - coefficient signs match (catches wiring bugs like swapped columns).
+
+    Because the plugin also uses statsmodels internally, this is primarily a
+    wiring test (correct columns -> correct coefficients -> correct fields
+    in `details`), not a method-vs-method comparison.
+    """
+    import warnings
+    import statsmodels.api as sm
+
+    cases: List[Case] = []
+    combo_id = 0
+
+    # (label, n, intercept, true_betas, expected_positive_rate)
+    scenarios = [
+        ("balanced",        200,  0.0,  [1.2, -0.8],         0.50),
+        ("imbalanced_low",  200, -2.5,  [1.2, -0.8],         0.10),
+        ("small_n",          50,  0.0,  [1.5, -1.0],         0.50),
+        ("strong_signal",   100,  0.0,  [2.0, -2.0],         0.50),
+        ("three_preds",     200,  0.0,  [1.0, -0.5, 0.7],    0.50),
+    ]
+
+    for name, n, intercept, betas, _ in scenarios:
+        combo_id += 1
+        rng = np.random.default_rng(GLOBAL_SEED + 40000 + combo_id)
+        k = len(betas)
+        feature_cols = [f"x{i+1}" for i in range(k)]
+
+        cols: Dict[str, np.ndarray] = {f: rng.standard_normal(n) for f in feature_cols}
+        eta = intercept + sum(betas[i] * cols[feature_cols[i]] for i in range(k))
+        p = 1.0 / (1.0 + np.exp(-eta))
+        y = (rng.random(n) < p).astype(int)
+
+        df = pd.DataFrame({"outcome": y, **cols})
+
+        # Gold: fit the same logit independently.
+        y_g = df["outcome"].astype(float)
+        X_g = sm.add_constant(df[feature_cols], has_constant="add")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                model = sm.Logit(y_g, X_g).fit(disp=0, maxiter=200)
+                gold = {
+                    "n_obs": int(len(y_g)),
+                    "n_events": int(min(y_g.sum(), len(y_g) - y_g.sum())),
+                    "n_predictors": k,
+                    "pseudo_r2": float(model.prsquared),
+                    "log_likelihood": float(model.llf),
+                    "coef_signs": {f: float(np.sign(model.params[f])) for f in feature_cols},
+                    "converged": bool(model.mle_retvals.get("converged", True)),
+                }
+            except Exception:
+                gold = {"_unfittable": True}
+
+        cases.append(Case(
+            key=f"logistic_{name}_n{n}_{combo_id}",
+            task="logistic",
+            df=df,
+            tool="run_logistic_regression",
+            args={"target_col": "outcome", "feature_cols": feature_cols},
+            gold=gold,
+            expect={"status": "ok", "n_predictors": k},
+            notes=f"Logistic regression, scenario={name}, n={n}, true_betas={betas}",
+        ))
+
+    # One case with string labels ('yes'/'no').
+    combo_id += 1
+    rng = np.random.default_rng(GLOBAL_SEED + 40000 + combo_id)
+    n = 150
+    x1 = rng.standard_normal(n)
+    x2 = rng.standard_normal(n)
+    eta = 0.5 + 1.5 * x1 - 1.0 * x2
+    p = 1.0 / (1.0 + np.exp(-eta))
+    y_num = (rng.random(n) < p).astype(int)
+    y_str = np.where(y_num == 1, "yes", "no")
+    df = pd.DataFrame({"outcome": y_str, "x1": x1, "x2": x2})
+
+    X_g = sm.add_constant(pd.DataFrame({"x1": x1, "x2": x2}), has_constant="add")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sm.Logit(y_num.astype(float), X_g).fit(disp=0, maxiter=200)
+        gold = {
+            "n_obs": n,
+            "n_events": int(min(y_num.sum(), n - y_num.sum())),
+            "n_predictors": 2,
+            "pseudo_r2": float(model.prsquared),
+            "log_likelihood": float(model.llf),
+            "coef_signs": {"x1": float(np.sign(model.params["x1"])),
+                           "x2": float(np.sign(model.params["x2"]))},
+            "positive_class": "yes",
+            "converged": True,
+        }
+
+    cases.append(Case(
+        key=f"logistic_string_labels_n{n}_{combo_id}",
+        task="logistic",
+        df=df,
+        tool="run_logistic_regression",
+        args={"target_col": "outcome", "feature_cols": ["x1", "x2"]},
+        gold=gold,
+        expect={"status": "ok", "positive_class": "yes"},
+        notes=f"Logistic regression with string labels ('yes'/'no'), n={n}",
+    ))
+
+    return cases
+
 def generate_all_cases() -> List[Case]:
     cases: List[Case] = []
     cases += _make_group_cases()
@@ -585,6 +697,7 @@ def generate_all_cases() -> List[Case]:
     cases += _make_paired_cases()
     cases += _make_adversarial_cases()
     cases += _make_bootstrap_cases()
+    cases += _make_logistic_cases()
     return cases
 
 
