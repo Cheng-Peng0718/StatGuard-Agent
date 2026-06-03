@@ -1,4 +1,5 @@
-[![DOI](https://zenodo.org/badge/1228703550.svg)](https://doi.org/10.5281/zenodo.20369635)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20519404.svg)](https://doi.org/10.5281/zenodo.20519404)
+
 
 # StatGuard Agent
 
