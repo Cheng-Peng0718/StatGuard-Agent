@@ -917,7 +917,7 @@ def route_after_deliverable_gate(state: GraphState):
     if gate_type == "answer_quality_gate":
         continuation_recommended = bool(check.get("continuation_recommended"))
         continuation_attempts = int(state.get("answer_quality_continuation_attempts", 0))
-        max_continuation_attempts = 10
+        max_continuation_attempts = 5
 
         if continuation_recommended and continuation_attempts <= max_continuation_attempts:
             print(

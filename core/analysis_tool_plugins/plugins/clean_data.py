@@ -185,19 +185,134 @@ def _impute_numeric_median(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame
     return df
 
 
+def _impute_mode(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Fill missing with the most frequent value (works for any dtype)."""
+    df = df.copy()
+    for col in columns:
+        if col not in df.columns:
+            continue
+        modes = df[col].mode(dropna=True)
+        if len(modes):
+            df[col] = df[col].fillna(modes.iloc[0])
+    return df
+
+
+def _impute_constant(df: pd.DataFrame, columns: list[str], fill_value: Any) -> pd.DataFrame:
+    df = df.copy()
+    for col in columns:
+        if col in df.columns:
+            df[col] = df[col].fillna(fill_value)
+    return df
+
+
+def _cast(df: pd.DataFrame, columns: list[str], strategy: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Cast columns to a type. Coercion failures become NaN and are counted
+    (a high failure count is a signal the cast was wrong)."""
+    df = df.copy()
+    info: Dict[str, Any] = {}
+    for col in columns:
+        if col not in df.columns:
+            continue
+        na_before = int(df[col].isna().sum())
+        if strategy == "numeric":
+            cleaned = df[col].astype(str).str.replace(r"[,$%\s]", "", regex=True)
+            df[col] = pd.to_numeric(cleaned, errors="coerce")
+        elif strategy in ("datetime", "date"):
+            import warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                df[col] = pd.to_datetime(df[col], errors="coerce")
+        elif strategy in ("category", "categorical"):
+            df[col] = df[col].astype("category")
+        elif strategy in ("string", "str"):
+            df[col] = df[col].astype("string")
+        else:
+            raise ValueError(
+                "For action_type='cast', strategy must be "
+                "'numeric', 'datetime', 'category', or 'string'.")
+        na_after = int(df[col].isna().sum())
+        info[str(col)] = {"new_dtype": str(df[col].dtype),
+                          "coercion_failures": max(0, na_after - na_before)}
+    return df, info
+
+
+def _dedup(df: pd.DataFrame, subset) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    before = len(df)
+    new_df = df.drop_duplicates(subset=subset or None, keep="first").reset_index(drop=True)
+    return new_df, {"rows_removed": int(before - len(new_df)),
+                    "subset": list(subset) if subset else None}
+
+
+def _standardize_categories(df: pd.DataFrame, columns: list[str]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Collapse category labels that differ only by case/whitespace, mapping each
+    case-folded group to its most frequent surface form (keeps a readable label)."""
+    df = df.copy()
+    info: Dict[str, Any] = {}
+    for col in columns:
+        if col not in df.columns:
+            continue
+        if not (pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col])):
+            continue
+        s = df[col]
+        stripped = s.map(lambda x: " ".join(str(x).split()) if isinstance(x, str) else x)
+        notna = stripped.notna()
+        key = stripped.where(~notna, stripped[notna].astype(str).str.casefold())
+        tmp = pd.DataFrame({"k": key[notna], "v": stripped[notna]})
+        surface = {k: g["v"].mode().iloc[0] for k, g in tmp.groupby("k")}
+        n_before = int(s.nunique(dropna=True))
+        df[col] = stripped.where(~notna, key.map(surface))
+        n_after = int(df[col].nunique(dropna=True))
+        info[str(col)] = {"labels_before": n_before, "labels_after": n_after}
+    return df, info
+
+
+def _clip_outliers(df: pd.DataFrame, columns: list[str]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Clip numeric values to the 1.5*IQR fence (winsorise outliers, not remove rows)."""
+    df = df.copy()
+    info: Dict[str, Any] = {}
+    for col in columns:
+        if col not in df.columns or not pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        x = df[col]
+        q1, q3 = x.quantile(0.25), x.quantile(0.75)
+        iqr = q3 - q1
+        if not np.isfinite(iqr) or iqr <= 0:
+            continue
+        lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        n_clipped = int(((x < lo) | (x > hi)).sum())
+        df[col] = x.clip(lower=lo, upper=hi)
+        info[str(col)] = {"n_clipped": n_clipped,
+                          "lower": float(lo), "upper": float(hi)}
+    return df, info
+
+
+def _impute_ffill_bfill(df: pd.DataFrame, columns: list[str], how: str) -> pd.DataFrame:
+    df = df.copy()
+    for col in columns:
+        if col not in df.columns:
+            continue
+        df[col] = df[col].ffill() if how == "ffill" else df[col].bfill()
+    return df
+
+
 def execute_clean_data(context) -> Dict[str, Any]:
     """
-    Mutating data-cleaning tool.
+    Mutating data-cleaning tool. Each call creates a new immutable data version.
 
     Supported actions:
-        action_type='drop', strategy='rows'
-        action_type='impute', strategy='mean'
-        action_type='impute', strategy='median'
+        action_type='drop',        strategy='rows'
+        action_type='impute',      strategy='mean' | 'median' | 'mode'
+                                    | 'ffill' | 'bfill' | 'constant'
+                                    (constant also needs fill_value)
+        action_type='cast',        strategy='numeric' | 'datetime' | 'category' | 'string'
+        action_type='dedup',       strategy='rows'   (dedups on `columns` if given, else full row)
+        action_type='standardize', strategy='categories'
+        action_type='clip',        strategy='outliers'  (winsorise to 1.5*IQR fence)
 
     Args:
-        action_type: 'drop' or 'impute'
-        strategy: 'rows', 'mean', or 'median'
+        action_type, strategy: see above.
         columns: optional list of columns. If omitted, all columns are considered.
+        fill_value: required for impute/constant.
     """
     try:
         df = context.load_df()
@@ -244,18 +359,15 @@ def execute_clean_data(context) -> Dict[str, Any]:
 
         # Treat inf as missing before cleaning.
         work = df.copy().replace([np.inf, -np.inf], np.nan)
+        action_info: Dict[str, Any] = {}
 
         if action_type == "drop":
             if strategy not in {"rows", "row", "drop_rows"}:
                 return _blocked(
                     "UNSUPPORTED_CLEAN_STRATEGY",
                     "For action_type='drop', only strategy='rows' is supported.",
-                    details={
-                        "action_type": action_type,
-                        "strategy": strategy,
-                    },
+                    details={"action_type": action_type, "strategy": strategy},
                 )
-
             new_df = work.dropna(subset=cols).copy()
             normalized_strategy = "rows"
 
@@ -264,17 +376,63 @@ def execute_clean_data(context) -> Dict[str, Any]:
                 new_df = _impute_numeric_mean(work, cols)
             elif strategy == "median":
                 new_df = _impute_numeric_median(work, cols)
+            elif strategy == "mode":
+                new_df = _impute_mode(work, cols)
+            elif strategy in ("ffill", "bfill"):
+                new_df = _impute_ffill_bfill(work, cols, strategy)
+            elif strategy == "constant":
+                fill_value = _get_arg(context, "fill_value", None)
+                if fill_value is None:
+                    return _blocked(
+                        "MISSING_FILL_VALUE",
+                        "action_type='impute', strategy='constant' requires fill_value.",
+                        details={"action_type": action_type, "strategy": strategy},
+                    )
+                new_df = _impute_constant(work, cols, fill_value)
+                action_info["fill_value"] = fill_value
             else:
                 return _blocked(
                     "UNSUPPORTED_CLEAN_STRATEGY",
-                    "For action_type='impute', supported strategies are 'mean' and 'median'.",
-                    details={
-                        "action_type": action_type,
-                        "strategy": strategy,
-                    },
+                    "For action_type='impute', strategy must be "
+                    "'mean', 'median', 'mode', 'ffill', 'bfill', or 'constant'.",
+                    details={"action_type": action_type, "strategy": strategy},
                 )
-
             normalized_strategy = strategy
+
+        elif action_type == "clip":
+            if strategy not in {"outliers", "iqr", ""}:
+                return _blocked(
+                    "UNSUPPORTED_CLEAN_STRATEGY",
+                    "For action_type='clip', only strategy='outliers' (1.5*IQR) is supported.",
+                    details={"action_type": action_type, "strategy": strategy})
+            new_df, clip_info = _clip_outliers(work, cols)
+            action_info["clip"] = clip_info
+            normalized_strategy = "outliers"
+
+        elif action_type == "cast":
+            try:
+                new_df, cast_info = _cast(work, cols, strategy)
+            except ValueError as e:
+                return _blocked("UNSUPPORTED_CLEAN_STRATEGY", str(e),
+                                details={"action_type": action_type, "strategy": strategy})
+            action_info["cast"] = cast_info
+            normalized_strategy = strategy
+
+        elif action_type == "dedup":
+            dedup_subset = cols if _normalize_columns_arg(columns_arg) else None
+            new_df, dd_info = _dedup(work, dedup_subset)
+            action_info.update(dd_info)
+            normalized_strategy = "rows"
+
+        elif action_type == "standardize":
+            if strategy not in {"categories", "category", "categorical", ""}:
+                return _blocked(
+                    "UNSUPPORTED_CLEAN_STRATEGY",
+                    "For action_type='standardize', only strategy='categories' is supported.",
+                    details={"action_type": action_type, "strategy": strategy})
+            new_df, std_info = _standardize_categories(work, cols)
+            action_info["standardize"] = std_info
+            normalized_strategy = "categories"
 
         else:
             return _blocked(
@@ -282,7 +440,7 @@ def execute_clean_data(context) -> Dict[str, Any]:
                 f"Unsupported action_type: {action_type}",
                 details={"action_type": action_type},
                 suggested_next_actions=[
-                    "Use action_type='drop' or action_type='impute'."
+                    "Use action_type in: drop, impute, cast, dedup, standardize, clip."
                 ],
             )
 
@@ -340,6 +498,7 @@ def execute_clean_data(context) -> Dict[str, Any]:
             "old_version_id": old_version_id,
             "new_version_id": new_version_id,
             "data_version_created": True,
+            "action_info": action_info,
         }
 
         return _ok(
@@ -464,6 +623,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
         },
         optional={
             "columns": object,
+            "fill_value": object,
         },
         column_args=[],
         column_list_args=[

@@ -1427,7 +1427,7 @@ STATISTICAL_GROUP_COMPARISON_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="statistical_group_comparison",
     display_name="Statistical Group Comparison",
-    evidence_categories=["group_comparison", "statistical_inference"],
+    evidence_categories=["group_comparison", "statistical_inference", "confidence_interval"],
     description=(
         "Run an inferential statistical comparison of a numeric outcome across "
         "levels of a categorical group variable. This is the correct tool for "

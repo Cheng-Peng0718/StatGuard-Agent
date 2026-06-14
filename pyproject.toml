@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "statguard-agent"
+version = "0.2.0"
+description = "Auditable statistical analysis framework: LLM routes, deterministic engine computes."
+requires-python = ">=3.12"
+# Runtime deps are pinned in requirements.txt / requirements.lock.txt; kept light
+# here so `pip install -e .` does not fight an existing environment.
+dependencies = []
+
+[tool.setuptools.packages.find]
+# Flat layout: top-level packages live at the repo root. Expose the ones an
+# external caller (DecisionGuard) imports, plus their subpackages.
+include = ["core*", "agents*", "verifiers*"]

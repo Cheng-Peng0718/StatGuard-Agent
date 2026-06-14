@@ -253,6 +253,55 @@ def execute_chi_square(context) -> Dict[str, Any]:
                 ],
             )
 
+        # Guardrail: chi-square is for CATEGORICAL variables with few levels. A
+        # continuous / high-cardinality numeric column (e.g. a satisfaction score
+        # with hundreds of distinct values) yields a huge, sparse contingency
+        # table and an invalid test. Detect this deterministically and redirect to
+        # the appropriate tool rather than computing a misleading statistic.
+        max_chisq_levels = 20
+        high_card = []
+        for col in (row_col, col_col):
+            s = work[col]
+            n_unique = int(s.nunique())
+            if n_unique > max_chisq_levels:
+                high_card.append({
+                    "column": col,
+                    "distinct_values": n_unique,
+                    "is_numeric": bool(pd.api.types.is_numeric_dtype(s)),
+                })
+
+        if high_card:
+            numeric_offenders = [c["column"] for c in high_card if c["is_numeric"]]
+            parts = [f"{c['column']} ({c['distinct_values']} distinct values)" for c in high_card]
+            message = (
+                "Chi-square requires categorical variables with a small number of "
+                "levels, but " + ", ".join(parts)
+                + f" exceed {max_chisq_levels} levels."
+            )
+            suggestions = [
+                "Bin the high-cardinality variable into a few categories, then re-run chi-square."
+            ]
+            if numeric_offenders:
+                message += (
+                    " Column(s) " + ", ".join(numeric_offenders)
+                    + " appear continuous; for a numeric association prefer a "
+                    "correlation or a regression model."
+                )
+                suggestions = [
+                    "Use run_correlation_test for the association between two numeric variables.",
+                    "Use run_multiple_regression (numeric outcome) or run_logistic_regression "
+                    "(binary outcome) to model the relationship.",
+                ] + suggestions
+            return _blocked(
+                "NON_CATEGORICAL_INPUT_FOR_CHI_SQUARE",
+                message,
+                details={
+                    "high_cardinality_columns": high_card,
+                    "max_levels": max_chisq_levels,
+                },
+                suggested_next_actions=suggestions,
+            )
+
         contingency = pd.crosstab(work[row_col], work[col_col])
 
         if contingency.shape[0] < 2 or contingency.shape[1] < 2:
