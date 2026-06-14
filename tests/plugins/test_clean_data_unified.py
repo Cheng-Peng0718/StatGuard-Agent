@@ -29,7 +29,10 @@ def test_clean_data_drop_rows_creates_data_version_update():
 
     assert plugin is not None
     assert plugin.execute is not None
-    assert plugin.requires_confirmation is True
+    # P3: clean_data is no longer a blanket-confirmation tool. Gating is per-action
+    # via confirmation_policy (only destructive actions need review).
+    assert plugin.requires_confirmation is False
+    assert plugin.confirmation_policy is not None
 
     df = pd.DataFrame({
         "GPA": [3.0, None, 4.0],

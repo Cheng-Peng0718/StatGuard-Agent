@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 import uuid
 
 import numpy as np
@@ -295,6 +295,129 @@ def _impute_ffill_bfill(df: pd.DataFrame, columns: list[str], how: str) -> pd.Da
     return df
 
 
+# --------------------------------------------------------------------------
+# Per-action review gate (P3) + post-execution impact guardrails
+# --------------------------------------------------------------------------
+DROP_ROWS_REVIEW_FRACTION = 0.05    # drop that would discard >5% of rows -> review
+IMPUTE_REVIEW_FRACTION = 0.20       # impute a column >20% missing -> review
+ROW_LOSS_WARN_FRACTION = 0.20       # actually removed >20% of rows -> warning
+ROW_LOSS_INFO_FRACTION = 0.05       # actually removed >5% -> info
+
+
+def _profile_columns(profile) -> Tuple[Dict[str, Any], int]:
+    """Pull (columns_info, n_rows) from a DatasetProfile (object or dict)."""
+    if profile is None:
+        return {}, 0
+    cols = getattr(profile, "columns", None)
+    if cols is None and isinstance(profile, dict):
+        cols = profile.get("columns")
+    n_rows = getattr(profile, "n_rows", None)
+    if n_rows is None and isinstance(profile, dict):
+        n_rows = profile.get("n_rows")
+    return (cols if isinstance(cols, dict) else {}), int(n_rows or 0)
+
+
+def _missing_rate(cols_info: Dict[str, Any], col: str) -> float:
+    info = cols_info.get(col)
+    if isinstance(info, dict):
+        return float(info.get("missing_rate", 0.0) or 0.0)
+    return float(getattr(info, "missing_rate", 0.0) or 0.0)
+
+
+def clean_data_confirmation_policy(action, profile, state):
+    """Only DESTRUCTIVE clean actions need human review; the rest run freely.
+
+    Pre-execution, so row-loss is *estimated* from the profile's per-column
+    missing rates (the post-exec guardrail reports the exact impact).
+    """
+    args = getattr(action, "arguments", {}) or {}
+    action_type = str(args.get("action_type", "")).lower().strip()
+    selected = _normalize_columns_arg(args.get("columns"))
+
+    cols_info, _ = _profile_columns(profile)
+    targets = selected or list(cols_info.keys())
+
+    if action_type == "drop":
+        worst = max((_missing_rate(cols_info, c) for c in targets), default=0.0)
+        if worst > DROP_ROWS_REVIEW_FRACTION:
+            return True, (
+                f"Dropping rows would discard at least ~{worst * 100:.0f}% of the data "
+                f"(missing values in the targeted column(s)). Confirm before proceeding."
+            )
+        return False, ""
+
+    if action_type == "impute":
+        worst_col, worst = "", 0.0
+        for c in targets:
+            r = _missing_rate(cols_info, c)
+            if r > worst:
+                worst_col, worst = c, r
+        if worst > IMPUTE_REVIEW_FRACTION:
+            return True, (
+                f"Imputing `{worst_col}` would fill ~{worst * 100:.0f}% of its values "
+                f"(over 20% missing); this can distort the column. Confirm before proceeding."
+            )
+        return False, ""
+
+    # cast / dedup / standardize / clip -> lower risk; allowed (guardrails report impact).
+    return False, ""
+
+
+def _gr_finding(severity, title, message, evidence, recommendation=""):
+    return {
+        "finding_id": f"gr_{uuid.uuid4().hex[:8]}",
+        "category": "data_cleaning_impact",
+        "severity": severity,
+        "title": title,
+        "message": message,
+        "evidence": evidence,
+        "recommendation": recommendation,
+    }
+
+
+def evaluate_clean_data_guardrails(run: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Post-execution transparency: report the ACTUAL impact of a clean step."""
+    findings: List[Dict[str, Any]] = []
+    metrics = run.get("metrics", {}) or {}
+    meta = run.get("metadata", {}) or {}
+    action_info = meta.get("action_info", {}) or {}
+
+    orig = metrics.get("original_n_rows") or 0
+    removed = metrics.get("rows_removed") or 0
+    if orig and removed:
+        frac = removed / orig
+        if frac >= ROW_LOSS_WARN_FRACTION:
+            findings.append(_gr_finding(
+                "warning", "Large row reduction",
+                f"This step removed {removed} of {orig} rows ({frac:.0%}).",
+                {"rows_removed": removed, "original_n_rows": orig, "fraction": round(frac, 4)},
+                "Confirm this loss is intended; consider imputation or a narrower filter."))
+        elif frac >= ROW_LOSS_INFO_FRACTION:
+            findings.append(_gr_finding(
+                "info", "Rows removed",
+                f"This step removed {removed} of {orig} rows ({frac:.0%}).",
+                {"rows_removed": removed, "original_n_rows": orig, "fraction": round(frac, 4)}))
+
+    for col, ci in (action_info.get("cast", {}) or {}).items():
+        cf = (ci or {}).get("coercion_failures", 0) or 0
+        if cf > 0:
+            findings.append(_gr_finding(
+                "warning", "Values lost in type cast",
+                f"Casting `{col}` left {cf} value(s) unparseable; they became missing.",
+                {"column": col, "coercion_failures": cf},
+                "Inspect the unparseable values; the chosen type may be wrong for this column."))
+
+    for col, ci in (action_info.get("clip", {}) or {}).items():
+        nc = (ci or {}).get("n_clipped", 0) or 0
+        if nc > 0:
+            findings.append(_gr_finding(
+                "info", "Outliers clipped",
+                f"Clipped {nc} outlier value(s) in `{col}` to the 1.5*IQR fence.",
+                {"column": col, "n_clipped": nc}))
+
+    return findings
+
+
 def execute_clean_data(context) -> Dict[str, Any]:
     """
     Mutating data-cleaning tool. Each call creates a new immutable data version.
@@ -554,6 +677,7 @@ def extract_clean_data(
         "new_version_id": payload.get("new_version_id"),
         "data_version_update": payload.get("data_version_update"),
         "final_columns": payload.get("final_columns"),
+        "action_info": payload.get("action_info"),
     })
 
     summary = "Cleaned the active dataset and created a new data version."
@@ -615,7 +739,7 @@ CLEAN_DATA_DISPLAY = DisplayConfig(
 PLUGIN = register_plugin(AnalysisToolPlugin(
     tool_name="clean_data",
     display_name="Data Cleaning",
-    requires_confirmation=True,
+    requires_confirmation=False,   # per-action gating via confirmation_policy (P3)
     argument_schema=ArgumentSchema(
         required={
             "action_type": str,
@@ -633,6 +757,7 @@ PLUGIN = register_plugin(AnalysisToolPlugin(
     ),
     execute=execute_clean_data,
     extractor=extract_clean_data,
-    guardrail_evaluators=[],
+    guardrail_evaluators=[evaluate_clean_data_guardrails],
+    confirmation_policy=clean_data_confirmation_policy,
     display_config=CLEAN_DATA_DISPLAY,
 ))

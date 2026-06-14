@@ -9,6 +9,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 ExecuteFn = Callable[..., Dict[str, Any]]
 ExtractorFn = Callable[..., Tuple[str, str, Dict[str, Any], Dict[str, Any], Dict[str, Any]]]
 GuardrailFn = Callable[[Dict[str, Any]], List[Dict[str, Any]]]
+# (action, profile, state) -> Optional[(needs_review: bool, reason: str)].
+# Returning None defers to the static `requires_confirmation` flag.
+ConfirmationFn = Callable[[Any, Any, Any], Optional[Tuple[bool, str]]]
 DisplayFormatter = Callable[[Any], Any]
 
 
@@ -367,6 +370,9 @@ class AnalysisToolPlugin:
     argument_schema: ArgumentSchema = field(default_factory=ArgumentSchema)
 
     guardrail_evaluators: List[GuardrailFn] = field(default_factory=list)
+    # Optional per-action review gate. When set, it decides needs_review/allowed
+    # (overriding requires_confirmation); returning None defers to the flag.
+    confirmation_policy: Optional[ConfirmationFn] = None
     display_config: DisplayConfig = field(default_factory=DisplayConfig)
 
     description: str = ""

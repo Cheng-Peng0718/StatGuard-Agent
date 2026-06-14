@@ -83,6 +83,25 @@ def verify(action, profile=None, state=None):
         )
         return "rejected_recoverable", feedback
 
+    policy = getattr(plugin, "confirmation_policy", None)
+    if policy is not None:
+        decision = None
+        try:
+            decision = policy(action, profile, state)
+        except Exception as e:
+            print(f"[VERIFIER] confirmation_policy error for {tool_name}: {e}")
+            decision = None
+        if decision is not None:
+            needs, reason = decision
+            if needs:
+                print(f"[VERIFIER DECISION] {tool_name} -> needs_review (policy)")
+                return "needs_review", reason or (
+                    f"Action '{tool_name}' requires confirmation before execution."
+                )
+            print(f"[VERIFIER DECISION] {tool_name} -> allowed (policy)")
+            return "allowed", "Validation passed; executing..."
+        # policy returned None -> fall through to the static flag.
+
     if bool(getattr(plugin, "requires_confirmation", False)):
         print(f"[VERIFIER DECISION] {tool_name} -> needs_review")
 
