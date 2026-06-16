@@ -14,6 +14,7 @@ from core.analysis_tool_plugins.base import (
     format_number,
 )
 from core.analysis_tool_plugins.registry import register_plugin
+from core.data_versions import create_child_data_version, make_audit_event
 
 
 def _ok(message: str, details: Dict[str, Any], artifacts=None, data_version_update=None):
@@ -576,20 +577,60 @@ def execute_clean_data(context) -> Dict[str, Any]:
         selected_inf_after = _inf_by_columns(new_df, cols)
 
         old_version_id = _active_version_id(context)
-        new_version_id = _make_version_id()
+        workspace_dir = getattr(context, "workspace_dir", None)
+        description = (
+            f"Cleaned data using action_type={action_type}, "
+            f"strategy={normalized_strategy}, columns={cols}."
+        )
 
-        # This is the actual mutation.
-        context.save_df(new_df)
+        # Create a real immutable child version and switch the active version to
+        # it -- the pattern materialize_sql_query_result uses. The graph reads
+        # `new_version` + `active_data_version_id` to register and activate it, so
+        # the NEXT analysis tool loads the cleaned data. (context.save_df would only
+        # overwrite working_data.parquet WITHOUT switching the active version, so the
+        # cleaned data would sit unread while analysis keeps loading the old version.)
+        version = create_child_data_version(
+            df=new_df,
+            workspace_dir=workspace_dir,
+            parent_version_id=old_version_id,
+            operation="clean_data",
+            created_by="clean_data",
+            description=description,
+            metadata={
+                "action_type": action_type,
+                "strategy": normalized_strategy,
+                "columns": cols,
+            },
+        )
+        new_version_id = version["version_id"]
+
+        audit_event = make_audit_event(
+            event_type="data_cleaned",
+            description=description,
+            version_id=new_version_id,
+            parent_version_id=old_version_id,
+            tool_name="clean_data",
+            details={
+                "action_type": action_type,
+                "strategy": normalized_strategy,
+                "columns": cols,
+                "n_rows": int(new_df.shape[0]),
+                "n_cols": int(new_df.shape[1]),
+            },
+        )
 
         data_version_update = {
+            # Keys the graph reads to register the new version + switch active.
+            "active_data_version_id": new_version_id,
+            "new_version": version,
+            "audit_event": audit_event,
+            # Descriptive keys kept so the report provenance (DG) still reads
+            # description + version lineage with no DG change.
             "old_version_id": old_version_id,
             "new_version_id": new_version_id,
             "parent_version_id": old_version_id,
             "operation": "clean_data",
-            "description": (
-                f"Cleaned data using action_type={action_type}, "
-                f"strategy={normalized_strategy}, columns={cols}."
-            ),
+            "description": description,
             "n_rows": int(new_df.shape[0]),
             "n_cols": int(new_df.shape[1]),
             "columns": list(new_df.columns),

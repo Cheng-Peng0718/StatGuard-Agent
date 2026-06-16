@@ -1,27 +1,25 @@
+import tempfile
+
 import pandas as pd
 
 from core.analysis_tool_plugins import get_plugin
+from core.data_versions import create_child_data_version
+from core.schema import AgentContext
 
 
-class DummyContext:
-    def __init__(self, df, args=None):
-        self.df = df.copy()
-        self.saved_df = None
-        self.args = args or {}
-        self.workspace_dir = "."
-        self.active_data_version_id = "raw_v1"
-        self.data_versions = []
-        self.data_audit_log = []
+def _seed(df, args):
+    """A real context seeded with an initial data version, so clean_data's
+    create_child_data_version + active-version switch run for real."""
+    ws = tempfile.mkdtemp()
+    v0 = create_child_data_version(df, ws, parent_version_id=None,
+                                   operation="initial_load", created_by="test")
+    return AgentContext(workspace_dir=ws, arguments=args,
+                        data_versions=[v0], active_data_version_id=v0["version_id"])
 
-    def load_df(self):
-        return self.df
 
-    def save_df(self, df):
-        self.saved_df = df.copy()
-        self.df = df.copy()
-
-    def get_arg(self, key, default=None):
-        return self.args.get(key, default)
+def _cleaned_df(raw):
+    """Read the cleaned frame back from the new active version (the real handoff)."""
+    return pd.read_parquet(raw["data_version_update"]["new_version"]["path"])
 
 
 def test_clean_data_drop_rows_creates_data_version_update():
@@ -40,7 +38,7 @@ def test_clean_data_drop_rows_creates_data_version_update():
         "Other": ["a", "b", "c"],
     })
 
-    ctx = DummyContext(
+    ctx = _seed(
         df,
         {
             "action_type": "drop",
@@ -52,8 +50,8 @@ def test_clean_data_drop_rows_creates_data_version_update():
     raw = plugin.run(ctx)
 
     assert raw["status"] == "ok"
-    assert ctx.saved_df is not None
-    assert len(ctx.saved_df) == 1
+    out = _cleaned_df(raw)
+    assert len(out) == 1
 
     assert raw["details"]["original_n_rows"] == 3
     assert raw["details"]["final_n_rows"] == 1
@@ -64,7 +62,7 @@ def test_clean_data_drop_rows_creates_data_version_update():
     assert "data_version_update" in raw["details"]
 
     update = raw["data_version_update"]
-    assert update["old_version_id"] == "raw_v1"
+    assert update["old_version_id"] == ctx.active_data_version_id
     assert update["new_version_id"].startswith("data_v_")
     assert update["operation"] == "clean_data"
 
@@ -100,7 +98,7 @@ def test_clean_data_blocks_missing_column():
         "GPA": [3.0, 4.0],
     })
 
-    ctx = DummyContext(
+    ctx = _seed(
         df,
         {
             "action_type": "drop",
@@ -122,7 +120,7 @@ def test_clean_data_impute_mean():
         "x": [1.0, None, 3.0],
     })
 
-    ctx = DummyContext(
+    ctx = _seed(
         df,
         {
             "action_type": "impute",
@@ -134,6 +132,6 @@ def test_clean_data_impute_mean():
     raw = plugin.run(ctx)
 
     assert raw["status"] == "ok"
-    assert ctx.saved_df is not None
-    assert ctx.saved_df["x"].isna().sum() == 0
-    assert ctx.saved_df.loc[1, "x"] == 2.0
+    out = _cleaned_df(raw)
+    assert out["x"].isna().sum() == 0
+    assert out.loc[1, "x"] == 2.0

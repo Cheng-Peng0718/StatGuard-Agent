@@ -9,6 +9,9 @@ implementations cross-checking each other, the same way scipy validates the
 stats plugins.
 """
 
+import os  # noqa: F401
+import tempfile
+
 import numpy as np
 import pandas as pd
 import pandera.pandas as pa
@@ -16,31 +19,28 @@ import pytest
 
 import core.analysis_tool_plugins  # noqa: F401
 from core.analysis_tool_plugins.registry import get_plugin
-
-
-class _Ctx:
-    def __init__(self, df, **args):
-        self._df = df
-        self._args = args
-        self.active_data_version_id = "raw_v1"
-        self.saved = None
-
-    def load_df(self):
-        return self._df
-
-    def save_df(self, df):
-        self.saved = df
-
-    def get_arg(self, name, default=None):
-        return self._args.get(name, default)
+from core.data_versions import create_child_data_version
+from core.schema import AgentContext
 
 
 def _run(df, **args):
+    """Run clean_data through the REAL version mechanism: seed an initial data
+    version, execute, then read the cleaned frame back from the new active
+    version's parquet (the same handoff the graph performs in production)."""
     plugin = get_plugin("clean_data")
-    ctx = _Ctx(df, **args)
+    ws = tempfile.mkdtemp()
+    v0 = create_child_data_version(df, ws, parent_version_id=None,
+                                   operation="initial_load", created_by="test",
+                                   description="raw")
+    ctx = AgentContext(workspace_dir=ws, arguments=args,
+                       data_versions=[v0], active_data_version_id=v0["version_id"])
     result = plugin.execute(ctx)
     assert result["status"] == "ok", result
-    return ctx.saved, result["details"]
+    upd = result["data_version_update"]
+    # the graph switches the active version to this; read the cleaned frame from it
+    assert upd.get("active_data_version_id") == upd["new_version"]["version_id"]
+    out = pd.read_parquet(upd["new_version"]["path"])
+    return out, result["details"]
 
 
 # --------------------------------------------------------------------------
@@ -116,7 +116,13 @@ def test_impute_mode_categorical():
 def test_impute_constant_requires_fill_value():
     df = pd.DataFrame({"seg": ["A", None]})
     plugin = get_plugin("clean_data")
-    ctx = _Ctx(df, action_type="impute", strategy="constant", columns=["seg"])
+    ws = tempfile.mkdtemp()
+    v0 = create_child_data_version(df, ws, parent_version_id=None,
+                                   operation="initial_load", created_by="test")
+    ctx = AgentContext(workspace_dir=ws,
+                       arguments={"action_type": "impute", "strategy": "constant",
+                                  "columns": ["seg"]},
+                       data_versions=[v0], active_data_version_id=v0["version_id"])
     result = plugin.execute(ctx)
     assert result["status"] == "blocked"
     assert result["error_code"] == "MISSING_FILL_VALUE"
